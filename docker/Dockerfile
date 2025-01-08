@@ -42,6 +42,12 @@ RUN wget -P $BASE_DIR/config https://raw.githubusercontent.com/tronprotocol/tron
 ENV JAVA_HOME="/usr/local/jre"
 ENV PATH=$PATH:$JAVA_HOME/bin
 
+# Expose services ports
+# 8545 HTTP JSON-RPC
+# 30303 P2P
+EXPOSE 8545 8090 18888 10001 50051
+
+
 COPY docker-entrypoint.sh $BASE_DIR/bin
 
 WORKDIR $BASE_DIR

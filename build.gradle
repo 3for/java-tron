@@ -189,6 +189,24 @@ task dockerUpload {
     }
 }
 
+task testDocker {
+    dependsOn sourceDocker
+    def dockerReportsDir = "docker/reports/"
+
+    doFirst {
+        new File(dockerReportsDir).mkdir()
+    }
+
+    doLast {
+        exec {
+            def image = project.hasProperty('release.releaseVersion') ? "${dockerImageName}:" + project.property('release.releaseVersion') : "${dockerImageName}:${project.version}"
+            workingDir "${projectDir}/docker"
+            executable shell
+            args "-c", "./test.sh ${image}"
+        }
+    }
+}
+
 build.finalizedBy(copyToParent)
 
 gradle.buildFinished {

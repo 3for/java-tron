@@ -1,0 +1,5 @@
+---
+# runtime docker tests
+process:
+  java:
+    running: true
