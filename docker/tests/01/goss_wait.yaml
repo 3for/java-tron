@@ -5,3 +5,19 @@ port:
     listening: true
     ip:
       - 0.0.0.0
+  udp:18888:
+    listening: true
+    ip:
+      - 0.0.0.0
+  tcp:50051:
+    listening: true
+    ip:
+      - 0.0.0.0
+  tcp:8090:
+    listening: true
+    ip:
+      - 0.0.0.0
+  tcp:8091:
+    listening: true
+    ip:
+      - 0.0.0.0

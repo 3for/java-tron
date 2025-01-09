@@ -36,7 +36,7 @@ i=0
 # hence we dont set p2p-host=0.0.0.0 because this sets what its advertising to devp2p; the important piece is that it defaults to listening on all interfaces
 GOSS_FILES_PATH=$TEST_PATH/01 \
 bash $TEST_PATH/dgoss run --sysctl net.ipv6.conf.all.disable_ipv6=1 $DOCKER_IMAGE \
--p 8090:8090 -p 8091:8091 -p 18888:18888 -p 18888:18888/udp -p 50051:50051 \
+#-p 8090:8090 -p 8091:8091 -p 18888:18888 -p 18888:18888/udp -p 50051:50051 \
 > ./reports/01.xml || i=`expr $i + 1`
 
 if [[ $i != 0 ]]; then exit $i; fi
