@@ -190,7 +190,7 @@ task dockerUpload {
 }
 
 task testDocker {
-    dependsOn sourceDocker
+    //dependsOn sourceDocker
     def dockerReportsDir = "docker/reports/"
 
     doFirst {
