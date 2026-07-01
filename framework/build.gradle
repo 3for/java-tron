@@ -259,4 +259,21 @@ task copyToParent(type: Copy) {
     include "*.zip"
 }
 
+createScript(project, 'org.tron.tool.BlockSigVerifyReplay', 'BlockSigVerifyReplay')
+
+tasks.register('runSigReplay', JavaExec) {
+    group = 'application'
+    description = 'Replay signature verification for a single block (no DB writes).'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'org.tron.tool.BlockSigVerifyReplay'
+    // Usage: ./gradlew :framework:runSigReplay -PblockNum=81993268 [-Pendpoint=https://api.trongrid.io]
+    args = []
+    if (project.hasProperty('blockNum')) {
+        args project.getProperty('blockNum').toString()
+        if (project.hasProperty('endpoint')) {
+            args project.getProperty('endpoint').toString()
+        }
+    }
+}
+
 build.finalizedBy(copyToParent)
