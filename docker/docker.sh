@@ -51,7 +51,6 @@ LOG_FILE="/logs/tron.log"
 
 JAVA_TRON_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/java-tron/develop/"
 DOCKER_FILE="Dockerfile"
-ENDPOINT_SHELL="docker-entrypoint.sh"
 
 if test docker; then
   docker -v
@@ -244,8 +243,6 @@ build() {
     fi
     # download Dockerfile
    `$DOWNLOAD_CMD "$JAVA_TRON_REPOSITORY$DOCKER_FILE"`
-   `$DOWNLOAD_CMD "$JAVA_TRON_REPOSITORY$ENDPOINT_SHELL"`
-   chmod u+rwx $ENDPOINT_SHELL
   fi
   docker build -t "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" .
 }
