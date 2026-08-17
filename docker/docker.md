@@ -57,6 +57,35 @@ $ sh docker.sh --run --update-config false
 
 Or use the `-c` parameter to specify your own configuration file, which will not automatically download a new configuration file from github repository.
 
+#### Memory and JVM options
+
+By default, `docker.sh` uses the minimum memory profile for a FullNode: a `16g` container memory limit, a 2 GB initial heap, a maximum heap of up to 60% of the container memory, and a 1 GB direct-memory limit:
+
+```text
+-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g
+```
+
+This profile is intended for minimum-resource or lower-load deployments. For stable Mainnet operation, use at least `32g`; Super Representative nodes require at least `64g`. See the [Mainnet hardware requirements](../README.md#hardware-requirements-for-mainnet) for the complete deployment tiers.
+
+Use `--memory` to change the container memory limit. When the default JVM options are retained, the maximum heap scales with this limit:
+
+```shell
+$ sh docker.sh --run --net main --memory 32g
+```
+
+For a stable Mainnet profile with explicit heap and direct-memory limits, use `--jvm-opts` to replace the defaults:
+
+```shell
+$ sh docker.sh --run --net main --memory 32g \
+    --jvm-opts "-Xms4g -Xmx18g -XX:MaxDirectMemorySize=2g"
+```
+
+Environment variables required by custom wrapper scripts or derived images can be passed with repeatable `-e` or `--env` options. `MY_VARIABLE` below is only a placeholder:
+
+```shell
+$ sh docker.sh --run --net main -e "MY_VARIABLE=value"
+```
+
 
 ### View logs
 If you want to see the logs of the java-tron service, please use the `--log` parameter
@@ -104,7 +133,8 @@ Parameters for all functions：
 * **`-p`** publish a container's port to the host, format:`-p hostPort:containerPort`
 * **`-c`** specify other java-tron configuration file in the container
 * **`-v`** bind mount a volume for the container,format: `-v host-src:container-dest`, the `host-src` is an absolute path
+* **`-e`, `--env`** set an environment variable in the container; this option can be repeated
 * **`--net`** select the network, you can join the main-net, test-net
 * **`--update-config`** update configuration file, default true
-
-
+* **`--memory`** set the container memory limit, default:`16g`
+* **`--jvm-opts`** replace the default JVM options

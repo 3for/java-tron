@@ -31,6 +31,9 @@ DOCKER_HTTP_PORT=8090
 DOCKER_RPC_PORT=50051
 DOCKER_LISTEN_PORT=18888
 
+DOCKER_MEMORY="16g"
+JVM_OPTS="-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g"
+
 VOLUME=`pwd`
 CONFIG="$VOLUME/config"
 OUTPUT_DIRECTORY="$VOLUME/output-directory"
@@ -103,83 +106,128 @@ run() {
     fi
   fi
 
-  volume=""
-  parameter=""
-  tron_parameter=""
-  if [ $# -gt 0 ]; then
-    while [ -n "$1" ]; do
-      case "$1" in
-        -v)
-          volume="$volume -v $2"
-          shift 2
-          ;;
-        -p)
-          parameter="$parameter -p $2"
-          shift 2
-          ;;
-        -c)
-          tron_parameter="$tron_parameter -c $2"
-          UPDATE_CONFIG=false
-          shift 2
-          ;;
-        --net)
-          if [[ "$2" = "main" ]]; then
-            CONFIG_FILE=$MAIN_NET_CONFIG_FILE
-          elif [[ "$2" = "test" ]]; then
-            CONFIG_FILE=$TEST_NET_CONFIG_FILE
-          elif [[ "$2" = "private" ]]; then
-            CONFIG_FILE=$PRIVATE_NET_CONFIG_FILE
-          fi
-          shift 2
-          ;;
-        --update-config)
-          UPDATE_CONFIG=$2
-          shift 2
-          ;;
-        *)
-          echo "run: arg $1 is not a valid parameter"
-          exit
-          ;;
-      esac
-    done
-    if [ $UPDATE_CONFIG = true ]; then
-      download_config
-    fi
+  local docker_memory="$DOCKER_MEMORY"
+  local jvm_opts="$JVM_OPTS"
+  local -a volume_args=()
+  local -a port_args=()
+  local -a environment_args=()
+  local -a tron_args=()
 
-    if [ -z "$volume" ]; then
-      volume=" -v $CONFIG:/java-tron/config -v $OUTPUT_DIRECTORY:/java-tron/output-directory"
-    fi
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -v)
+        if [ $# -lt 2 ]; then
+          echo "run: arg $1 requires a value"
+          return 1
+        fi
+        volume_args+=("-v" "$2")
+        shift 2
+        ;;
+      -p)
+        if [ $# -lt 2 ]; then
+          echo "run: arg $1 requires a value"
+          return 1
+        fi
+        port_args+=("-p" "$2")
+        shift 2
+        ;;
+      -e|--env)
+        if [ $# -lt 2 ]; then
+          echo "run: arg $1 requires a value"
+          return 1
+        fi
+        environment_args+=("--env" "$2")
+        shift 2
+        ;;
+      -c)
+        if [ $# -lt 2 ]; then
+          echo "run: arg $1 requires a value"
+          return 1
+        fi
+        tron_args=("-c" "$2")
+        UPDATE_CONFIG=false
+        shift 2
+        ;;
+      --net)
+        if [ $# -lt 2 ]; then
+          echo "run: arg $1 requires a value"
+          return 1
+        fi
+        if [[ "$2" = "main" ]]; then
+          CONFIG_FILE=$MAIN_NET_CONFIG_FILE
+        elif [[ "$2" = "test" ]]; then
+          CONFIG_FILE=$TEST_NET_CONFIG_FILE
+        elif [[ "$2" = "private" ]]; then
+          CONFIG_FILE=$PRIVATE_NET_CONFIG_FILE
+        else
+          echo "run: network $2 is not valid; expected main, test, or private"
+          return 1
+        fi
+        shift 2
+        ;;
+      --update-config)
+        if [ $# -lt 2 ]; then
+          echo "run: arg $1 requires a value"
+          return 1
+        fi
+        UPDATE_CONFIG=$2
+        shift 2
+        ;;
+      --memory)
+        if [ $# -lt 2 ]; then
+          echo "run: arg $1 requires a value"
+          return 1
+        fi
+        docker_memory=$2
+        shift 2
+        ;;
+      --jvm-opts)
+        if [ $# -lt 2 ]; then
+          echo "run: arg $1 requires a value"
+          return 1
+        fi
+        jvm_opts=$2
+        shift 2
+        ;;
+      *)
+        echo "run: arg $1 is not a valid parameter"
+        return 1
+        ;;
+    esac
+  done
 
-    if [ -z "$parameter" ]; then
-      parameter=" -p $HOST_HTTP_PORT:$DOCKER_HTTP_PORT -p $HOST_RPC_PORT:$DOCKER_RPC_PORT -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT"
-    fi
-
-    if [ -z "$tron_parameter" ]; then
-      tron_parameter=" -c $CONFIG_PATH$CONFIG_FILE"
-    fi
-
-    # Using custom parameters
-    docker run -d -it --name "$DOCKER_REPOSITORY-$DOCKER_IMAGES" \
-        $volume \
-        $parameter \
-        --restart always \
-        "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
-        $tron_parameter
-  else
-    if [ $UPDATE_CONFIG = true ]; then
-      download_config
-    fi
-    # Default parameters
-    docker run -d -it --name "$DOCKER_REPOSITORY-$DOCKER_IMAGES" \
-      -v $CONFIG:/java-tron/config \
-      -v $OUTPUT_DIRECTORY:/java-tron/output-directory \
-      -p $HOST_HTTP_PORT:$DOCKER_HTTP_PORT \
-      -p $HOST_RPC_PORT:$DOCKER_RPC_PORT \
-      -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT \
-      --restart always \
-      "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
-      -c "$CONFIG_PATH$CONFIG_FILE"
+  if [ "$UPDATE_CONFIG" = true ]; then
+    download_config
   fi
+
+  if [ ${#volume_args[@]} -eq 0 ]; then
+    volume_args=(
+      "-v" "$CONFIG:/java-tron/config"
+      "-v" "$OUTPUT_DIRECTORY:/java-tron/output-directory"
+    )
+  fi
+
+  if [ ${#port_args[@]} -eq 0 ]; then
+    port_args=(
+      "-p" "$HOST_HTTP_PORT:$DOCKER_HTTP_PORT"
+      "-p" "$HOST_RPC_PORT:$DOCKER_RPC_PORT"
+      "-p" "$HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT"
+    )
+  fi
+
+  if [ ${#tron_args[@]} -eq 0 ]; then
+    tron_args=("-c" "$CONFIG_PATH$CONFIG_FILE")
+  fi
+
+  docker run -d -it --name "$DOCKER_REPOSITORY-$DOCKER_IMAGES" \
+    "${volume_args[@]}" \
+    "${port_args[@]}" \
+    --memory "$docker_memory" \
+    --env "JAVA_OPTS=$jvm_opts" \
+    "${environment_args[@]}" \
+    --restart always \
+    "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
+    "${tron_args[@]}"
 }
 
 build() {
@@ -257,31 +305,31 @@ log() {
 
 case "$1" in
   --pull)
-    pull ${@: 2}
+    pull "${@:2}"
     exit
     ;;
   --start)
-    start ${@: 2}
+    start "${@:2}"
     exit
     ;;
   --stop)
-    stop ${@: 2}
+    stop "${@:2}"
     exit
     ;;
   --build)
-    build ${@: 2}
+    build "${@:2}"
     exit
     ;;
   --run)
-    run ${@: 2}
+    run "${@:2}"
     exit
     ;;
   --rm)
-    rm_container ${@: 2}
+    rm_container "${@:2}"
     exit
     ;;
   --log)
-    log ${@: 2}
+    log "${@:2}"
     exit
     ;;
   *)
