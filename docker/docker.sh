@@ -36,9 +36,7 @@ DOCKER_LISTEN_PORT=18888
 DOCKER_MEMORY="16g"
 JVM_OPTS="-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g"
 
-VOLUME=$(pwd)
-CONFIG="$VOLUME/config"
-OUTPUT_DIRECTORY="$VOLUME/output-directory"
+DEFAULT_DATA_DIR=$(pwd)
 
 CONFIG_PATH="/java-tron/config/"
 CONFIG_FILE="main_net_config.conf"
@@ -105,14 +103,20 @@ download_file() {
 }
 
 download_config() {
-  echo "Downloading $CONFIG_FILE"
-  download_file "$CONFIG_REPOSITORY/$CONFIG_FILE" "$CONFIG/$CONFIG_FILE"
+  local config_directory="$1"
+  local config_file="$2"
+
+  echo "Downloading $config_file"
+  download_file "$CONFIG_REPOSITORY/$config_file" "$config_directory/$config_file"
 }
 
 check_download_config() {
-  if [ ! -f "$CONFIG/$CONFIG_FILE" ]; then
-    echo "$CONFIG/$CONFIG_FILE does not exist; downloading it for the initial run."
-    download_config
+  local config_directory="$1"
+  local config_file="$2"
+
+  if [ ! -f "$config_directory/$config_file" ]; then
+    echo "$config_directory/$config_file does not exist; downloading it for the initial run."
+    download_config "$config_directory" "$config_file"
   fi
 }
 
@@ -172,6 +176,9 @@ run() {
 
   local docker_memory="$DOCKER_MEMORY"
   local jvm_opts="$JVM_OPTS"
+  local data_dir="$DEFAULT_DATA_DIR"
+  local config_directory
+  local output_directory
   local -a volume_args=()
   local -a port_args=()
   local -a environment_args=()
@@ -251,6 +258,14 @@ run() {
         docker_memory=$2
         shift 2
         ;;
+      --data-dir)
+        if [ $# -lt 2 ]; then
+          echo "run: arg $1 requires a value"
+          return 1
+        fi
+        data_dir=$2
+        shift 2
+        ;;
       --jvm-opts)
         if [ $# -lt 2 ]; then
           echo "run: arg $1 requires a value"
@@ -266,19 +281,25 @@ run() {
     esac
   done
 
+  if [[ "$data_dir" != /* ]]; then
+    data_dir="$(pwd)/$data_dir"
+  fi
+  config_directory="$data_dir/config"
+  output_directory="$data_dir/output-directory"
+
   if [ "$custom_config" = false ]; then
     if [ "$UPDATE_CONFIG" = true ]; then
-      download_config || return 1
+      download_config "$config_directory" "$CONFIG_FILE" || return 1
     else
-      check_download_config || return 1
+      check_download_config "$config_directory" "$CONFIG_FILE" || return 1
     fi
   fi
 
   if ! has_volume_mount "/java-tron/config" "${volume_args[@]}"; then
-    volume_args+=("-v" "$CONFIG:/java-tron/config")
+    volume_args+=("-v" "$config_directory:/java-tron/config")
   fi
   if ! has_volume_mount "/java-tron/output-directory" "${volume_args[@]}"; then
-    volume_args+=("-v" "$OUTPUT_DIRECTORY:/java-tron/output-directory")
+    volume_args+=("-v" "$output_directory:/java-tron/output-directory")
   fi
 
   if ! has_port_mapping "$DOCKER_HTTP_PORT" "tcp" "${port_args[@]}"; then

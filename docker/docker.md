@@ -41,6 +41,8 @@ bash docker.sh --pull
 
 HTTP and gRPC are bound to loopback by default to prevent accidental network or public exposure. P2P remains externally reachable so that the node can communicate with peers.
 
+> **Storage and synchronization:** The default Mainnet configuration starts a full FullNode. It does not enable Lite FullNode mode or preload a data snapshot. When `output-directory` under the selected data directory is empty, the node synchronizes the complete Mainnet database from genesis; allocate approximately 3.5–4 TB of high-performance SSD storage for this mode. The script persists this database on the host, but the host filesystem must still have sufficient capacity. To reduce initial synchronization time or use the Lite FullNode storage tier, import and configure a compatible [FullNode or Lite FullNode data snapshot](https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#data-snapshot) for the selected network and java-tron version before starting the node.
+
 Run a Mainnet FullNode:
 
 ```shell
@@ -95,7 +97,7 @@ bash docker.sh --run --net main \
     -c /java-tron/custom.conf
 ```
 
-By default, the script also mounts these persistent directories from the current host directory:
+By default, the script mounts persistent directories relative to the shell's current working directory when `docker.sh` is invoked, not relative to the script file:
 
 ```text
 ./config           -> /java-tron/config
@@ -103,6 +105,14 @@ By default, the script also mounts these persistent directories from the current
 ```
 
 Additional `-v` options retain these defaults. A custom mount replaces a default only when it uses the same container destination.
+
+Use `--data-dir` to keep both directories in an explicit location, preferably outside the source checkout. Relative values are resolved against the invocation directory:
+
+```shell
+bash docker.sh --run --net main --data-dir /var/lib/java-tron
+```
+
+This produces `/var/lib/java-tron/config` and `/var/lib/java-tron/output-directory` host mounts. The standard downloaded network configuration files are ignored when the default data directory is the repository root or its `docker/` directory, but `--data-dir` avoids creating runtime files in the Git worktree entirely.
 
 ## Memory and JVM options
 
@@ -112,7 +122,7 @@ By default, `docker.sh` uses the minimum memory profile for a FullNode: a `16g` 
 -Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g
 ```
 
-This profile is intended for minimum-resource or lower-load deployments. For stable Mainnet operation, use at least `32g`; Super Representative nodes require at least `64g`. See the [Mainnet hardware requirements](../README.md#hardware-requirements-for-mainnet) for the complete deployment tiers.
+This is a minimum **memory** profile for lower-load deployments; it does not enable Lite FullNode mode or reduce the database storage requirement described above. For stable Mainnet operation, use at least `32g`; Super Representative nodes require at least `64g`. See the [Mainnet hardware requirements](../README.md#hardware-requirements-for-mainnet) for the complete deployment tiers.
 
 Use `--memory` to change the container memory limit. When the default JVM options are retained, the maximum heap scales with this limit:
 
@@ -220,5 +230,6 @@ DOCKER_TARGET="1.0"
 | `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. |
 | `--net main\|test\|private` | Select the Mainnet, Nile Testnet, or private-network configuration. |
 | `--update-config true\|false` | Refresh the selected configuration before creating the container. Default: `true`. |
+| `--data-dir PATH` | Store the default `config` and `output-directory` mounts under this host path. Default: invocation directory. |
 | `--memory LIMIT` | Set the container memory limit. Default: `16g`. |
 | `--jvm-opts "OPTIONS"` | Replace the memory-related JVM options supplied by `docker.sh`. |

@@ -10,14 +10,20 @@ SOURCE_ROOT="$TEST_TMP/source"
 DOCKER_LOG="$TEST_TMP/docker-args"
 DOCKER_CONTEXT_LOG="$TEST_TMP/docker-context"
 DOCKER_ENV_LOG="$TEST_TMP/docker-env"
+DOWNLOAD_LOG="$TEST_TMP/downloads"
 
 cleanup() {
   rm -rf "$TEST_TMP"
 }
 trap cleanup EXIT
 
-mkdir -p "$MOCK_BIN" "$SOURCE_ROOT"
+mkdir -p "$MOCK_BIN" "$SOURCE_ROOT" "$TEST_TMP/config" \
+  "$TEST_TMP/external-data/config" "$TEST_TMP/relative-data/config"
 touch "$SOURCE_ROOT/.env"
+touch "$TEST_TMP/config/main_net_config.conf"
+touch "$TEST_TMP/config/test_net_config.conf"
+touch "$TEST_TMP/external-data/config/main_net_config.conf"
+touch "$TEST_TMP/relative-data/config/main_net_config.conf"
 
 cat > "$MOCK_BIN/docker" <<'MOCK_DOCKER'
 #!/bin/bash
@@ -46,6 +52,7 @@ case "${1:-}" in
     ;;
   run)
     printf '%s\n' "$@" > "$DOCKER_MOCK_LOG"
+    exit "${MOCK_RUN_STATUS:-0}"
     ;;
   *)
     echo "Unexpected docker command: $*" >&2
@@ -92,17 +99,24 @@ cat > "$MOCK_BIN/curl" <<'MOCK_CURL'
 set -euo pipefail
 
 output=""
+url=""
 while [ $# -gt 0 ]; do
   if [ "$1" = "-o" ]; then
     output=$2
     shift 2
   else
+    if [[ "$1" != -* ]]; then
+      url=$1
+    fi
     shift
   fi
 done
 test -n "$output"
 mkdir -p "$(dirname "$output")"
 touch "$output"
+if [ -n "${DOWNLOAD_MOCK_LOG:-}" ]; then
+  printf '%s|%s\n' "$url" "$output" >> "$DOWNLOAD_MOCK_LOG"
+fi
 MOCK_CURL
 
 cat > "$SOURCE_ROOT/gradlew" <<'MOCK_GRADLEW'
@@ -130,6 +144,18 @@ assert_no_argument() {
   local unexpected="$1"
   if grep -Fqx -- "$unexpected" "$DOCKER_LOG"; then
     echo "Unexpected docker argument: $unexpected" >&2
+    sed 's/^/  /' "$DOCKER_LOG" >&2
+    exit 1
+  fi
+}
+
+assert_argument_count() {
+  local expected="$1"
+  local count="$2"
+  local actual
+  actual=$(grep -Fxc -- "$expected" "$DOCKER_LOG" || true)
+  if [ "$actual" -ne "$count" ]; then
+    echo "Expected docker argument '$expected' $count times, got $actual" >&2
     sed 's/^/  /' "$DOCKER_LOG" >&2
     exit 1
   fi
@@ -188,14 +214,33 @@ run_build() {
 
 run_node() {
   : > "$DOCKER_LOG"
+  : > "$DOWNLOAD_LOG"
   (
     cd -- "$TEST_TMP"
     PATH="$MOCK_BIN:$PATH" \
       DOCKER_MOCK_LOG="$DOCKER_LOG" \
       DOCKER_MOCK_CONTEXT_LOG="$DOCKER_CONTEXT_LOG" \
       DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
-      bash "$DOCKER_SCRIPT" --run -c /java-tron/test.conf "$@"
+      DOWNLOAD_MOCK_LOG="$DOWNLOAD_LOG" \
+      MOCK_RUN_STATUS="${MOCK_RUN_STATUS:-0}" \
+      bash "$DOCKER_SCRIPT" --run "$@"
   )
+}
+
+expect_run_failure() {
+  local expected_message="$1"
+  shift
+  local output
+
+  if output=$(run_node "$@" 2>&1); then
+    echo "Expected command to fail: --run $*" >&2
+    exit 1
+  fi
+  if [[ "$output" != *"$expected_message"* ]]; then
+    echo "Expected run failure message '$expected_message', got:" >&2
+    echo "$output" >&2
+    exit 1
+  fi
 }
 
 expect_failure() {
@@ -284,18 +329,107 @@ if [[ "$output" != *"Docker 23.0 or later is required"* ]]; then
   exit 1
 fi
 
-run_node >/dev/null
+run_node --update-config false >/dev/null
 assert_argument "127.0.0.1:8090:8090"
 assert_argument "127.0.0.1:50051:50051"
 assert_argument "18888:18888"
 assert_argument "18888:18888/udp"
 assert_no_argument "8090:8090"
 assert_no_argument "50051:50051"
+assert_argument "16g"
+assert_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g"
+assert_argument "$TEST_TMP/config:/java-tron/config"
+assert_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
+assert_argument "/java-tron/config/main_net_config.conf"
+assert_argument "tronprotocol/java-tron:latest"
+assert_argument_count "-p" 4
+assert_argument_count "-v" 2
+assert_argument_count "--env" 1
+if [ -s "$DOWNLOAD_LOG" ]; then
+  echo "--update-config false unexpectedly downloaded an existing configuration" >&2
+  exit 1
+fi
 
-run_node -p 8090:8090 -p 50051:50051 >/dev/null
+run_node --data-dir "$TEST_TMP/external-data" --update-config false >/dev/null
+assert_argument "$TEST_TMP/external-data/config:/java-tron/config"
+assert_argument "$TEST_TMP/external-data/output-directory:/java-tron/output-directory"
+assert_no_argument "$TEST_TMP/config:/java-tron/config"
+assert_no_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
+
+run_node --data-dir relative-data --update-config false >/dev/null
+assert_argument "$TEST_TMP/relative-data/config:/java-tron/config"
+assert_argument "$TEST_TMP/relative-data/output-directory:/java-tron/output-directory"
+
+run_node -c /java-tron/custom.conf \
+  -p 8090:8090 \
+  -p 50051:50051 \
+  -p 28888:18888 \
+  -v /host/config.conf:/java-tron/config:ro \
+  -v /host/extra:/extra:ro \
+  -e TZ=UTC \
+  --env FEATURE_FLAG=enabled \
+  --memory 32g \
+  --jvm-opts "-Xms4g -Xmx18g -XX:MaxDirectMemorySize=2g" >/dev/null
 assert_argument "8090:8090"
 assert_argument "50051:50051"
+assert_argument "28888:18888"
+assert_argument "18888:18888/udp"
 assert_no_argument "127.0.0.1:8090:8090"
 assert_no_argument "127.0.0.1:50051:50051"
+assert_no_argument "18888:18888"
+assert_argument "/host/config.conf:/java-tron/config:ro"
+assert_argument "/host/extra:/extra:ro"
+assert_no_argument "$TEST_TMP/config:/java-tron/config"
+assert_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
+assert_argument "TZ=UTC"
+assert_argument "FEATURE_FLAG=enabled"
+assert_argument "32g"
+assert_argument "JAVA_OPTS=-Xms4g -Xmx18g -XX:MaxDirectMemorySize=2g"
+assert_argument "/java-tron/custom.conf"
+assert_argument_count "-p" 4
+assert_argument_count "-v" 3
+assert_argument_count "--env" 3
+if [ -s "$DOWNLOAD_LOG" ]; then
+  echo "A custom configuration unexpectedly triggered a download" >&2
+  exit 1
+fi
+
+run_node --net test --update-config false >/dev/null
+assert_argument "/java-tron/config/test_net_config.conf"
+
+run_node --net private --update-config false >/dev/null
+assert_argument "/java-tron/config/private_net_config.conf"
+if ! grep -Fqx -- \
+  "https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/private_net_config.conf|$TEST_TMP/config/private_net_config.conf" \
+  "$DOWNLOAD_LOG"; then
+  echo "--update-config false did not download a missing configuration" >&2
+  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
+  exit 1
+fi
+
+run_node --net main --update-config true >/dev/null
+if ! grep -Fqx -- \
+  "https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/main_net_config.conf|$TEST_TMP/config/main_net_config.conf" \
+  "$DOWNLOAD_LOG"; then
+  echo "--update-config true did not refresh the selected configuration" >&2
+  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
+  exit 1
+fi
+
+for option in -v -p -e --env -c --net --update-config --memory --jvm-opts --data-dir; do
+  expect_run_failure "requires a value" "$option"
+done
+expect_run_failure "expected main, test, or private" --net unsupported
+expect_run_failure "must be true or false" --update-config sometimes
+expect_run_failure "is not a valid parameter" --unknown
+
+set +e
+MOCK_RUN_STATUS=47 run_node -c /java-tron/custom.conf >/dev/null 2>&1
+run_status=$?
+set -e
+if [ "$run_status" -ne 47 ]; then
+  echo "Expected docker run failure status 47, got $run_status" >&2
+  exit 1
+fi
 
 echo "docker.sh build and run tests passed"

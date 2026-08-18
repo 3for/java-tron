@@ -33,6 +33,8 @@ case "${1:-}" in
       if [ "${MOCK_CONTAINER_EXISTS:-false}" = true ]; then
         echo "deadbeef"
       fi
+    else
+      exit "${MOCK_PS_STATUS:-0}"
     fi
     ;;
   start)
@@ -115,14 +117,31 @@ expect_status 1 run_lifecycle --log MOCK_CONTAINER_EXISTS=false
 expect_status 1 run_lifecycle --start MOCK_QUERY_STATUS=51
 assert_call_count '^start ' 0
 
+expect_status 1 run_lifecycle --start \
+  MOCK_CONTAINER_EXISTS=true MOCK_PS_STATUS=52
+expect_status 1 run_lifecycle --stop \
+  MOCK_CONTAINER_EXISTS=true MOCK_PS_STATUS=53
+
 expect_status 1 run_lifecycle --log \
   MOCK_CONTAINER_EXISTS=true MOCK_EXEC_STATUS=44
 
 expect_status 1 run_lifecycle --rm \
   MOCK_CONTAINER_EXISTS=true MOCK_RM_STATUS=45
+expect_status 1 run_lifecycle --rm MOCK_CONTAINER_EXISTS=false
 
 expect_status 0 run_lifecycle --start MOCK_CONTAINER_EXISTS=true
 assert_call_count '^start deadbeef$' 1
 assert_call_count '^ps$' 1
+
+expect_status 0 run_lifecycle --stop MOCK_CONTAINER_EXISTS=true
+assert_call_count '^stop deadbeef$' 1
+assert_call_count '^ps$' 1
+
+expect_status 0 run_lifecycle --log MOCK_CONTAINER_EXISTS=true
+assert_call_count '^exec -it deadbeef tail -100f /java-tron/logs/tron.log$' 1
+
+expect_status 0 run_lifecycle --rm MOCK_CONTAINER_EXISTS=true
+assert_call_count '^stop deadbeef$' 1
+assert_call_count '^rm deadbeef$' 1
 
 echo "docker.sh lifecycle tests passed"
