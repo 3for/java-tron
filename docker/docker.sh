@@ -41,11 +41,12 @@ Run options:
   --update-config true|false     Refresh the selected configuration
   --data-dir PATH                Set the host runtime-data directory
   --memory LIMIT                 Set the container memory limit
-  --jvm-opts "OPTIONS"           Replace the default JVM options
+  --jvm-opts "OPTIONS"           Replace docker.sh default JVM options
   -p MAPPING                     Publish a container port; repeatable
   -v MAPPING                     Add or replace a bind mount; repeatable
   -e NAME=VALUE, --env NAME=VALUE
-                                  Set an environment variable; repeatable
+                                  Set an environment variable; repeatable.
+                                  JAVA_OPTS and FULL_NODE_OPTS are not allowed.
   -c CONTAINER_PATH              Use a custom configuration file
   -- [FULLNODE_ARGS...]          Pass remaining arguments to FullNode
 EOF
@@ -77,7 +78,9 @@ DOCKER_RPC_PORT=50051
 DOCKER_LISTEN_PORT=18888
 
 DOCKER_MEMORY="16g"
-JVM_OPTS="-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g"
+# Helper-only defaults. The image and packaged vmoptions do not set heap size.
+# JDK 8 images also receive -XX:MaxDirectMemorySize=1g at --run time.
+JVM_OPTS="-Xms2g -XX:MaxRAMPercentage=60.0"
 
 DEFAULT_DATA_DIR=$(pwd)
 
@@ -203,6 +206,28 @@ has_volume_mount() {
   return 1
 }
 
+image_architecture() {
+  local image_ref="$1"
+
+  docker image inspect -f '{{.Architecture}}' "$image_ref"
+}
+
+append_jdk8_direct_memory() {
+  local image_ref="$1"
+  local architecture
+
+  if ! architecture=$(image_architecture "$image_ref"); then
+    echo "run: failed to inspect image architecture: $image_ref" >&2
+    return 1
+  fi
+
+  case "$architecture" in
+    amd64|386)
+      jvm_opts="$jvm_opts -XX:MaxDirectMemorySize=1g"
+      ;;
+  esac
+}
+
 run() {
   docker_ps || return 1
   if [ -n "$cid" ]; then
@@ -218,7 +243,12 @@ run() {
     read -r need
 
     if [[ $need == 'y' || $need == 'yes' ]]; then
-      pull
+      pull || return 1
+      docker_image
+      if [ -z "$image" ]; then
+        echo "run: image is still unavailable after pull" >&2
+        return 1
+      fi
     else
       echo "warning: no mirror image found, go ahead and download a mirror."
       return 1
@@ -227,10 +257,12 @@ run() {
 
   local docker_memory="$DOCKER_MEMORY"
   local jvm_opts="$JVM_OPTS"
+  local jvm_opts_replaced=false
   local data_dir="$DEFAULT_DATA_DIR"
   local config_directory
   local output_directory
   local logs_directory
+  local env_name
   local -a volume_args=()
   local -a port_args=()
   local -a environment_args=()
@@ -259,6 +291,11 @@ run() {
       -e|--env)
         if [ $# -lt 2 ]; then
           echo "run: arg $1 requires a value"
+          return 1
+        fi
+        env_name="${2%%=*}"
+        if [[ "$env_name" == "JAVA_OPTS" || "$env_name" == "FULL_NODE_OPTS" ]]; then
+          echo "run: $1 $env_name is not supported; use --jvm-opts to set JVM options" >&2
           return 1
         fi
         environment_args+=("--env" "$2")
@@ -325,6 +362,7 @@ run() {
           return 1
         fi
         jvm_opts=$2
+        jvm_opts_replaced=true
         shift 2
         ;;
       --)
@@ -379,6 +417,10 @@ run() {
 
   if [ ${#tron_args[@]} -eq 0 ]; then
     tron_args=("-c" "$CONFIG_PATH$CONFIG_FILE")
+  fi
+
+  if [ "$jvm_opts_replaced" = false ]; then
+    append_jdk8_direct_memory "$image" || return 1
   fi
 
   docker run -d --name "$DOCKER_REPOSITORY-$DOCKER_IMAGES" \

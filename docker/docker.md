@@ -131,21 +131,25 @@ This produces `/var/lib/java-tron/config`, `/var/lib/java-tron/output-directory`
 
 ## Memory and JVM options
 
-By default, `docker.sh` uses the minimum memory profile for a FullNode: a `16g` container memory limit, a 2 GB initial heap, a maximum heap of up to 60% of the container memory, and a 1 GB direct-memory limit:
+These memory defaults come from `docker.sh`, not from the image or the packaged `java-tron.vmoptions` file. A plain `docker run` or `bin/FullNode` invocation without the helper still uses the JVM ergonomics default of about 25% of visible memory.
+
+`docker.sh` applies a minimum helper profile: a `16g` container memory limit, a 2 GB initial heap, and a maximum heap of up to 60% of that container limit:
 
 ```text
--Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g
+-Xms2g -XX:MaxRAMPercentage=60.0
 ```
+
+JDK 8 images also receive `-XX:MaxDirectMemorySize=1g`. JDK 17 images already include that option in `java-tron.vmoptions`, so the helper does not add it again. The script inspects the image architecture to decide this, not the host `uname`.
 
 This is a minimum **memory** profile for lower-load deployments; it does not enable Lite FullNode mode or reduce the database storage requirement described above. For stable Mainnet operation, use at least `32g`; Super Representative nodes require at least `64g`. See the [Mainnet hardware requirements](../README.md#hardware-requirements-for-mainnet) for the complete deployment tiers.
 
-Use `--memory` to change the container memory limit. When the default JVM options are retained, the maximum heap scales with this limit:
+Use `--memory` to change the container memory limit. When the default helper JVM options are retained, the maximum heap scales with this limit:
 
 ```shell
 bash docker.sh --run --net main --memory 32g
 ```
 
-For a stable Mainnet profile with explicit heap and direct-memory limits, use `--jvm-opts` to replace the memory-related JVM options supplied by `docker.sh`:
+To replace the helper JVM options entirely, use `--jvm-opts`. The replacement is not merged with the defaults, so include every option you need:
 
 ```shell
 bash docker.sh --run --net main --memory 32g \
@@ -154,7 +158,7 @@ bash docker.sh --run --net main --memory 32g \
 
 The packaged `java-tron.vmoptions` file remains active. It contains architecture- and JDK-specific garbage collector settings, so do not use `--jvm-opts` to copy or switch GC options between JDK 8 and JDK 17 deployments.
 
-Environment variables for custom wrapper scripts or derived images can be passed with repeatable `-e` or `--env` options. `MY_VARIABLE` is only a placeholder:
+Environment variables for custom wrapper scripts or derived images can be passed with repeatable `-e` or `--env` options. `MY_VARIABLE` is only a placeholder. Do not set `JAVA_OPTS` or `FULL_NODE_OPTS` this way; those names would replace the helper profile. Use `--jvm-opts` instead.
 
 ```shell
 bash docker.sh --run --net main -e "MY_VARIABLE=value"
@@ -243,10 +247,10 @@ DOCKER_TARGET="1.0"
 | `-p [HOST_IP:]HOST_PORT:CONTAINER_PORT[/PROTOCOL]` | Publish a container port. Repeat to customize multiple mappings. |
 | `-c CONTAINER_PATH` | Use a configuration file at the specified path inside the container. |
 | `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. |
-| `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. |
+| `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. `JAVA_OPTS` and `FULL_NODE_OPTS` are rejected; use `--jvm-opts`. |
 | `--net main\|test\|private` | Select the Mainnet, Nile Testnet, or private-network configuration. |
 | `--update-config true\|false` | Refresh the selected configuration before creating the container. Default: `false`; missing files are still downloaded. |
 | `--data-dir PATH` | Store the default `config` and `output-directory` mounts under this host path. Default: invocation directory. |
 | `--memory LIMIT` | Set the container memory limit. Default: `16g`. |
-| `--jvm-opts "OPTIONS"` | Replace the memory-related JVM options supplied by `docker.sh`. |
+| `--jvm-opts "OPTIONS"` | Replace the JVM options supplied by `docker.sh`. The image itself does not set these defaults. |
 | `-- FULLNODE_ARGS...` | Pass all remaining arguments unchanged to FullNode. |

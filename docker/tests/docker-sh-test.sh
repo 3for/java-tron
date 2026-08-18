@@ -55,6 +55,9 @@ case "${1:-}" in
       echo "Unexpected docker image command: $*" >&2
       exit 1
     fi
+    if [ "${3:-}" = "-f" ]; then
+      echo "${MOCK_IMAGE_ARCH:-amd64}"
+    fi
     ;;
   ps)
     if [ "${2:-}" != "-aq" ]; then
@@ -274,6 +277,7 @@ run_node() {
       DOWNLOAD_MOCK_LOG="$DOWNLOAD_LOG" \
       MOCK_RUN_STATUS="${MOCK_RUN_STATUS:-0}" \
       MOCK_CONTAINER_EXISTS="${MOCK_CONTAINER_EXISTS:-false}" \
+      MOCK_IMAGE_ARCH="${MOCK_IMAGE_ARCH:-amd64}" \
       bash "$DOCKER_SCRIPT" --run "$@"
   )
 }
@@ -437,6 +441,11 @@ if [ -s "$DOWNLOAD_LOG" ]; then
   exit 1
 fi
 
+MOCK_IMAGE_ARCH=arm64 run_node >/dev/null
+assert_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0"
+assert_no_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g"
+MOCK_IMAGE_ARCH=amd64
+
 run_node --data-dir "$TEST_TMP/external-data" >/dev/null
 assert_argument "$TEST_TMP/external-data/config:/java-tron/config"
 assert_argument "$TEST_TMP/external-data/output-directory:/java-tron/output-directory"
@@ -523,6 +532,8 @@ done
 expect_run_failure "expected main, test, or private" --net unsupported
 expect_run_failure "must be true or false" --update-config sometimes
 expect_run_failure "is not a valid parameter" --unknown
+expect_run_failure "use --jvm-opts to set JVM options" -e "JAVA_OPTS=-Xmx8g"
+expect_run_failure "use --jvm-opts to set JVM options" --env "FULL_NODE_OPTS=-Xmx8g"
 
 run_node -c /java-tron/custom.conf -- --unknown-fullnode-option >/dev/null
 assert_trailing_arguments \
