@@ -26,6 +26,8 @@ DOCKER_TARGET="latest"
 HOST_HTTP_PORT=8090
 HOST_RPC_PORT=50051
 HOST_LISTEN_PORT=18888
+HOST_HTTP_BIND_ADDRESS="127.0.0.1"
+HOST_RPC_BIND_ADDRESS="127.0.0.1"
 
 DOCKER_HTTP_PORT=8090
 DOCKER_RPC_PORT=50051
@@ -280,10 +282,10 @@ run() {
   fi
 
   if ! has_port_mapping "$DOCKER_HTTP_PORT" "tcp" "${port_args[@]}"; then
-    port_args+=("-p" "$HOST_HTTP_PORT:$DOCKER_HTTP_PORT")
+    port_args+=("-p" "$HOST_HTTP_BIND_ADDRESS:$HOST_HTTP_PORT:$DOCKER_HTTP_PORT")
   fi
   if ! has_port_mapping "$DOCKER_RPC_PORT" "tcp" "${port_args[@]}"; then
-    port_args+=("-p" "$HOST_RPC_PORT:$DOCKER_RPC_PORT")
+    port_args+=("-p" "$HOST_RPC_BIND_ADDRESS:$HOST_RPC_PORT:$DOCKER_RPC_PORT")
   fi
   if ! has_port_mapping "$DOCKER_LISTEN_PORT" "tcp" "${port_args[@]}"; then
     port_args+=("-p" "$HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT")

@@ -28,18 +28,30 @@ if [ "${1:-}" = "--version" ]; then
   exit 0
 fi
 
-if [ "${1:-}" != "build" ]; then
-  echo "Unexpected docker command: $*" >&2
-  exit 1
-fi
-
-printf '%s\n' "$@" > "$DOCKER_MOCK_LOG"
-printf '%s\n' "${DOCKER_BUILDKIT:-}" > "$DOCKER_MOCK_ENV_LOG"
-context="${!#}"
-(
-  cd -- "$context"
-  find . ! -type d -print | LC_ALL=C sort
-) > "$DOCKER_MOCK_CONTEXT_LOG"
+case "${1:-}" in
+  build)
+    printf '%s\n' "$@" > "$DOCKER_MOCK_LOG"
+    printf '%s\n' "${DOCKER_BUILDKIT:-}" > "$DOCKER_MOCK_ENV_LOG"
+    context="${!#}"
+    (
+      cd -- "$context"
+      find . ! -type d -print | LC_ALL=C sort
+    ) > "$DOCKER_MOCK_CONTEXT_LOG"
+    ;;
+  image)
+    if [ "${2:-}" != "inspect" ]; then
+      echo "Unexpected docker image command: $*" >&2
+      exit 1
+    fi
+    ;;
+  run)
+    printf '%s\n' "$@" > "$DOCKER_MOCK_LOG"
+    ;;
+  *)
+    echo "Unexpected docker command: $*" >&2
+    exit 1
+    ;;
+esac
 MOCK_DOCKER
 
 cat > "$MOCK_BIN/uname" <<'MOCK_UNAME'
@@ -174,6 +186,18 @@ run_build() {
   )
 }
 
+run_node() {
+  : > "$DOCKER_LOG"
+  (
+    cd -- "$TEST_TMP"
+    PATH="$MOCK_BIN:$PATH" \
+      DOCKER_MOCK_LOG="$DOCKER_LOG" \
+      DOCKER_MOCK_CONTEXT_LOG="$DOCKER_CONTEXT_LOG" \
+      DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
+      bash "$DOCKER_SCRIPT" --run -c /java-tron/test.conf "$@"
+  )
+}
+
 expect_failure() {
   local expected_message="$1"
   shift
@@ -260,4 +284,18 @@ if [[ "$output" != *"Docker 23.0 or later is required"* ]]; then
   exit 1
 fi
 
-echo "docker.sh build tests passed"
+run_node >/dev/null
+assert_argument "127.0.0.1:8090:8090"
+assert_argument "127.0.0.1:50051:50051"
+assert_argument "18888:18888"
+assert_argument "18888:18888/udp"
+assert_no_argument "8090:8090"
+assert_no_argument "50051:50051"
+
+run_node -p 8090:8090 -p 50051:50051 >/dev/null
+assert_argument "8090:8090"
+assert_argument "50051:50051"
+assert_no_argument "127.0.0.1:8090:8090"
+assert_no_argument "127.0.0.1:50051:50051"
+
+echo "docker.sh build and run tests passed"

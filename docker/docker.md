@@ -35,9 +35,11 @@ bash docker.sh --pull
 
 `docker.sh` publishes the following ports by default:
 
-- `8090/tcp`: HTTP JSON API
-- `50051/tcp`: gRPC API
-- `18888/tcp` and `18888/udp`: P2P communication
+- `127.0.0.1:8090:8090/tcp`: HTTP JSON API, accessible only from the Docker host
+- `127.0.0.1:50051:50051/tcp`: gRPC API, accessible only from the Docker host
+- `18888:18888/tcp` and `18888:18888/udp`: P2P communication, accessible through the host network interfaces
+
+HTTP and gRPC are bound to loopback by default to prevent accidental network or public exposure. P2P remains externally reachable so that the node can communicate with peers.
 
 Run a Mainnet FullNode:
 
@@ -49,9 +51,17 @@ Use repeatable `-p` options to change individual mappings. Defaults are retained
 
 ```shell
 bash docker.sh --run --net main \
-    -p 8080:8090 \
-    -p 40051:50051
+    -p 127.0.0.1:8080:8090 \
+    -p 127.0.0.1:40051:50051
 ```
+
+To provide a network-accessible API, explicitly replace the relevant loopback mapping. For example, the following publishes HTTP on all IPv4 interfaces:
+
+```shell
+bash docker.sh --run --net main -p 0.0.0.0:8090:8090
+```
+
+Only expose HTTP or gRPC after restricting access with a firewall, trusted reverse proxy, or equivalent network controls.
 
 Run a Nile Testnet FullNode:
 
@@ -204,7 +214,7 @@ DOCKER_TARGET="1.0"
 | `--log` | Follow the java-tron log in the container. |
 | `--stop` | Stop the running container. |
 | `--rm` | Remove the container without removing the image or host data. |
-| `-p HOST:CONTAINER[/PROTOCOL]` | Publish a container port. Repeat to customize multiple mappings. |
+| `-p [HOST_IP:]HOST_PORT:CONTAINER_PORT[/PROTOCOL]` | Publish a container port. Repeat to customize multiple mappings. |
 | `-c CONTAINER_PATH` | Use a configuration file at the specified path inside the container. |
 | `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. |
 | `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. |
