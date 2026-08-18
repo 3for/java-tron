@@ -17,6 +17,48 @@
 #
 ##############################################################################
 
+usage() {
+  cat <<'EOF'
+Usage: docker.sh COMMAND [OPTIONS]
+
+Commands:
+  --pull                         Pull the configured java-tron image
+  --build [OPTIONS]              Build an image for the host architecture
+  --run [OPTIONS]                Create and start a FullNode container
+  --start                        Start the existing container
+  --stop                         Stop the existing container
+  --log                          Follow the java-tron log
+  --rm                           Remove the existing container
+  -h, --help                     Show this help message
+
+Build options:
+  --source local|remote          Build a host distribution or remote source
+  --source-ref REF               Select a remote branch or tag
+  --source-repository URL        Select a remote Git repository
+
+Run options:
+  --net main|test|private        Select the network configuration
+  --update-config true|false     Refresh the selected configuration
+  --data-dir PATH                Set the host runtime-data directory
+  --memory LIMIT                 Set the container memory limit
+  --jvm-opts "OPTIONS"           Replace the default JVM options
+  -p MAPPING                     Publish a container port; repeatable
+  -v MAPPING                     Add or replace a bind mount; repeatable
+  -e NAME=VALUE, --env NAME=VALUE
+                                  Set an environment variable; repeatable
+  -c CONTAINER_PATH              Use a custom configuration file
+EOF
+}
+
+if [ $# -eq 0 ]; then
+  usage >&2
+  exit 1
+fi
+if [[ "$1" = "-h" || "$1" = "--help" ]]; then
+  usage
+  exit 0
+fi
+
 BASE_DIR="/java-tron"
 DOCKER_REPOSITORY="tronprotocol"
 DOCKER_IMAGES="java-tron"
@@ -44,8 +86,9 @@ MAIN_NET_CONFIG_FILE="main_net_config.conf"
 TEST_NET_CONFIG_FILE="test_net_config.conf"
 PRIVATE_NET_CONFIG_FILE="private_net_config.conf"
 
-# update the configuration file, if true, the configuration file will be fetched from the network every time you start
-UPDATE_CONFIG=true
+# Preserve an existing configuration by default. A missing file is downloaded
+# for the initial run; use --update-config true to refresh it explicitly.
+UPDATE_CONFIG=false
 
 LOG_FILE="logs/tron.log"
 
@@ -160,6 +203,13 @@ has_volume_mount() {
 }
 
 run() {
+  docker_ps || return 1
+  if [ -n "$cid" ]; then
+    echo "container $DOCKER_REPOSITORY-$DOCKER_IMAGES already exists (ID: $cid)." >&2
+    echo "Use --start to reuse it, or --rm before creating a new container." >&2
+    return 1
+  fi
+
   docker_image
 
   if [ -z "$image" ]; then
@@ -179,6 +229,7 @@ run() {
   local data_dir="$DEFAULT_DATA_DIR"
   local config_directory
   local output_directory
+  local logs_directory
   local -a volume_args=()
   local -a port_args=()
   local -a environment_args=()
@@ -286,6 +337,7 @@ run() {
   fi
   config_directory="$data_dir/config"
   output_directory="$data_dir/output-directory"
+  logs_directory="$data_dir/logs"
 
   if [ "$custom_config" = false ]; then
     if [ "$UPDATE_CONFIG" = true ]; then
@@ -300,6 +352,9 @@ run() {
   fi
   if ! has_volume_mount "/java-tron/output-directory" "${volume_args[@]}"; then
     volume_args+=("-v" "$output_directory:/java-tron/output-directory")
+  fi
+  if ! has_volume_mount "/java-tron/logs" "${volume_args[@]}"; then
+    volume_args+=("-v" "$logs_directory:/java-tron/logs")
   fi
 
   if ! has_port_mapping "$DOCKER_HTTP_PORT" "tcp" "${port_args[@]}"; then
@@ -319,7 +374,7 @@ run() {
     tron_args=("-c" "$CONFIG_PATH$CONFIG_FILE")
   fi
 
-  docker run -d -it --name "$DOCKER_REPOSITORY-$DOCKER_IMAGES" \
+  docker run -d --name "$DOCKER_REPOSITORY-$DOCKER_IMAGES" \
     "${volume_args[@]}" \
     "${port_args[@]}" \
     --memory "$docker_memory" \
@@ -542,7 +597,7 @@ log() {
 
   if [ -n "$cid" ]; then
     echo "containerID: $cid"
-    docker exec -it "$cid" tail -100f "$BASE_DIR/$LOG_FILE" || return 1
+    docker exec "$cid" tail -100f "$BASE_DIR/$LOG_FILE" || return 1
   else
     echo "container does not exist!" >&2
     return 1

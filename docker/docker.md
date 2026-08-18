@@ -49,6 +49,8 @@ Run a Mainnet FullNode:
 bash docker.sh --run --net main
 ```
 
+The helper manages one container named `tronprotocol-java-tron`. Running `--run` again while that container exists returns an error; use `--start` to reuse a stopped container, or `--rm` before creating a replacement.
+
 Use repeatable `-p` options to change individual mappings. Defaults are retained for container ports and protocols that are not explicitly mapped, so the following command changes only the HTTP and gRPC host ports:
 
 ```shell
@@ -79,14 +81,14 @@ bash docker.sh --run --net private
 
 ## Configuration
 
-For `main`, `test`, and `private`, the script downloads the corresponding configuration file from the [tron-deployment repository](https://github.com/tronprotocol/tron-deployment). By default, the file is refreshed each time a container is created.
+For `main`, `test`, and `private`, the script downloads the corresponding configuration file from the [tron-deployment repository](https://github.com/tronprotocol/tron-deployment). By default, an existing local configuration is retained; a missing file is downloaded automatically for the initial run.
 
 Configuration templates are maintained separately from java-tron. Verify that a downloaded configuration is compatible with the image version before using it in production.
 
-After the initial download, use `--update-config false` to retain the local copy. If the selected file does not exist, the script still downloads it for the initial run.
+Use `--update-config true` to explicitly refresh the selected local copy before creating the container:
 
 ```shell
-bash docker.sh --run --net main --update-config false
+bash docker.sh --run --net main --update-config true
 ```
 
 Use `-c` to select a custom configuration file. The value must be a path inside the container, so mount the host file with `-v`:
@@ -102,6 +104,7 @@ By default, the script mounts persistent directories relative to the shell's cur
 ```text
 ./config           -> /java-tron/config
 ./output-directory -> /java-tron/output-directory
+./logs             -> /java-tron/logs
 ```
 
 Additional `-v` options retain these defaults. A custom mount replaces a default only when it uses the same container destination.
@@ -112,7 +115,7 @@ Use `--data-dir` to keep both directories in an explicit location, preferably ou
 bash docker.sh --run --net main --data-dir /var/lib/java-tron
 ```
 
-This produces `/var/lib/java-tron/config` and `/var/lib/java-tron/output-directory` host mounts. The standard downloaded network configuration files are ignored when the default data directory is the repository root or its `docker/` directory, but `--data-dir` avoids creating runtime files in the Git worktree entirely.
+This produces `/var/lib/java-tron/config`, `/var/lib/java-tron/output-directory`, and `/var/lib/java-tron/logs` host mounts. The standard downloaded network configuration files are ignored when the default data directory is the repository root or its `docker/` directory, but `--data-dir` avoids creating runtime files in the Git worktree entirely. Persisting `logs` also keeps `tron.log` available after the container is removed.
 
 ## Memory and JVM options
 
@@ -214,6 +217,7 @@ DOCKER_TARGET="1.0"
 
 | Option | Description |
 | --- | --- |
+| `-h`, `--help` | Show command usage without requiring a Docker daemon. |
 | `--build` | Build an image for the host architecture. Defaults to remote `master` source for backward compatibility. |
 | `--source local\|remote` | Select a host-built distribution or a remote source build for `--build`. Default: `remote`. |
 | `--source-ref REF` | Select the remote branch or tag for `--build`. Default: `master`. |
@@ -229,7 +233,7 @@ DOCKER_TARGET="1.0"
 | `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. |
 | `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. |
 | `--net main\|test\|private` | Select the Mainnet, Nile Testnet, or private-network configuration. |
-| `--update-config true\|false` | Refresh the selected configuration before creating the container. Default: `true`. |
+| `--update-config true\|false` | Refresh the selected configuration before creating the container. Default: `false`; missing files are still downloaded. |
 | `--data-dir PATH` | Store the default `config` and `output-directory` mounts under this host path. Default: invocation directory. |
 | `--memory LIMIT` | Set the container memory limit. Default: `16g`. |
 | `--jvm-opts "OPTIONS"` | Replace the memory-related JVM options supplied by `docker.sh`. |

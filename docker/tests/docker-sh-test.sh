@@ -29,6 +29,11 @@ cat > "$MOCK_BIN/docker" <<'MOCK_DOCKER'
 #!/bin/bash
 set -euo pipefail
 
+if [ "${MOCK_DOCKER_FORBIDDEN:-false}" = true ]; then
+  echo "docker must not be called for help" >&2
+  exit 97
+fi
+
 if [ "${1:-}" = "--version" ]; then
   echo "Docker version ${MOCK_DOCKER_VERSION:-23.0.0}, build mock"
   exit 0
@@ -48,6 +53,15 @@ case "${1:-}" in
     if [ "${2:-}" != "inspect" ]; then
       echo "Unexpected docker image command: $*" >&2
       exit 1
+    fi
+    ;;
+  ps)
+    if [ "${2:-}" != "-aq" ]; then
+      echo "Unexpected docker ps command: $*" >&2
+      exit 1
+    fi
+    if [ "${MOCK_CONTAINER_EXISTS:-false}" = true ]; then
+      echo "deadbeef"
     fi
     ;;
   run)
@@ -223,6 +237,7 @@ run_node() {
       DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
       DOWNLOAD_MOCK_LOG="$DOWNLOAD_LOG" \
       MOCK_RUN_STATUS="${MOCK_RUN_STATUS:-0}" \
+      MOCK_CONTAINER_EXISTS="${MOCK_CONTAINER_EXISTS:-false}" \
       bash "$DOCKER_SCRIPT" --run "$@"
   )
 }
@@ -265,6 +280,27 @@ expect_failure() {
     exit 1
   fi
 }
+
+help_output=$(
+  PATH="$MOCK_BIN:$PATH" MOCK_DOCKER_FORBIDDEN=true \
+    bash "$DOCKER_SCRIPT" --help
+)
+if [[ "$help_output" != *"Usage: docker.sh COMMAND [OPTIONS]"* ]]; then
+  echo "--help did not print usage" >&2
+  exit 1
+fi
+
+set +e
+no_arg_output=$(
+  PATH="$MOCK_BIN:$PATH" MOCK_DOCKER_FORBIDDEN=true \
+    bash "$DOCKER_SCRIPT" 2>&1
+)
+no_arg_status=$?
+set -e
+if [ "$no_arg_status" -ne 1 ] || [[ "$no_arg_output" != *"Usage: docker.sh COMMAND [OPTIONS]"* ]]; then
+  echo "Invoking docker.sh without arguments did not return usage and status 1" >&2
+  exit 1
+fi
 
 remote_output=$(run_build x86_64 "$REPOSITORY_ROOT")
 assert_argument "--target"
@@ -329,7 +365,9 @@ if [[ "$output" != *"Docker 23.0 or later is required"* ]]; then
   exit 1
 fi
 
-run_node --update-config false >/dev/null
+run_node >/dev/null
+assert_argument "-d"
+assert_no_argument "-it"
 assert_argument "127.0.0.1:8090:8090"
 assert_argument "127.0.0.1:50051:50051"
 assert_argument "18888:18888"
@@ -340,31 +378,35 @@ assert_argument "16g"
 assert_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g"
 assert_argument "$TEST_TMP/config:/java-tron/config"
 assert_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
+assert_argument "$TEST_TMP/logs:/java-tron/logs"
 assert_argument "/java-tron/config/main_net_config.conf"
 assert_argument "tronprotocol/java-tron:latest"
 assert_argument_count "-p" 4
-assert_argument_count "-v" 2
+assert_argument_count "-v" 3
 assert_argument_count "--env" 1
 if [ -s "$DOWNLOAD_LOG" ]; then
   echo "--update-config false unexpectedly downloaded an existing configuration" >&2
   exit 1
 fi
 
-run_node --data-dir "$TEST_TMP/external-data" --update-config false >/dev/null
+run_node --data-dir "$TEST_TMP/external-data" >/dev/null
 assert_argument "$TEST_TMP/external-data/config:/java-tron/config"
 assert_argument "$TEST_TMP/external-data/output-directory:/java-tron/output-directory"
+assert_argument "$TEST_TMP/external-data/logs:/java-tron/logs"
 assert_no_argument "$TEST_TMP/config:/java-tron/config"
 assert_no_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
 
-run_node --data-dir relative-data --update-config false >/dev/null
+run_node --data-dir relative-data >/dev/null
 assert_argument "$TEST_TMP/relative-data/config:/java-tron/config"
 assert_argument "$TEST_TMP/relative-data/output-directory:/java-tron/output-directory"
+assert_argument "$TEST_TMP/relative-data/logs:/java-tron/logs"
 
 run_node -c /java-tron/custom.conf \
   -p 8090:8090 \
   -p 50051:50051 \
   -p 28888:18888 \
   -v /host/config.conf:/java-tron/config:ro \
+  -v /host/logs:/java-tron/logs \
   -v /host/extra:/extra:ro \
   -e TZ=UTC \
   --env FEATURE_FLAG=enabled \
@@ -378,8 +420,10 @@ assert_no_argument "127.0.0.1:8090:8090"
 assert_no_argument "127.0.0.1:50051:50051"
 assert_no_argument "18888:18888"
 assert_argument "/host/config.conf:/java-tron/config:ro"
+assert_argument "/host/logs:/java-tron/logs"
 assert_argument "/host/extra:/extra:ro"
 assert_no_argument "$TEST_TMP/config:/java-tron/config"
+assert_no_argument "$TEST_TMP/logs:/java-tron/logs"
 assert_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
 assert_argument "TZ=UTC"
 assert_argument "FEATURE_FLAG=enabled"
@@ -387,7 +431,7 @@ assert_argument "32g"
 assert_argument "JAVA_OPTS=-Xms4g -Xmx18g -XX:MaxDirectMemorySize=2g"
 assert_argument "/java-tron/custom.conf"
 assert_argument_count "-p" 4
-assert_argument_count "-v" 3
+assert_argument_count "-v" 4
 assert_argument_count "--env" 3
 if [ -s "$DOWNLOAD_LOG" ]; then
   echo "A custom configuration unexpectedly triggered a download" >&2
@@ -422,6 +466,22 @@ done
 expect_run_failure "expected main, test, or private" --net unsupported
 expect_run_failure "must be true or false" --update-config sometimes
 expect_run_failure "is not a valid parameter" --unknown
+
+set +e
+duplicate_output=$(MOCK_CONTAINER_EXISTS=true run_node -c /java-tron/custom.conf 2>&1)
+duplicate_status=$?
+set -e
+if [ "$duplicate_status" -ne 1 ] \
+  || [[ "$duplicate_output" != *"already exists"* ]] \
+  || [[ "$duplicate_output" != *"Use --start"* ]]; then
+  echo "An existing container did not produce an actionable error" >&2
+  echo "$duplicate_output" >&2
+  exit 1
+fi
+if [ -s "$DOCKER_LOG" ]; then
+  echo "docker run was called even though the container already exists" >&2
+  exit 1
+fi
 
 set +e
 MOCK_RUN_STATUS=47 run_node -c /java-tron/custom.conf >/dev/null 2>&1

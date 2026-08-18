@@ -138,7 +138,8 @@ assert_call_count '^stop deadbeef$' 1
 assert_call_count '^ps$' 1
 
 expect_status 0 run_lifecycle --log MOCK_CONTAINER_EXISTS=true
-assert_call_count '^exec -it deadbeef tail -100f /java-tron/logs/tron.log$' 1
+assert_call_count '^exec deadbeef tail -100f /java-tron/logs/tron.log$' 1
+assert_call_count '^exec -' 0
 
 expect_status 0 run_lifecycle --rm MOCK_CONTAINER_EXISTS=true
 assert_call_count '^stop deadbeef$' 1
