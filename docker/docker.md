@@ -81,7 +81,7 @@ bash docker.sh --run --net private
 
 ## Configuration
 
-For `main`, `test`, and `private`, the script downloads the corresponding configuration file from the [tron-deployment repository](https://github.com/tronprotocol/tron-deployment). By default, an existing local configuration is retained; a missing file is downloaded automatically for the initial run.
+For `main`, `test`, and `private`, the script downloads the corresponding configuration file from the [tron-deployment repository](https://github.com/tronprotocol/tron-deployment). By default, an existing local configuration is retained; a missing or empty file is downloaded automatically for the initial run.
 
 Configuration templates are maintained separately from java-tron. Verify that a downloaded configuration is compatible with the image version before using it in production.
 
@@ -109,7 +109,7 @@ bash docker.sh --run --net main -- --p2p-disable false
 
 Options before `--` configure the Docker helper; options after it are passed to `./bin/FullNode`. Use the helper's `-c` option for the configuration path instead of passing a second `-c` after `--`.
 
-Witness options such as `-w` and `--witness-address` can also be passed after `--`. This helper does not by itself provide the key protection, monitoring, backup, and upgrade procedures required for a production Super Representative deployment. Follow the [Starting a Block Production Node](https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#starting-a-block-production-node) guide, and prefer an encrypted keystore and password over storing the block-signing private key in plaintext configuration.
+Witness options such as `-w` and `--witness-address` can also be passed after `--`. Do not pass `--private-key` or `--password`: command arguments may be visible in process listings and are retained in Docker container metadata. This helper does not by itself provide the secret delivery, key protection, monitoring, backup, and upgrade procedures required for a production Super Representative deployment. Follow the [Starting a Block Production Node](https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#starting-a-block-production-node) guide, use an encrypted keystore, and provide its password through the production deployment's secret-management mechanism.
 
 By default, the script mounts persistent directories relative to the shell's current working directory when `docker.sh` is invoked, not relative to the script file:
 
@@ -249,7 +249,7 @@ DOCKER_TARGET="1.0"
 | `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. A replacement for `/java-tron/config` uses the caller's access mode instead of the default read-only mount. |
 | `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. JVM option environment variables are rejected; use `--jvm-opts`. |
 | `--net main\|test\|private` | Select the Mainnet, Nile Testnet, or private-network configuration. |
-| `--update-config true\|false` | Refresh the selected configuration before creating the container. Default: `false`; missing files are still downloaded. |
+| `--update-config true\|false` | Refresh the selected configuration before creating the container. Default: `false`; missing or empty files are still downloaded. |
 | `--data-dir PATH` | Store the default `config`, `output-directory`, and `logs` mounts under this host path. Default: invocation directory. The default `config` mount remains read-only in the container. |
 | `--memory LIMIT` | Set the container memory limit. Default: `16g`. |
 | `--jvm-opts "OPTIONS"` | Replace the JVM options supplied by `docker.sh`. The image itself does not set these defaults. |

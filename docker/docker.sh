@@ -91,8 +91,8 @@ MAIN_NET_CONFIG_FILE="main_net_config.conf"
 TEST_NET_CONFIG_FILE="test_net_config.conf"
 PRIVATE_NET_CONFIG_FILE="private_net_config.conf"
 
-# Preserve an existing configuration by default. A missing file is downloaded
-# for the initial run; use --update-config true to refresh it explicitly.
+# Preserve an existing configuration by default. A missing or empty file is
+# downloaded for the initial run; use --update-config true to refresh it.
 UPDATE_CONFIG=false
 
 LOG_FILE="logs/tron.log"

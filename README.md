@@ -156,14 +156,17 @@ To set up a private network for testing or development, follow the [Private Netw
 
 To operate the node as a Super Representative (SR), append the `--witness` parameter to the standard launch command. An SR node inherits every capability of a FullNode and additionally participates in block production. Refer to the [Super Representative documentation](https://tronprotocol.github.io/documentation-en/mechanism-algorithm/sr/) for eligibility requirements.
 
-Fill in the private key of your SR account into the `localwitness` list in the configuration file. Here is an example:
+For a production SR, store the block-signing key in an encrypted keystore and configure its path with `localwitnesskeystore`:
 
+```hocon
+localwitnesskeystore = [
+  "localwitnesskeystore.json"
+]
 ```
- localwitness = [
-    <your_private_key>
- ]
-```
-Check [Starting a Block Production Node](https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#starting-a-block-production-node) for more details.
+
+Do not pass secrets with `--private-key` or `--password`. Command-line arguments may be exposed through process listings and shell history; with Docker, they are also retained in container metadata. Use the secret-management and password-delivery procedure selected for the production deployment instead.
+
+The plaintext `localwitness` setting remains available for compatibility, but should be limited to isolated test environments and must not be used for production signing keys. Check [Starting a Block Production Node](https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#starting-a-block-production-node) for keystore creation and production deployment guidance.
 You could also test the process by connecting to a testnet or setting up a private network.
 
 ## Programmatically interfacing FullNode

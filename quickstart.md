@@ -75,7 +75,7 @@ For release-oriented and multi-architecture image build and test tooling, use th
 
 Do not use a shortened Quick Start command for a production Super Representative node. An SR requires additional hardware, JVM tuning, key protection, monitoring, backup, and upgrade planning.
 
-Follow the [Starting a Block Production Node](https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#starting-a-block-production-node) guide. Prefer an encrypted keystore and password over storing the block-signing private key in plaintext configuration.
+Follow the [Starting a Block Production Node](https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#starting-a-block-production-node) guide. Use an encrypted keystore and the production deployment's secret-management mechanism. Do not pass `--private-key` or `--password`: command arguments may be visible in process listings and, with Docker, are retained in container metadata.
 
 ## Create a private development network
 
