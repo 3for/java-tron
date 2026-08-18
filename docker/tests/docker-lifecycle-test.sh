@@ -23,7 +23,7 @@ printf '%s\n' "$*" >> "$DOCKER_MOCK_LOG"
 
 case "${1:-}" in
   --version)
-    echo "Docker version mock"
+    echo "Docker version 23.0.0, build mock"
     ;;
   ps)
     if [ "${2:-}" = "-aq" ]; then

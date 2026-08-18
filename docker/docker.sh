@@ -59,7 +59,16 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "warning: docker must be installed, please install docker first."
   exit 1
 fi
-docker --version || exit 1
+docker_version_output=$(docker --version) || exit 1
+echo "$docker_version_output"
+if [[ ! "$docker_version_output" =~ [Vv]ersion[[:space:]]+([0-9]+)\. ]]; then
+  echo "Unable to determine the Docker version from: $docker_version_output" >&2
+  exit 1
+fi
+if [ "${BASH_REMATCH[1]}" -lt 23 ]; then
+  echo "Docker 23.0 or later is required for BuildKit target builds." >&2
+  exit 1
+fi
 
 docker_ps() {
   if ! containerID=$(docker ps -aq --filter "name=^/$DOCKER_REPOSITORY-$DOCKER_IMAGES$"); then
@@ -298,13 +307,85 @@ run() {
     "${tron_args[@]}"
 }
 
+build_local_image() (
+  local source_root="$1"
+  local dockerfile_path="$2"
+  local distribution="$source_root/framework/build/distributions/java-tron-1.0.0.zip"
+  local build_context
+
+  if ! command -v unzip >/dev/null 2>&1; then
+    echo "build: unzip is required for --source local" >&2
+    return 1
+  fi
+
+  echo "Building the java-tron distribution from local source: $source_root"
+  if ! (cd -- "$source_root" && ./gradlew :framework:distZip -x test -x check --no-daemon); then
+    echo "build: failed to create the local java-tron distribution" >&2
+    return 1
+  fi
+  if [ ! -f "$distribution" ]; then
+    echo "build: expected distribution does not exist: $distribution" >&2
+    return 1
+  fi
+
+  build_context=$(mktemp -d) || return 1
+  trap 'rm -rf "$build_context"' EXIT
+
+  if ! unzip -q -o "$distribution" -d "$build_context"; then
+    echo "build: failed to extract $distribution" >&2
+    return 1
+  fi
+  if [ ! -d "$build_context/java-tron-1.0.0" ]; then
+    echo "build: the distribution does not contain java-tron-1.0.0" >&2
+    return 1
+  fi
+  mv "$build_context/java-tron-1.0.0" "$build_context/java-tron" || return 1
+
+  if [ ! -x "$build_context/java-tron/bin/FullNode" ] \
+    || [ ! -f "$build_context/java-tron/bin/java-tron.vmoptions" ]; then
+    echo "build: the staged distribution is missing FullNode or java-tron.vmoptions" >&2
+    return 1
+  fi
+
+  download_file "$CONFIG_REPOSITORY/$MAIN_NET_CONFIG_FILE" \
+    "$build_context/java-tron/config.conf" || return 1
+  cp "$dockerfile_path" "$build_context/Dockerfile" || return 1
+
+  echo "Building the local image from a temporary distribution-only context."
+  DOCKER_BUILDKIT=1 docker build \
+    --target local \
+    --file "$build_context/Dockerfile" \
+    -t "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
+    "$build_context"
+)
+
+build_remote_image() (
+  local dockerfile_path="$1"
+  local source_repository="$2"
+  local source_ref="$3"
+  local build_context
+
+  build_context=$(mktemp -d) || return 1
+  trap 'rm -rf "$build_context"' EXIT
+  cp "$dockerfile_path" "$build_context/Dockerfile" || return 1
+
+  echo "Building remote java-tron source '$source_ref' from $source_repository."
+  echo "Local working-tree changes are not included; use --source local to include them."
+  DOCKER_BUILDKIT=1 docker build \
+    --target remote \
+    --file "$build_context/Dockerfile" \
+    --build-arg "SOURCE_REPOSITORY=$source_repository" \
+    --build-arg "SOURCE_REF=$source_ref" \
+    -t "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
+    "$build_context"
+)
+
 build() {
   local architecture
-  local context
-  local dockerfile
   local dockerfile_path
   local dockerfile_relative
   local script_dir
+  local source_root
   local source_mode="remote"
   local source_ref="$JAVA_TRON_SOURCE_REF"
   local source_repository="$JAVA_TRON_SOURCE_REPOSITORY"
@@ -378,31 +459,20 @@ build() {
 
   if [ "$source_mode" = "local" ]; then
     if [ -x "$(pwd)/gradlew" ]; then
-      context=$(pwd)
+      source_root=$(pwd)
     elif [ -x "$script_dir/gradlew" ]; then
-      context=$script_dir
+      source_root=$script_dir
     elif [ -x "$script_dir/../gradlew" ]; then
-      context=$(cd -- "$script_dir/.." >/dev/null 2>&1 && pwd)
+      source_root=$(cd -- "$script_dir/.." >/dev/null 2>&1 && pwd)
     else
       echo "build: unable to find a java-tron checkout for local source"
       echo "Run this command from the repository root or use docker/docker.sh from a checkout."
       return 1
     fi
-    echo "Building java-tron from local source: $context"
+    build_local_image "$source_root" "$dockerfile_path"
   else
-    context=$script_dir
-    echo "Building remote java-tron source '$source_ref' from $source_repository."
-    echo "Local working-tree changes are not included; use --source local to include them."
+    build_remote_image "$dockerfile_path" "$source_repository" "$source_ref"
   fi
-
-  dockerfile=$dockerfile_path
-  docker build \
-    --file "$dockerfile" \
-    --build-arg "SOURCE_MODE=$source_mode" \
-    --build-arg "SOURCE_REPOSITORY=$source_repository" \
-    --build-arg "SOURCE_REF=$source_ref" \
-    -t "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
-    "$context"
 }
 
 pull() {

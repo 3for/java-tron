@@ -6,9 +6,10 @@ For Docker Compose deployments, multi-node private networks, and dedicated image
 
 ## Prerequisites
 
-- Docker 20.10.12 or later
+- Docker Engine 23.0 or later, with BuildKit and the Buildx plugin available
 - Bash
 - `curl` or `wget` when configuration files or Dockerfiles need to be downloaded
+- For `--source local` only: `unzip` and the architecture-specific JDK used by java-tron (JDK 8 on x86_64/amd64 or JDK 17 on arm64/aarch64)
 
 Do not invoke the script with `sh`. The script uses Bash-specific syntax.
 
@@ -171,23 +172,15 @@ bash docker.sh --build \
     --source-ref develop
 ```
 
-From a java-tron checkout, use `--source local` to compile the current working tree, including uncommitted changes that are not excluded by `.dockerignore`:
+From a java-tron checkout, use `--source local` to compile the current working tree, including uncommitted changes:
 
 ```shell
 bash docker/docker.sh --build --source local
 ```
 
-The local build can also be invoked directly from the repository root:
+In local mode, `docker.sh` runs the Gradle `:framework:distZip` task on the host, extracts the resulting distribution into a temporary directory, and adds the Mainnet configuration file. Only that staged distribution and the selected Dockerfile are sent to the Docker daemon; the source checkout, node database, environment files, and local keys are not part of the Docker build context.
 
-```shell
-docker build \
-    --file docker/Dockerfile \
-    --build-arg SOURCE_MODE=local \
-    --tag tronprotocol/java-tron:local \
-    .
-```
-
-Use `docker/arm64/Dockerfile` instead on arm64/aarch64. The Dockerfiles use a separate builder stage so that the source tree is not retained in the runtime image.
+The two architecture-specific Dockerfiles each provide `local` and `remote` BuildKit targets. `docker.sh` selects the appropriate target and supplies its required minimal context. A plain Dockerfile build defaults to the historical `remote` target, but direct `local` target builds require callers to stage the distribution as `java-tron/` first.
 
 To change the local image name, edit these variables in `docker.sh`:
 
@@ -202,7 +195,7 @@ DOCKER_TARGET="1.0"
 | Option | Description |
 | --- | --- |
 | `--build` | Build an image for the host architecture. Defaults to remote `master` source for backward compatibility. |
-| `--source local\|remote` | Select the source for `--build`. Default: `remote`. |
+| `--source local\|remote` | Select a host-built distribution or a remote source build for `--build`. Default: `remote`. |
 | `--source-ref REF` | Select the remote branch or tag for `--build`. Default: `master`. |
 | `--source-repository URL` | Select the public remote Git repository for `--build`. |
 | `--pull` | Pull the configured image from Docker Hub. |

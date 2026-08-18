@@ -171,15 +171,26 @@ jobs:
           bash docker/tests/docker-sh-test.sh
           bash docker/tests/docker-lifecycle-test.sh
 
-      - name: Check Dockerfiles with local context
+      - name: Check Dockerfiles with distribution context
         run: |
-          docker build --check --file docker/Dockerfile --build-arg SOURCE_MODE=local .
-          docker build --check --file docker/arm64/Dockerfile --build-arg SOURCE_MODE=local .
+          set -euo pipefail
+          context=$(mktemp -d)
+          trap 'rm -rf "$context"' EXIT
+          mkdir -p "$context/java-tron/bin" "$context/java-tron/lib"
+          touch "$context/java-tron/bin/FullNode"
+          touch "$context/java-tron/bin/java-tron.vmoptions"
+          touch "$context/java-tron/config.conf"
+
+          cp docker/Dockerfile "$context/Dockerfile"
+          DOCKER_BUILDKIT=1 docker build --check --target local --file "$context/Dockerfile" "$context"
+
+          cp docker/arm64/Dockerfile "$context/Dockerfile"
+          DOCKER_BUILDKIT=1 docker build --check --target local --file "$context/Dockerfile" "$context"
 
       - name: Check Dockerfiles with remote context
         run: |
-          docker build --check --file "$PWD/docker/Dockerfile" --build-arg SOURCE_MODE=remote docker
-          docker build --check --file "$PWD/docker/arm64/Dockerfile" --build-arg SOURCE_MODE=remote docker
+          DOCKER_BUILDKIT=1 docker build --check --target remote --file "$PWD/docker/Dockerfile" docker
+          DOCKER_BUILDKIT=1 docker build --check --target remote --file "$PWD/docker/arm64/Dockerfile" docker
 
   build-amd64:
     name: Build Docker image (amd64)
@@ -193,18 +204,27 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Set up JDK 8 for local distribution
+        if: env.SOURCE_MODE == 'local'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '8'
+          cache: gradle
+
       - name: Build image
         run: |
           set -euo pipefail
-          context=.
-          if [ "$SOURCE_MODE" = remote ]; then
-            context=docker
+          if [ "$SOURCE_MODE" = local ]; then
+            bash docker/docker.sh --build --source local
+            docker tag tronprotocol/java-tron:latest "$IMAGE"
+          else
+            DOCKER_BUILDKIT=1 docker build --pull \
+              --target remote \
+              --file "$PWD/docker/Dockerfile" \
+              --tag "$IMAGE" \
+              docker
           fi
-          docker build --pull \
-            --file "$PWD/docker/Dockerfile" \
-            --build-arg "SOURCE_MODE=$SOURCE_MODE" \
-            --tag "$IMAGE" \
-            "$context"
 
       - name: Verify runtime image
         run: |
@@ -236,18 +256,27 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Set up JDK 17 for local distribution
+        if: env.SOURCE_MODE == 'local'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
       - name: Build image
         run: |
           set -euo pipefail
-          context=.
-          if [ "$SOURCE_MODE" = remote ]; then
-            context=docker
+          if [ "$SOURCE_MODE" = local ]; then
+            bash docker/docker.sh --build --source local
+            docker tag tronprotocol/java-tron:latest "$IMAGE"
+          else
+            DOCKER_BUILDKIT=1 docker build --pull \
+              --target remote \
+              --file "$PWD/docker/arm64/Dockerfile" \
+              --tag "$IMAGE" \
+              docker
           fi
-          docker build --pull \
-            --file "$PWD/docker/arm64/Dockerfile" \
-            --build-arg "SOURCE_MODE=$SOURCE_MODE" \
-            --tag "$IMAGE" \
-            "$context"
 
       - name: Verify runtime image
         run: |

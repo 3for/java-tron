@@ -18,3 +18,15 @@ docker/logs
 docker/logs/**
 docker/output-directory
 docker/output-directory/**
+/gc.log
+/database*
+/tron-data
+/tron-data/**
+/Wallet
+/Wallet/**
+/nodeId.properties
+/vm_trace
+/vm_trace/**
+**/.env
+**/.env.*
+**/*.keystore

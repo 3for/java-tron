@@ -1,20 +1,16 @@
-FROM ubuntu:24.04 AS builder
-ARG SOURCE_MODE="remote"
-ARG SOURCE_REPOSITORY="https://github.com/tronprotocol/java-tron.git"
-ARG SOURCE_REF="master"
+# syntax=docker/dockerfile:1
+
+FROM ubuntu:24.04 AS java-base
 
 ENV NO_PROXY_CACHE="-o Acquire::BrokenProxy=true -o Acquire::http::No-Cache=true -o Acquire::http::Pipeline-Depth=0"
-ENV TMP_DIR="/tron-build"
 ENV OPENJDK8_URL="https://api.adoptium.net/v3/binary/latest/8/ga/linux/x64/jdk/hotspot/normal/eclipse"
 ENV ADOPTIUM_SIGNING_FINGERPRINT="3B04D753C9050D9A5D343F39843C48A565F8F04B"
 ENV JAVA_HOME="/usr/local/openjdk-8"
 ENV CLASSPATH="$JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar"
 ENV PATH="$PATH:$JAVA_HOME/bin"
 
-# Install the build toolchain before copying source so local code changes do
-# not invalidate the JDK and package layers.
 RUN apt-get update $NO_PROXY_CACHE \
-  && apt-get --quiet --yes install --no-install-recommends git 7zip curl gnupg dirmngr ca-certificates \
+  && apt-get --quiet --yes install --no-install-recommends curl gnupg dirmngr ca-certificates \
   && apt-get clean \
   && rm -rf /var/cache/apt/archives/* /var/cache/apt/archives/partial/* \
   && rm -rf /var/lib/apt/lists/*
@@ -32,30 +28,31 @@ RUN cd /usr/local \
   && tar -zxf "$JDK_TAR" -C "$JAVA_HOME" --strip-components=1 \
   && rm "$JDK_TAR"
 
-# The local source mode reads the repository from the build context. The
-# default remote mode retains the historical behavior of building master.
-COPY . /tron-build/build-context
+FROM java-base AS remote-builder
+ARG SOURCE_REPOSITORY="https://github.com/tronprotocol/java-tron.git"
+ARG SOURCE_REF="master"
 
-RUN if [ "$SOURCE_MODE" = "local" ]; then \
-      test -x "$TMP_DIR/build-context/gradlew" \
-      || { echo "Local build context is not a java-tron checkout." >&2; exit 1; }; \
-      mkdir -p "$TMP_DIR/java-tron"; \
-      cp -a "$TMP_DIR/build-context/." "$TMP_DIR/java-tron/"; \
-    elif [ "$SOURCE_MODE" = "remote" ]; then \
-      git clone --depth 1 --branch "$SOURCE_REF" -- "$SOURCE_REPOSITORY" "$TMP_DIR/java-tron"; \
-    else \
-      echo "Unsupported SOURCE_MODE: $SOURCE_MODE; expected local or remote." >&2; \
-      exit 1; \
-    fi \
+ENV TMP_DIR="/tron-build"
+
+RUN apt-get update $NO_PROXY_CACHE \
+  && apt-get --quiet --yes install --no-install-recommends git 7zip \
+  && apt-get clean \
+  && rm -rf /var/cache/apt/archives/* /var/cache/apt/archives/partial/* \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch "$SOURCE_REF" -- "$SOURCE_REPOSITORY" "$TMP_DIR/java-tron" \
   && cd "$TMP_DIR/java-tron" \
   && ./gradlew :framework:distZip -x test -x check --no-daemon \
   && cd framework/build/distributions \
   && 7z x -y java-tron-1.0.0.zip \
   && mv java-tron-1.0.0 /java-tron \
-  && curl -fsSLo /java-tron/config.conf https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/main_net_config.conf \
-  && mv "$JAVA_HOME/jre" /usr/local/jre
+  && curl -fsSLo /java-tron/config.conf https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/main_net_config.conf
 
-FROM ubuntu:24.04 AS runtime
+# docker.sh creates this minimal context from a distribution built on the host.
+FROM scratch AS local-distribution
+COPY java-tron /java-tron
+
+FROM ubuntu:24.04 AS runtime-base
 ARG VERSION="dev"
 
 ENV NO_PROXY_CACHE="-o Acquire::BrokenProxy=true -o Acquire::http::No-Cache=true -o Acquire::http::Pipeline-Depth=0"
@@ -71,8 +68,7 @@ RUN apt-get update $NO_PROXY_CACHE \
   && rm -rf /var/cache/apt/archives/* /var/cache/apt/archives/partial/* \
   && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /usr/local/jre /usr/local/jre
-COPY --from=builder /java-tron /java-tron
+COPY --from=java-base /usr/local/openjdk-8/jre /usr/local/jre
 
 WORKDIR $BASE_DIR
 
@@ -90,3 +86,10 @@ LABEL org.label-schema.build-date=$BUILD_DATE \
       org.label-schema.vendor="TRON protocol" \
       org.label-schema.version=$VERSION \
       org.label-schema.schema-version="1.0"
+
+FROM runtime-base AS local
+COPY --from=local-distribution /java-tron /java-tron
+
+# Keep remote last so a plain BuildKit build retains the historical behavior.
+FROM runtime-base AS remote
+COPY --from=remote-builder /java-tron /java-tron
