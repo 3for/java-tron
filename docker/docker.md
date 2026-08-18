@@ -121,6 +121,18 @@ By default, the script mounts persistent directories relative to the shell's cur
 
 The default configuration mount is read-only because FullNode only needs to read it. This prevents the container from persisting configuration changes onto the host. Additional `-v` options retain these defaults. A custom mount replaces a default only when it uses the same container destination; callers that explicitly replace the configuration mount control its access mode.
 
+The image runs FullNode as the non-root `tron` account with fixed UID and GID `10001:10001`. For new, empty default `output-directory` and `logs` mounts, `docker.sh` initializes the mount-point ownership and verifies that the container user can write to them. It also starts FullNode with `no-new-privileges`. Custom writable mounts supplied with `-v` must already be accessible to UID and GID `10001:10001`.
+
+Data written by an older root-based image may require a one-time ownership migration. Stop the node before changing ownership, then adjust the paths for the selected data directory:
+
+```shell
+sudo chown -R 10001:10001 \
+  /var/lib/java-tron/output-directory \
+  /var/lib/java-tron/logs
+```
+
+The helper deliberately does not recursively change a non-empty directory because scanning a multi-terabyte database during startup would be slow and unexpected. It fails with the migration command instead. Direct `docker run` users must prepare writable mounts themselves and should also specify `--security-opt no-new-privileges`.
+
 Use `--data-dir` to keep these three directories in an explicit location, preferably outside the source checkout. Relative values are resolved against the invocation directory:
 
 ```shell
@@ -246,7 +258,7 @@ DOCKER_TARGET="1.0"
 | `--rm` | Remove the container without removing the image or host data. |
 | `-p [HOST_IP:]HOST_PORT:CONTAINER_PORT[/PROTOCOL]` | Publish a container port. Repeat to customize multiple mappings. |
 | `-c CONTAINER_PATH` | Use a configuration file at the specified path inside the container. |
-| `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. A replacement for `/java-tron/config` uses the caller's access mode instead of the default read-only mount. |
+| `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. Writable custom mounts must be accessible to UID:GID `10001:10001`. A replacement for `/java-tron/config` uses the caller's access mode instead of the default read-only mount. |
 | `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. JVM option environment variables are rejected; use `--jvm-opts`. |
 | `--net main\|test\|private` | Select the Mainnet, Nile Testnet, or private-network configuration. |
 | `--update-config true\|false` | Refresh the selected configuration before creating the container. Default: `false`; missing or empty files are still downloaded. |

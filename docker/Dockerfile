@@ -68,6 +68,12 @@ RUN apt-get update $NO_PROXY_CACHE \
   && rm -rf /var/cache/apt/archives/* /var/cache/apt/archives/partial/* \
   && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd --gid 10001 tron \
+  && useradd --uid 10001 --gid 10001 --no-create-home --home-dir "$BASE_DIR" \
+    --shell /usr/sbin/nologin tron \
+  && mkdir -p "$BASE_DIR" \
+  && chown 10001:10001 "$BASE_DIR"
+
 COPY --from=java-base /usr/local/openjdk-8/jre /usr/local/jre
 
 WORKDIR $BASE_DIR
@@ -88,8 +94,10 @@ LABEL org.label-schema.build-date=$BUILD_DATE \
       org.label-schema.schema-version="1.0"
 
 FROM runtime-base AS local
-COPY --from=local-distribution /java-tron /java-tron
+COPY --chown=10001:10001 --from=local-distribution /java-tron /java-tron
+USER 10001:10001
 
 # Keep remote last so a plain BuildKit build retains the historical behavior.
 FROM runtime-base AS remote
-COPY --from=remote-builder /java-tron /java-tron
+COPY --chown=10001:10001 --from=remote-builder /java-tron /java-tron
+USER 10001:10001

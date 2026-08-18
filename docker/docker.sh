@@ -79,6 +79,8 @@ DOCKER_RPC_PORT=50051
 DOCKER_LISTEN_PORT=18888
 
 DOCKER_MEMORY="16g"
+JAVA_TRON_UID=10001
+JAVA_TRON_GID=10001
 # Helper-only defaults. The image and packaged vmoptions do not set heap size.
 # JDK 8 images also receive -XX:MaxDirectMemorySize=1g at --run time.
 JVM_OPTS="-Xms2g -XX:MaxRAMPercentage=60.0"
@@ -240,6 +242,21 @@ image_architecture() {
   docker image inspect -f '{{.Architecture}}' "$image_ref"
 }
 
+validate_image_user() {
+  local image_ref="$1"
+  local image_user
+
+  if ! image_user=$(docker image inspect -f '{{.Config.User}}' "$image_ref"); then
+    echo "run: failed to inspect image user: $image_ref" >&2
+    return 1
+  fi
+  if [ "$image_user" != "$JAVA_TRON_UID:$JAVA_TRON_GID" ]; then
+    echo "run: image $image_ref must run as UID:GID $JAVA_TRON_UID:$JAVA_TRON_GID; found '${image_user:-root}'" >&2
+    echo "Pull or build an updated non-root java-tron image before retrying." >&2
+    return 1
+  fi
+}
+
 append_jdk8_direct_memory() {
   local image_ref="$1"
   local architecture
@@ -254,6 +271,78 @@ append_jdk8_direct_memory() {
       jvm_opts="$jvm_opts -XX:MaxDirectMemorySize=1g"
       ;;
   esac
+}
+
+prepare_runtime_directories() {
+  local image_ref="$1"
+  local host_directory
+  local container_directory
+  local first_entry
+  local -a mount_args=()
+  local -a host_directories=()
+  local -a container_directories=()
+  local -a initialize_directories=()
+  shift
+
+  while [ $# -gt 0 ]; do
+    host_directory="$1"
+    container_directory="$2"
+    shift 2
+
+    if [ -e "$host_directory" ] && [ ! -d "$host_directory" ]; then
+      echo "run: runtime path is not a directory: $host_directory" >&2
+      return 1
+    fi
+    mkdir -p "$host_directory" || return 1
+    if ! first_entry=$(find "$host_directory" -mindepth 1 -maxdepth 1 -print -quit); then
+      echo "run: failed to inspect runtime directory: $host_directory" >&2
+      return 1
+    fi
+
+    mount_args+=("-v" "$host_directory:$container_directory")
+    host_directories+=("$host_directory")
+    container_directories+=("$container_directory")
+    if [ -z "$first_entry" ]; then
+      initialize_directories+=("$container_directory")
+    fi
+  done
+
+  if [ ${#initialize_directories[@]} -gt 0 ]; then
+    if ! docker run --rm \
+      --user 0:0 \
+      --security-opt no-new-privileges \
+      --entrypoint chown \
+      "${mount_args[@]}" \
+      "$image_ref" \
+      "$JAVA_TRON_UID:$JAVA_TRON_GID" \
+      "${initialize_directories[@]}"; then
+      echo "run: failed to initialize runtime-directory ownership" >&2
+      return 1
+    fi
+  fi
+
+  if docker run --rm \
+    --security-opt no-new-privileges \
+    --entrypoint sh \
+    "${mount_args[@]}" \
+    "$image_ref" \
+    -ec '
+      for path do
+        test -w "$path"
+        test -z "$(find "$path" -mindepth 1 -maxdepth 1 ! -writable -print -quit)"
+      done
+    ' sh "${container_directories[@]}"; then
+    return 0
+  fi
+
+  echo "run: runtime directories must be writable by java-tron UID:GID $JAVA_TRON_UID:$JAVA_TRON_GID." >&2
+  echo "Stop the node and migrate existing data before retrying:" >&2
+  printf '  sudo chown -R %s:%s' "$JAVA_TRON_UID" "$JAVA_TRON_GID" >&2
+  for host_directory in "${host_directories[@]}"; do
+    printf ' %q' "$host_directory" >&2
+  done
+  printf '\n' >&2
+  return 1
 }
 
 run() {
@@ -301,6 +390,7 @@ run() {
   local -a environment_args=()
   local -a tron_args=()
   local -a fullnode_args=()
+  local -a default_runtime_directories=()
   local custom_config=false
 
   while [ $# -gt 0 ]; do
@@ -412,6 +502,8 @@ run() {
     esac
   done
 
+  validate_image_user "$image" || return 1
+
   if [[ "$data_dir" != /* ]]; then
     data_dir="$(pwd)/$data_dir"
   fi
@@ -431,10 +523,16 @@ run() {
     volume_args+=("-v" "$config_directory:/java-tron/config:ro")
   fi
   if ! has_volume_mount "/java-tron/output-directory" "${volume_args[@]}"; then
+    default_runtime_directories+=("$output_directory" "/java-tron/output-directory")
     volume_args+=("-v" "$output_directory:/java-tron/output-directory")
   fi
   if ! has_volume_mount "/java-tron/logs" "${volume_args[@]}"; then
+    default_runtime_directories+=("$logs_directory" "/java-tron/logs")
     volume_args+=("-v" "$logs_directory:/java-tron/logs")
+  fi
+
+  if [ ${#default_runtime_directories[@]} -gt 0 ]; then
+    prepare_runtime_directories "$image" "${default_runtime_directories[@]}" || return 1
   fi
 
   if ! has_port_mapping "$DOCKER_HTTP_PORT" "tcp" "${port_args[@]}"; then
@@ -459,11 +557,13 @@ run() {
   fi
 
   docker run -d --name "$DOCKER_REPOSITORY-$DOCKER_IMAGES" \
+    --user "$JAVA_TRON_UID:$JAVA_TRON_GID" \
     "${volume_args[@]}" \
     "${port_args[@]}" \
     --memory "$docker_memory" \
     --env "JAVA_OPTS=$jvm_opts" \
     "${environment_args[@]}" \
+    --security-opt no-new-privileges \
     --restart always \
     "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
     "${tron_args[@]}" \

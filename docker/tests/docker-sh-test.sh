@@ -64,7 +64,14 @@ case "${1:-}" in
       exit 1
     fi
     if [ "${3:-}" = "-f" ]; then
-      echo "${MOCK_IMAGE_ARCH:-amd64}"
+      case "${4:-}" in
+        *Architecture*)
+          echo "${MOCK_IMAGE_ARCH:-amd64}"
+          ;;
+        *Config.User*)
+          echo "${MOCK_IMAGE_USER:-10001:10001}"
+          ;;
+      esac
     fi
     ;;
   ps)
@@ -78,6 +85,14 @@ case "${1:-}" in
     ;;
   run)
     printf '%s\n' "$@" > "$DOCKER_MOCK_LOG"
+    previous=""
+    for argument in "$@"; do
+      if [ "$previous" = "--entrypoint" ] \
+        && { [ "$argument" = "chown" ] || [ "$argument" = "sh" ]; }; then
+        exit "${MOCK_PERMISSION_STATUS:-0}"
+      fi
+      previous="$argument"
+    done
     exit "${MOCK_RUN_STATUS:-0}"
     ;;
   *)
@@ -297,8 +312,10 @@ run_node() {
       DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
       DOWNLOAD_MOCK_LOG="$DOWNLOAD_LOG" \
       MOCK_RUN_STATUS="${MOCK_RUN_STATUS:-0}" \
+      MOCK_PERMISSION_STATUS="${MOCK_PERMISSION_STATUS:-0}" \
       MOCK_CONTAINER_EXISTS="${MOCK_CONTAINER_EXISTS:-false}" \
       MOCK_IMAGE_ARCH="${MOCK_IMAGE_ARCH:-amd64}" \
+      MOCK_IMAGE_USER="${MOCK_IMAGE_USER:-10001:10001}" \
       MOCK_IMAGE_MISSING="${MOCK_IMAGE_MISSING:-false}" \
       MOCK_CURL_FAIL="${MOCK_CURL_FAIL:-false}" \
       MOCK_CURL_EMPTY="${MOCK_CURL_EMPTY:-false}" \
@@ -498,6 +515,11 @@ assert_no_argument "8090:8090"
 assert_no_argument "50051:50051"
 assert_argument "16g"
 assert_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g"
+assert_argument "--user"
+assert_argument "10001:10001"
+assert_argument "--security-opt"
+assert_argument "no-new-privileges"
+assert_no_argument "--cap-drop"
 assert_argument "$TEST_TMP/config:/java-tron/config:ro"
 assert_no_argument "$TEST_TMP/config:/java-tron/config"
 assert_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
@@ -516,6 +538,9 @@ MOCK_IMAGE_ARCH=arm64 run_node >/dev/null
 assert_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0"
 assert_no_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g"
 MOCK_IMAGE_ARCH=amd64
+
+MOCK_IMAGE_USER=root expect_run_failure \
+  "must run as UID:GID 10001:10001" -c /java-tron/custom.conf
 
 run_node --data-dir "$TEST_TMP/external-data" >/dev/null
 assert_argument "$TEST_TMP/external-data/config:/java-tron/config:ro"
@@ -720,6 +745,20 @@ run_status=$?
 set -e
 if [ "$run_status" -ne 47 ]; then
   echo "Expected docker run failure status 47, got $run_status" >&2
+  exit 1
+fi
+
+if output=$(
+  MOCK_PERMISSION_STATUS=48 run_node \
+    --data-dir "$TEST_TMP/permission-failure" \
+    -c /java-tron/custom.conf 2>&1
+); then
+  echo "A runtime-directory ownership initialization failure unexpectedly succeeded" >&2
+  exit 1
+fi
+if [[ "$output" != *"failed to initialize runtime-directory ownership"* ]]; then
+  echo "A runtime-directory ownership failure did not produce an actionable error:" >&2
+  echo "$output" >&2
   exit 1
 fi
 
