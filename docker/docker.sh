@@ -190,7 +190,7 @@ check_download_config() {
   local config_file="$2"
 
   if ! file_is_usable "$config_directory/$config_file"; then
-    echo "$config_directory/$config_file does not exist; downloading it for the initial run."
+    echo "$config_directory/$config_file is missing or empty; downloading it for the initial run."
     download_config "$config_directory" "$config_file"
   fi
 }
@@ -267,6 +267,11 @@ run() {
   docker_image
 
   if [ -z "$image" ]; then
+    if [ ! -t 0 ]; then
+      echo "run: no java-tron image found; pull one with --pull or build one with --build" >&2
+      return 1
+    fi
+
     echo 'warning: no java-tron mirror image, do you need to get the mirror image?[y/n]'
     read -r need
 

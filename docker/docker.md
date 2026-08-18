@@ -25,7 +25,7 @@ The standalone download follows the stable `master` workflow. To test changes fr
 
 ### Pull the image
 
-The image contains the java-tron distribution, a Java runtime, and a Mainnet configuration file:
+The image contains the java-tron distribution and a Java runtime. It also bakes in `/java-tron/config.conf` from the `tron-deployment` `master` branch at build time. `docker.sh --run` does not use that file; it passes `-c` and a host-mounted configuration instead. A plain `docker run` without `-c` reads the baked-in file, which is not pinned to the image's java-tron version.
 
 ```shell
 bash docker.sh --pull
@@ -49,7 +49,7 @@ Run a Mainnet FullNode:
 bash docker.sh --run --net main
 ```
 
-The helper manages one container named `tronprotocol-java-tron`. Running `--run` again while that container exists returns an error; use `--start` to reuse a stopped container, or `--rm` before creating a replacement.
+The helper manages one container named `tronprotocol-java-tron`. Running `--run` again while that container exists returns an error; use `--start` to reuse a stopped container, or `--rm` before creating a replacement. If no local image exists, `--run` prompts before pulling when stdin is a terminal. In non-interactive environments it exits with an error; run `--pull` or `--build` first.
 
 Use repeatable `-p` options to change individual mappings. Defaults are retained for container ports and protocols that are not explicitly mapped, so the following command changes only the HTTP and gRPC host ports:
 
@@ -127,7 +127,7 @@ Use `--data-dir` to keep these three directories in an explicit location, prefer
 bash docker.sh --run --net main --data-dir /var/lib/java-tron
 ```
 
-This produces `/var/lib/java-tron/config`, `/var/lib/java-tron/output-directory`, and `/var/lib/java-tron/logs` host mounts. The default data directory is the current working directory, so running `--run` from a checkout writes `config/`, `output-directory/`, and `logs/` into that tree. Use `--data-dir` to keep those runtime files out of the Git worktree. Persisting `logs` also keeps `tron.log` available after the container is removed.
+This produces `/var/lib/java-tron/config` (still mounted read-only at `/java-tron/config`), `/var/lib/java-tron/output-directory`, and `/var/lib/java-tron/logs` host mounts. The default data directory is the current working directory, so running `--run` from a checkout writes `config/`, `output-directory/`, and `logs/` into that tree. Use `--data-dir` to keep those runtime files out of the Git worktree. Persisting `logs` also keeps `tron.log` available after the container is removed.
 
 ## Memory and JVM options
 
@@ -246,11 +246,11 @@ DOCKER_TARGET="1.0"
 | `--rm` | Remove the container without removing the image or host data. |
 | `-p [HOST_IP:]HOST_PORT:CONTAINER_PORT[/PROTOCOL]` | Publish a container port. Repeat to customize multiple mappings. |
 | `-c CONTAINER_PATH` | Use a configuration file at the specified path inside the container. |
-| `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. |
+| `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. A replacement for `/java-tron/config` uses the caller's access mode instead of the default read-only mount. |
 | `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. JVM option environment variables are rejected; use `--jvm-opts`. |
 | `--net main\|test\|private` | Select the Mainnet, Nile Testnet, or private-network configuration. |
 | `--update-config true\|false` | Refresh the selected configuration before creating the container. Default: `false`; missing files are still downloaded. |
-| `--data-dir PATH` | Store the default `config`, `output-directory`, and `logs` mounts under this host path. Default: invocation directory. |
+| `--data-dir PATH` | Store the default `config`, `output-directory`, and `logs` mounts under this host path. Default: invocation directory. The default `config` mount remains read-only in the container. |
 | `--memory LIMIT` | Set the container memory limit. Default: `16g`. |
 | `--jvm-opts "OPTIONS"` | Replace the JVM options supplied by `docker.sh`. The image itself does not set these defaults. |
 | `-- FULLNODE_ARGS...` | Pass all remaining arguments unchanged to FullNode. |

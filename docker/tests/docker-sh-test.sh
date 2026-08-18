@@ -59,6 +59,10 @@ case "${1:-}" in
       echo "Unexpected docker image command: $*" >&2
       exit 1
     fi
+    if [ "${MOCK_IMAGE_MISSING:-false}" = true ]; then
+      echo "Error: No such image" >&2
+      exit 1
+    fi
     if [ "${3:-}" = "-f" ]; then
       echo "${MOCK_IMAGE_ARCH:-amd64}"
     fi
@@ -295,6 +299,7 @@ run_node() {
       MOCK_RUN_STATUS="${MOCK_RUN_STATUS:-0}" \
       MOCK_CONTAINER_EXISTS="${MOCK_CONTAINER_EXISTS:-false}" \
       MOCK_IMAGE_ARCH="${MOCK_IMAGE_ARCH:-amd64}" \
+      MOCK_IMAGE_MISSING="${MOCK_IMAGE_MISSING:-false}" \
       MOCK_CURL_FAIL="${MOCK_CURL_FAIL:-false}" \
       MOCK_CURL_EMPTY="${MOCK_CURL_EMPTY:-false}" \
       bash "$DOCKER_SCRIPT" --run "$@"
@@ -633,9 +638,30 @@ if compgen -G "$CONFIG_FILE_FOR_TEST.tmp.*" >/dev/null; then
 fi
 
 : > "$TEST_TMP/config/test_net_config.conf"
-run_node --net test --update-config false >/dev/null
+empty_config_output=$(run_node --net test --update-config false)
+if [[ "$empty_config_output" != *"is missing or empty"* ]]; then
+  echo "An empty configuration did not report that it was missing or empty:" >&2
+  echo "$empty_config_output" >&2
+  exit 1
+fi
 if [ "$(cat "$TEST_TMP/config/test_net_config.conf")" != "downloaded-content" ]; then
   echo "An empty configuration was treated as valid and not replaced" >&2
+  exit 1
+fi
+
+if output=$(MOCK_IMAGE_MISSING=true run_node -c /java-tron/custom.conf </dev/null 2>&1); then
+  echo "A missing image unexpectedly started a container without a TTY" >&2
+  echo "$output" >&2
+  exit 1
+fi
+if [[ "$output" != *"no java-tron image found"* ]]; then
+  echo "A missing image did not produce a non-interactive error:" >&2
+  echo "$output" >&2
+  exit 1
+fi
+if [[ "$output" == *"[y/n]"* ]]; then
+  echo "A missing image prompted for a pull without a TTY" >&2
+  echo "$output" >&2
   exit 1
 fi
 
