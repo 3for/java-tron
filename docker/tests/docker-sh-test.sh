@@ -657,8 +657,10 @@ done
 expect_run_failure "expected main, test, or private" --net unsupported
 expect_run_failure "must be true or false" --update-config sometimes
 expect_run_failure "is not a valid parameter" --unknown
-expect_run_failure "use --jvm-opts to set JVM options" -e "JAVA_OPTS=-Xmx8g"
-expect_run_failure "use --jvm-opts to set JVM options" --env "FULL_NODE_OPTS=-Xmx8g"
+for jvm_env_name in JAVA_OPTS FULL_NODE_OPTS JAVA_TOOL_OPTIONS _JAVA_OPTIONS JDK_JAVA_OPTIONS; do
+  expect_run_failure "use --jvm-opts to set JVM options" -e "$jvm_env_name=-Xmx8g"
+  expect_run_failure "use --jvm-opts to set JVM options" --env "$jvm_env_name=-Xmx8g"
+done
 
 run_node -c /java-tron/custom.conf -- --unknown-fullnode-option >/dev/null
 assert_trailing_arguments \

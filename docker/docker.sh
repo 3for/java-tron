@@ -46,7 +46,8 @@ Run options:
   -v MAPPING                     Add or replace a bind mount; repeatable
   -e NAME=VALUE, --env NAME=VALUE
                                   Set an environment variable; repeatable.
-                                  JAVA_OPTS and FULL_NODE_OPTS are not allowed.
+                                  JVM option environment variables are not allowed;
+                                  use --jvm-opts instead.
   -c CONTAINER_PATH              Use a custom configuration file
   -- [FULLNODE_ARGS...]          Pass remaining arguments to FullNode
 EOF
@@ -321,10 +322,12 @@ run() {
           return 1
         fi
         env_name="${2%%=*}"
-        if [[ "$env_name" == "JAVA_OPTS" || "$env_name" == "FULL_NODE_OPTS" ]]; then
-          echo "run: $1 $env_name is not supported; use --jvm-opts to set JVM options" >&2
-          return 1
-        fi
+        case "$env_name" in
+          JAVA_OPTS|FULL_NODE_OPTS|JAVA_TOOL_OPTIONS|_JAVA_OPTIONS|JDK_JAVA_OPTIONS)
+            echo "run: $1 $env_name is not supported; use --jvm-opts to set JVM options" >&2
+            return 1
+            ;;
+        esac
         environment_args+=("--env" "$2")
         shift 2
         ;;

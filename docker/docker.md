@@ -158,7 +158,7 @@ bash docker.sh --run --net main --memory 32g \
 
 The packaged `java-tron.vmoptions` file remains active. It contains architecture- and JDK-specific garbage collector settings, so do not use `--jvm-opts` to copy or switch GC options between JDK 8 and JDK 17 deployments.
 
-Environment variables for custom wrapper scripts or derived images can be passed with repeatable `-e` or `--env` options. `MY_VARIABLE` is only a placeholder. Do not set `JAVA_OPTS` or `FULL_NODE_OPTS` this way; those names would replace the helper profile. Use `--jvm-opts` instead.
+Environment variables for custom wrapper scripts or derived images can be passed with repeatable `-e` or `--env` options. `MY_VARIABLE` is only a placeholder. JVM option environment variables (`JAVA_OPTS`, `FULL_NODE_OPTS`, `JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, and `JDK_JAVA_OPTIONS`) are rejected because they can replace or bypass the helper profile. Use `--jvm-opts` instead.
 
 ```shell
 bash docker.sh --run --net main -e "MY_VARIABLE=value"
@@ -247,7 +247,7 @@ DOCKER_TARGET="1.0"
 | `-p [HOST_IP:]HOST_PORT:CONTAINER_PORT[/PROTOCOL]` | Publish a container port. Repeat to customize multiple mappings. |
 | `-c CONTAINER_PATH` | Use a configuration file at the specified path inside the container. |
 | `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. |
-| `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. `JAVA_OPTS` and `FULL_NODE_OPTS` are rejected; use `--jvm-opts`. |
+| `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. JVM option environment variables are rejected; use `--jvm-opts`. |
 | `--net main\|test\|private` | Select the Mainnet, Nile Testnet, or private-network configuration. |
 | `--update-config true\|false` | Refresh the selected configuration before creating the container. Default: `false`; missing files are still downloaded. |
 | `--data-dir PATH` | Store the default `config`, `output-directory`, and `logs` mounts under this host path. Default: invocation directory. |
