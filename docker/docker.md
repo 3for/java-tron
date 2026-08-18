@@ -121,13 +121,13 @@ By default, the script mounts persistent directories relative to the shell's cur
 
 Additional `-v` options retain these defaults. A custom mount replaces a default only when it uses the same container destination.
 
-Use `--data-dir` to keep both directories in an explicit location, preferably outside the source checkout. Relative values are resolved against the invocation directory:
+Use `--data-dir` to keep these three directories in an explicit location, preferably outside the source checkout. Relative values are resolved against the invocation directory:
 
 ```shell
 bash docker.sh --run --net main --data-dir /var/lib/java-tron
 ```
 
-This produces `/var/lib/java-tron/config`, `/var/lib/java-tron/output-directory`, and `/var/lib/java-tron/logs` host mounts. The standard downloaded network configuration files are ignored when the default data directory is the repository root or its `docker/` directory, but `--data-dir` avoids creating runtime files in the Git worktree entirely. Persisting `logs` also keeps `tron.log` available after the container is removed.
+This produces `/var/lib/java-tron/config`, `/var/lib/java-tron/output-directory`, and `/var/lib/java-tron/logs` host mounts. The default data directory is the current working directory, so running `--run` from a checkout writes `config/`, `output-directory/`, and `logs/` into that tree. Use `--data-dir` to keep those runtime files out of the Git worktree. Persisting `logs` also keeps `tron.log` available after the container is removed.
 
 ## Memory and JVM options
 
@@ -195,7 +195,7 @@ The lifecycle commands return a non-zero status when the target container does n
 
 ## Build an image
 
-`--build` selects `Dockerfile` on x86_64/amd64 and `arm64/Dockerfile` on arm64/aarch64. When the selected Dockerfile is not present, the script downloads it from the java-tron `develop` branch.
+`--build` selects `Dockerfile` on x86_64/amd64 and `arm64/Dockerfile` on arm64/aarch64. For a remote or standalone `--build`, a missing Dockerfile is downloaded from the java-tron `master` branch. `--source local` uses the Dockerfile from the same checkout and fails if that file is not present.
 
 For backward compatibility, `--build` without source options clones and compiles the remote java-tron `master` branch. Local working-tree changes are not included:
 
@@ -250,7 +250,7 @@ DOCKER_TARGET="1.0"
 | `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. `JAVA_OPTS` and `FULL_NODE_OPTS` are rejected; use `--jvm-opts`. |
 | `--net main\|test\|private` | Select the Mainnet, Nile Testnet, or private-network configuration. |
 | `--update-config true\|false` | Refresh the selected configuration before creating the container. Default: `false`; missing files are still downloaded. |
-| `--data-dir PATH` | Store the default `config` and `output-directory` mounts under this host path. Default: invocation directory. |
+| `--data-dir PATH` | Store the default `config`, `output-directory`, and `logs` mounts under this host path. Default: invocation directory. |
 | `--memory LIMIT` | Set the container memory limit. Default: `16g`. |
 | `--jvm-opts "OPTIONS"` | Replace the JVM options supplied by `docker.sh`. The image itself does not set these defaults. |
 | `-- FULLNODE_ARGS...` | Pass all remaining arguments unchanged to FullNode. |

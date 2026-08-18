@@ -25,10 +25,10 @@ mkdir -p "$MOCK_BIN" "$SOURCE_ROOT/docker/arm64" "$TEST_TMP/config" \
 cp "$REPOSITORY_ROOT/docker/Dockerfile" "$SOURCE_ROOT/docker/Dockerfile"
 cp "$REPOSITORY_ROOT/docker/arm64/Dockerfile" "$SOURCE_ROOT/docker/arm64/Dockerfile"
 touch "$SOURCE_ROOT/.env"
-touch "$TEST_TMP/config/main_net_config.conf"
-touch "$TEST_TMP/config/test_net_config.conf"
-touch "$TEST_TMP/external-data/config/main_net_config.conf"
-touch "$TEST_TMP/relative-data/config/main_net_config.conf"
+printf 'seed-config\n' > "$TEST_TMP/config/main_net_config.conf"
+printf 'seed-config\n' > "$TEST_TMP/config/test_net_config.conf"
+printf 'seed-config\n' > "$TEST_TMP/external-data/config/main_net_config.conf"
+printf 'seed-config\n' > "$TEST_TMP/relative-data/config/main_net_config.conf"
 
 cat > "$MOCK_BIN/docker" <<'MOCK_DOCKER'
 #!/bin/bash
@@ -135,10 +135,18 @@ while [ $# -gt 0 ]; do
 done
 test -n "$output"
 mkdir -p "$(dirname "$output")"
-touch "$output"
 if [ -n "${DOWNLOAD_MOCK_LOG:-}" ]; then
   printf '%s|%s\n' "$url" "$output" >> "$DOWNLOAD_MOCK_LOG"
 fi
+if [ "${MOCK_CURL_FAIL:-false}" = true ]; then
+  printf 'partial-download\n' > "$output"
+  exit 1
+fi
+if [ "${MOCK_CURL_EMPTY:-false}" = true ]; then
+  : > "$output"
+  exit 0
+fi
+printf 'downloaded-content\n' > "$output"
 MOCK_CURL
 
 cat > "$SOURCE_ROOT/gradlew" <<'MOCK_GRADLEW'
@@ -268,6 +276,8 @@ run_standalone_build() {
       DOCKER_MOCK_CONTEXT_LOG="$DOCKER_CONTEXT_LOG" \
       DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
       DOWNLOAD_MOCK_LOG="$DOWNLOAD_LOG" \
+      MOCK_CURL_FAIL="${MOCK_CURL_FAIL:-false}" \
+      MOCK_CURL_EMPTY="${MOCK_CURL_EMPTY:-false}" \
       bash "$STANDALONE_DIR/docker.sh" --build "$@"
   )
 }
@@ -285,6 +295,8 @@ run_node() {
       MOCK_RUN_STATUS="${MOCK_RUN_STATUS:-0}" \
       MOCK_CONTAINER_EXISTS="${MOCK_CONTAINER_EXISTS:-false}" \
       MOCK_IMAGE_ARCH="${MOCK_IMAGE_ARCH:-amd64}" \
+      MOCK_CURL_FAIL="${MOCK_CURL_FAIL:-false}" \
+      MOCK_CURL_EMPTY="${MOCK_CURL_EMPTY:-false}" \
       bash "$DOCKER_SCRIPT" --run "$@"
   )
 }
@@ -364,16 +376,38 @@ if [[ "$remote_output" != *"Local working-tree changes are not included"* ]]; th
 fi
 
 run_standalone_build x86_64 "$TEST_TMP" >/dev/null
-if ! grep -Fqx -- \
-  "https://raw.githubusercontent.com/tronprotocol/java-tron/master/docker/Dockerfile|$STANDALONE_DIR/Dockerfile" \
+if ! grep -Fq -- \
+  "https://raw.githubusercontent.com/tronprotocol/java-tron/master/docker/Dockerfile|$STANDALONE_DIR/Dockerfile.tmp." \
   "$DOWNLOAD_LOG"; then
   echo "The standalone build did not download its Dockerfile from master" >&2
   sed 's/^/  /' "$DOWNLOAD_LOG" >&2
   exit 1
 fi
+if [ ! -s "$STANDALONE_DIR/Dockerfile" ]; then
+  echo "The standalone build did not replace the Dockerfile atomically" >&2
+  exit 1
+fi
+if compgen -G "$STANDALONE_DIR/Dockerfile.tmp.*" >/dev/null; then
+  echo "The standalone build left a temporary Dockerfile behind" >&2
+  exit 1
+fi
 assert_argument "SOURCE_REF=master"
 assert_context_only_dockerfile
 assert_buildkit_enabled
+
+rm -f "$STANDALONE_DIR/Dockerfile"
+if MOCK_CURL_FAIL=true run_standalone_build x86_64 "$TEST_TMP" >/dev/null 2>&1; then
+  echo "A failed Dockerfile download unexpectedly succeeded" >&2
+  exit 1
+fi
+if [ -e "$STANDALONE_DIR/Dockerfile" ]; then
+  echo "A failed Dockerfile download left a destination file" >&2
+  exit 1
+fi
+if compgen -G "$STANDALONE_DIR/Dockerfile.tmp.*" >/dev/null; then
+  echo "A failed Dockerfile download left a temporary file" >&2
+  exit 1
+fi
 
 rm -f "$STANDALONE_DIR/Dockerfile"
 run_standalone_build x86_64 "$SOURCE_ROOT" --source local >/dev/null
@@ -540,20 +574,80 @@ assert_argument "/java-tron/config/test_net_config.conf"
 
 run_node --net private --update-config false >/dev/null
 assert_argument "/java-tron/config/private_net_config.conf"
-if ! grep -Fqx -- \
-  "https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/private_net_config.conf|$TEST_TMP/config/private_net_config.conf" \
+if ! grep -Fq -- \
+  "https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/private_net_config.conf|$TEST_TMP/config/private_net_config.conf.tmp." \
   "$DOWNLOAD_LOG"; then
   echo "--update-config false did not download a missing configuration" >&2
   sed 's/^/  /' "$DOWNLOAD_LOG" >&2
   exit 1
 fi
+if [ "$(cat "$TEST_TMP/config/private_net_config.conf")" != "downloaded-content" ]; then
+  echo "The missing configuration was not written to the destination" >&2
+  exit 1
+fi
 
 run_node --net main --update-config true >/dev/null
-if ! grep -Fqx -- \
-  "https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/main_net_config.conf|$TEST_TMP/config/main_net_config.conf" \
+if ! grep -Fq -- \
+  "https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/main_net_config.conf|$TEST_TMP/config/main_net_config.conf.tmp." \
   "$DOWNLOAD_LOG"; then
   echo "--update-config true did not refresh the selected configuration" >&2
   sed 's/^/  /' "$DOWNLOAD_LOG" >&2
+  exit 1
+fi
+if [ "$(cat "$TEST_TMP/config/main_net_config.conf")" != "downloaded-content" ]; then
+  echo "--update-config true did not replace the configuration atomically" >&2
+  exit 1
+fi
+
+printf 'valid-config\n' > "$TEST_TMP/config/main_net_config.conf"
+if MOCK_CURL_FAIL=true run_node --net main --update-config true >/dev/null 2>&1; then
+  echo "A failed configuration refresh unexpectedly succeeded" >&2
+  exit 1
+fi
+if [ "$(cat "$TEST_TMP/config/main_net_config.conf")" != "valid-config" ]; then
+  echo "A failed refresh corrupted the existing configuration" >&2
+  cat "$TEST_TMP/config/main_net_config.conf" >&2
+  exit 1
+fi
+if compgen -G "$TEST_TMP/config/main_net_config.conf.tmp.*" >/dev/null; then
+  echo "A failed refresh left a temporary configuration file" >&2
+  exit 1
+fi
+
+CONFIG_FILE_FOR_TEST="$TEST_TMP/config/private_net_config.conf"
+rm -f "$CONFIG_FILE_FOR_TEST"
+if MOCK_CURL_FAIL=true run_node --net private --update-config false >/dev/null 2>&1; then
+  echo "A failed initial configuration download unexpectedly succeeded" >&2
+  exit 1
+fi
+if [ -e "$CONFIG_FILE_FOR_TEST" ]; then
+  echo "A failed initial download left a destination configuration file" >&2
+  exit 1
+fi
+if compgen -G "$CONFIG_FILE_FOR_TEST.tmp.*" >/dev/null; then
+  echo "A failed initial download left a temporary configuration file" >&2
+  exit 1
+fi
+
+: > "$TEST_TMP/config/test_net_config.conf"
+run_node --net test --update-config false >/dev/null
+if [ "$(cat "$TEST_TMP/config/test_net_config.conf")" != "downloaded-content" ]; then
+  echo "An empty configuration was treated as valid and not replaced" >&2
+  exit 1
+fi
+
+printf 'valid-config\n' > "$TEST_TMP/config/main_net_config.conf"
+if MOCK_CURL_EMPTY=true run_node --net main --update-config true >/dev/null 2>&1; then
+  echo "An empty downloaded configuration unexpectedly succeeded" >&2
+  exit 1
+fi
+if [ "$(cat "$TEST_TMP/config/main_net_config.conf")" != "valid-config" ]; then
+  echo "An empty download replaced the existing configuration" >&2
+  cat "$TEST_TMP/config/main_net_config.conf" >&2
+  exit 1
+fi
+if compgen -G "$TEST_TMP/config/main_net_config.conf.tmp.*" >/dev/null; then
+  echo "An empty download left a temporary configuration file" >&2
   exit 1
 fi
 

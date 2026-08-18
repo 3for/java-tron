@@ -134,17 +134,44 @@ docker_image() {
   fi
 }
 
+file_is_usable() {
+  [ -f "$1" ] && [ -s "$1" ]
+}
+
 download_file() {
   local url="$1"
   local output="$2"
+  local output_dir
+  local temporary
 
-  mkdir -p "$(dirname "$output")"
+  output_dir=$(dirname "$output")
+  mkdir -p "$output_dir" || return 1
+  temporary=$(mktemp "${output}.tmp.XXXXXX") || return 1
+
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL -o "$output" "$url"
+    if ! curl -fsSL -o "$temporary" "$url"; then
+      rm -f "$temporary"
+      return 1
+    fi
   elif command -v wget >/dev/null 2>&1; then
-    wget -q -O "$output" "$url"
+    if ! wget -q -O "$temporary" "$url"; then
+      rm -f "$temporary"
+      return 1
+    fi
   else
     echo "Unable to download $url: install curl or wget first."
+    rm -f "$temporary"
+    return 1
+  fi
+
+  if [ ! -s "$temporary" ]; then
+    echo "Downloaded file is empty: $url" >&2
+    rm -f "$temporary"
+    return 1
+  fi
+
+  if ! mv -f "$temporary" "$output"; then
+    rm -f "$temporary"
     return 1
   fi
 }
@@ -161,7 +188,7 @@ check_download_config() {
   local config_directory="$1"
   local config_file="$2"
 
-  if [ ! -f "$config_directory/$config_file" ]; then
+  if ! file_is_usable "$config_directory/$config_file"; then
     echo "$config_directory/$config_file does not exist; downloading it for the initial run."
     download_config "$config_directory" "$config_file"
   fi
@@ -593,14 +620,14 @@ build() {
     fi
 
     dockerfile_path="$source_root/docker/$dockerfile_relative"
-    if [ ! -f "$dockerfile_path" ]; then
+    if ! file_is_usable "$dockerfile_path"; then
       echo "build: local Dockerfile does not exist: $dockerfile_path" >&2
       return 1
     fi
     build_local_image "$source_root" "$dockerfile_path"
   else
     dockerfile_path="$script_dir/$dockerfile_relative"
-    if [ ! -f "$dockerfile_path" ]; then
+    if ! file_is_usable "$dockerfile_path"; then
       echo "$dockerfile_relative does not exist; downloading it."
       download_file "$JAVA_TRON_DOCKER_REPOSITORY/$dockerfile_relative" "$dockerfile_path" || return 1
     fi

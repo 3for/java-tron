@@ -55,16 +55,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # Pull requests only need the synthetic merge commit and its parents
-          # to compare the base and head SHAs. Other events retain full history.
+          # Pull requests check out the synthetic merge commit. Depth 2 is
+          # enough to diff that commit against its first parent (the base).
+          # Other events retain full history.
           fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
 
       - name: Select required checks
         id: select
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          HEAD_SHA: ${{ github.sha }}
           BEFORE_SHA: ${{ github.event.before }}
           DISPATCH_SOURCE_MODE: ${{ inputs.source_mode }}
         run: |
@@ -91,7 +91,11 @@ jobs:
               source_mode="${DISPATCH_SOURCE_MODE:-local}"
               ;;
             pull_request)
-              git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- > "$changed_files"
+              if ! git rev-parse -q --verify HEAD^1 >/dev/null; then
+                echo "Pull request merge commit is missing its base parent." >&2
+                exit 1
+              fi
+              git diff --name-only HEAD^1 HEAD -- > "$changed_files"
               ;;
             push)
               if [[ -z "$BEFORE_SHA" || "$BEFORE_SHA" =~ ^0+$ ]]; then
