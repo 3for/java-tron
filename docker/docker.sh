@@ -34,7 +34,7 @@ DOCKER_LISTEN_PORT=18888
 DOCKER_MEMORY="16g"
 JVM_OPTS="-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g"
 
-VOLUME=`pwd`
+VOLUME=$(pwd)
 CONFIG="$VOLUME/config"
 OUTPUT_DIRECTORY="$VOLUME/output-directory"
 
@@ -47,61 +47,108 @@ PRIVATE_NET_CONFIG_FILE="private_net_config.conf"
 # update the configuration file, if true, the configuration file will be fetched from the network every time you start
 UPDATE_CONFIG=true
 
-LOG_FILE="/logs/tron.log"
+LOG_FILE="logs/tron.log"
 
-JAVA_TRON_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/java-tron/develop/"
-DOCKER_FILE="Dockerfile"
+JAVA_TRON_DOCKER_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/java-tron/develop/docker"
+CONFIG_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/tron-deployment/master"
 
-if test docker; then
-  docker -v
-else
+if ! command -v docker >/dev/null 2>&1; then
   echo "warning: docker must be installed, please install docker first."
-  exit
+  exit 1
 fi
+docker --version || exit 1
 
 docker_ps() {
-  containerID=`docker ps -a | grep "$DOCKER_REPOSITORY-$DOCKER_IMAGES" | awk '{print $1}'`
+  containerID=$(docker ps -aq --filter "name=^/$DOCKER_REPOSITORY-$DOCKER_IMAGES$" | head -n 1)
   cid=$containerID
 }
 
 docker_image() {
-  image_name=`docker images |grep "$DOCKER_REPOSITORY/$DOCKER_IMAGES" |awk {'print $1'}| awk 'NR==1'`
-  image=$image_name
+  if docker image inspect "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" >/dev/null 2>&1; then
+    image="$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET"
+  else
+    image=""
+  fi
+}
+
+download_file() {
+  local url="$1"
+  local output="$2"
+
+  mkdir -p "$(dirname "$output")"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL -o "$output" "$url"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$output" "$url"
+  else
+    echo "Unable to download $url: install curl or wget first."
+    return 1
+  fi
 }
 
 download_config() {
-  mkdir -p config
-  if test curl; then
-    curl -o config/$CONFIG_FILE -LO https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/$CONFIG_FILE -s
-  elif test wget; then
-    wget -P -q config/ https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/$CONFIG_FILE
+  echo "Downloading $CONFIG_FILE"
+  download_file "$CONFIG_REPOSITORY/$CONFIG_FILE" "$CONFIG/$CONFIG_FILE"
+}
+
+check_download_config() {
+  if [ ! -f "$CONFIG/$CONFIG_FILE" ]; then
+    echo "$CONFIG/$CONFIG_FILE does not exist; downloading it for the initial run."
+    download_config
   fi
 }
 
+has_port_mapping() {
+  local expected_port="$1"
+  local expected_protocol="$2"
+  local mapping
+  local container_spec
+  local container_port
+  local protocol
+  shift 2
 
-check_download_config() {
-  if [[ ! -d 'config' || ! -f "config/$CONFIG_FILE" ]]; then
-    mkdir -p config
-    if test curl; then
-      curl -o config/$CONFIG_FILE -LO https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/$CONFIG_FILE -s
-    elif test wget; then
-      wget -P -q config/ https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/$CONFIG_FILE
+  for mapping in "$@"; do
+    [ "$mapping" = "-p" ] && continue
+    container_spec="${mapping##*:}"
+    protocol="tcp"
+    if [[ "$container_spec" == */* ]]; then
+      protocol="${container_spec##*/}"
+      container_spec="${container_spec%/*}"
     fi
-  fi
+    container_port="$container_spec"
+    if [ "$container_port" = "$expected_port" ] && [ "$protocol" = "$expected_protocol" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+has_volume_mount() {
+  local expected_target="$1"
+  local mapping
+  shift
+
+  for mapping in "$@"; do
+    [ "$mapping" = "-v" ] && continue
+    if [[ "$mapping" == *":$expected_target" || "$mapping" == *":$expected_target:"* ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 run() {
   docker_image
 
-  if [ ! $image ] ; then
+  if [ -z "$image" ]; then
     echo 'warning: no java-tron mirror image, do you need to get the mirror image?[y/n]'
-    read need
+    read -r need
 
     if [[ $need == 'y' || $need == 'yes' ]]; then
       pull
     else
       echo "warning: no mirror image found, go ahead and download a mirror."
-      exit
+      return 1
     fi
   fi
 
@@ -111,6 +158,7 @@ run() {
   local -a port_args=()
   local -a environment_args=()
   local -a tron_args=()
+  local custom_config=false
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -145,6 +193,7 @@ run() {
         fi
         tron_args=("-c" "$2")
         UPDATE_CONFIG=false
+        custom_config=true
         shift 2
         ;;
       --net)
@@ -167,6 +216,10 @@ run() {
       --update-config)
         if [ $# -lt 2 ]; then
           echo "run: arg $1 requires a value"
+          return 1
+        fi
+        if [[ "$2" != "true" && "$2" != "false" ]]; then
+          echo "run: arg $1 must be true or false"
           return 1
         fi
         UPDATE_CONFIG=$2
@@ -195,23 +248,32 @@ run() {
     esac
   done
 
-  if [ "$UPDATE_CONFIG" = true ]; then
-    download_config
+  if [ "$custom_config" = false ]; then
+    if [ "$UPDATE_CONFIG" = true ]; then
+      download_config || return 1
+    else
+      check_download_config || return 1
+    fi
   fi
 
-  if [ ${#volume_args[@]} -eq 0 ]; then
-    volume_args=(
-      "-v" "$CONFIG:/java-tron/config"
-      "-v" "$OUTPUT_DIRECTORY:/java-tron/output-directory"
-    )
+  if ! has_volume_mount "/java-tron/config" "${volume_args[@]}"; then
+    volume_args+=("-v" "$CONFIG:/java-tron/config")
+  fi
+  if ! has_volume_mount "/java-tron/output-directory" "${volume_args[@]}"; then
+    volume_args+=("-v" "$OUTPUT_DIRECTORY:/java-tron/output-directory")
   fi
 
-  if [ ${#port_args[@]} -eq 0 ]; then
-    port_args=(
-      "-p" "$HOST_HTTP_PORT:$DOCKER_HTTP_PORT"
-      "-p" "$HOST_RPC_PORT:$DOCKER_RPC_PORT"
-      "-p" "$HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT"
-    )
+  if ! has_port_mapping "$DOCKER_HTTP_PORT" "tcp" "${port_args[@]}"; then
+    port_args+=("-p" "$HOST_HTTP_PORT:$DOCKER_HTTP_PORT")
+  fi
+  if ! has_port_mapping "$DOCKER_RPC_PORT" "tcp" "${port_args[@]}"; then
+    port_args+=("-p" "$HOST_RPC_PORT:$DOCKER_RPC_PORT")
+  fi
+  if ! has_port_mapping "$DOCKER_LISTEN_PORT" "tcp" "${port_args[@]}"; then
+    port_args+=("-p" "$HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT")
+  fi
+  if ! has_port_mapping "$DOCKER_LISTEN_PORT" "udp" "${port_args[@]}"; then
+    port_args+=("-p" "$HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT/udp")
   fi
 
   if [ ${#tron_args[@]} -eq 0 ]; then
@@ -230,21 +292,29 @@ run() {
 }
 
 build() {
+  local architecture
+  local dockerfile
+
   echo 'docker build'
-  if [ ! -f "Dockerfile" ]; then
-    echo 'warning: Dockerfile not exists.'
-    if test curl; then
-      DOWNLOAD_CMD="curl -LJO "
-    elif test wget; then
-      DOWNLOAD_CMD="wget "
-    else
-      echo "Dockerfile cannot be downloaded, you need to install 'curl' or 'wget'!"
-      exit
-    fi
-    # download Dockerfile
-   `$DOWNLOAD_CMD "$JAVA_TRON_REPOSITORY$DOCKER_FILE"`
+  architecture=$(uname -m)
+  case "$architecture" in
+    x86_64|amd64)
+      dockerfile="Dockerfile"
+      ;;
+    arm64|aarch64)
+      dockerfile="arm64/Dockerfile"
+      ;;
+    *)
+      echo "Unsupported architecture: $architecture; expected x86_64, amd64, arm64, or aarch64."
+      return 1
+      ;;
+  esac
+
+  if [ ! -f "$dockerfile" ]; then
+    echo "$dockerfile does not exist; downloading it."
+    download_file "$JAVA_TRON_DOCKER_REPOSITORY/$dockerfile" "$dockerfile" || return 1
   fi
-  docker build -t "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" .
+  docker build --file "$dockerfile" -t "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" .
 }
 
 pull() {
@@ -254,10 +324,10 @@ pull() {
 
 start() {
   docker_ps
-  if [ $cid ]; then
+  if [ -n "$cid" ]; then
     echo "containerID: $cid"
-    echo "docker stop $cid"
-    docker start $cid
+    echo "docker start $cid"
+    docker start "$cid"
     docker ps
   else
     echo "container not running!"
@@ -266,10 +336,10 @@ start() {
 
 stop() {
   docker_ps
-  if [ $cid ]; then
+  if [ -n "$cid" ]; then
     echo "containerID: $cid"
     echo "docker stop $cid"
-    docker stop $cid
+    docker stop "$cid"
     docker ps
   else
     echo "container not running!"
@@ -278,10 +348,10 @@ stop() {
 
 rm_container() {
   stop
-  if [ $cid ]; then
+  if [ -n "$cid" ]; then
     echo "containerID: $cid"
     echo "docker rm $cid"
-    docker rm $cid
+    docker rm "$cid"
     docker_ps
   else
     echo "image not exists!"
@@ -291,9 +361,9 @@ rm_container() {
 log() {
   docker_ps
 
-  if [ $cid ]; then
+  if [ -n "$cid" ]; then
     echo "containerID: $cid"
-    docker exec -it $cid tail -100f $BASE_DIR/$LOG_FILE
+    docker exec -it "$cid" tail -100f "$BASE_DIR/$LOG_FILE"
   else
     echo "container not exists!"
   fi
@@ -331,6 +401,6 @@ case "$1" in
     ;;
   *)
     echo "arg: $1 is not a valid parameter"
-    exit
+    exit 1
     ;;
 esac
