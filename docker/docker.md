@@ -114,12 +114,12 @@ Witness options such as `-w` and `--witness-address` can also be passed after `-
 By default, the script mounts persistent directories relative to the shell's current working directory when `docker.sh` is invoked, not relative to the script file:
 
 ```text
-./config           -> /java-tron/config
+./config           -> /java-tron/config (read-only)
 ./output-directory -> /java-tron/output-directory
 ./logs             -> /java-tron/logs
 ```
 
-Additional `-v` options retain these defaults. A custom mount replaces a default only when it uses the same container destination.
+The default configuration mount is read-only because FullNode only needs to read it. This prevents the container from persisting configuration changes onto the host. Additional `-v` options retain these defaults. A custom mount replaces a default only when it uses the same container destination; callers that explicitly replace the configuration mount control its access mode.
 
 Use `--data-dir` to keep these three directories in an explicit location, preferably outside the source checkout. Relative values are resolved against the invocation directory:
 

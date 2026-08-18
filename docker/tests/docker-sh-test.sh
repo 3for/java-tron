@@ -493,7 +493,8 @@ assert_no_argument "8090:8090"
 assert_no_argument "50051:50051"
 assert_argument "16g"
 assert_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g"
-assert_argument "$TEST_TMP/config:/java-tron/config"
+assert_argument "$TEST_TMP/config:/java-tron/config:ro"
+assert_no_argument "$TEST_TMP/config:/java-tron/config"
 assert_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
 assert_argument "$TEST_TMP/logs:/java-tron/logs"
 assert_argument "/java-tron/config/main_net_config.conf"
@@ -512,14 +513,16 @@ assert_no_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemo
 MOCK_IMAGE_ARCH=amd64
 
 run_node --data-dir "$TEST_TMP/external-data" >/dev/null
-assert_argument "$TEST_TMP/external-data/config:/java-tron/config"
+assert_argument "$TEST_TMP/external-data/config:/java-tron/config:ro"
+assert_no_argument "$TEST_TMP/external-data/config:/java-tron/config"
 assert_argument "$TEST_TMP/external-data/output-directory:/java-tron/output-directory"
 assert_argument "$TEST_TMP/external-data/logs:/java-tron/logs"
 assert_no_argument "$TEST_TMP/config:/java-tron/config"
 assert_no_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
 
 run_node --data-dir relative-data >/dev/null
-assert_argument "$TEST_TMP/relative-data/config:/java-tron/config"
+assert_argument "$TEST_TMP/relative-data/config:/java-tron/config:ro"
+assert_no_argument "$TEST_TMP/relative-data/config:/java-tron/config"
 assert_argument "$TEST_TMP/relative-data/output-directory:/java-tron/output-directory"
 assert_argument "$TEST_TMP/relative-data/logs:/java-tron/logs"
 

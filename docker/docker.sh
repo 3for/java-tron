@@ -423,7 +423,7 @@ run() {
   fi
 
   if ! has_volume_mount "/java-tron/config" "${volume_args[@]}"; then
-    volume_args+=("-v" "$config_directory:/java-tron/config")
+    volume_args+=("-v" "$config_directory:/java-tron/config:ro")
   fi
   if ! has_volume_mount "/java-tron/output-directory" "${volume_args[@]}"; then
     volume_args+=("-v" "$output_directory:/java-tron/output-directory")
