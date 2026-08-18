@@ -55,7 +55,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          # Pull requests only need the synthetic merge commit and its parents
+          # to compare the base and head SHAs. Other events retain full history.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
 
       - name: Select required checks
         id: select
@@ -221,6 +223,8 @@ jobs:
           else
             DOCKER_BUILDKIT=1 docker build --pull \
               --target remote \
+              --build-arg "SOURCE_REPOSITORY=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" \
+              --build-arg "SOURCE_REF=$GITHUB_REF_NAME" \
               --file "$PWD/docker/Dockerfile" \
               --tag "$IMAGE" \
               docker
@@ -273,6 +277,8 @@ jobs:
           else
             DOCKER_BUILDKIT=1 docker build --pull \
               --target remote \
+              --build-arg "SOURCE_REPOSITORY=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" \
+              --build-arg "SOURCE_REF=$GITHUB_REF_NAME" \
               --file "$PWD/docker/arm64/Dockerfile" \
               --tag "$IMAGE" \
               docker
