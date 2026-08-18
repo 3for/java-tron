@@ -62,7 +62,11 @@ fi
 docker --version || exit 1
 
 docker_ps() {
-  containerID=$(docker ps -aq --filter "name=^/$DOCKER_REPOSITORY-$DOCKER_IMAGES$" | head -n 1)
+  if ! containerID=$(docker ps -aq --filter "name=^/$DOCKER_REPOSITORY-$DOCKER_IMAGES$"); then
+    echo "failed to query the java-tron container" >&2
+    cid=""
+    return 1
+  fi
   cid=$containerID
 }
 
@@ -407,49 +411,48 @@ pull() {
 }
 
 start() {
-  docker_ps
+  docker_ps || return 1
   if [ -n "$cid" ]; then
     echo "containerID: $cid"
     echo "docker start $cid"
-    docker start "$cid"
-    docker ps
+    docker start "$cid" || return 1
+    docker ps || return 1
   else
-    echo "container not running!"
+    echo "container does not exist!" >&2
+    return 1
   fi
 }
 
 stop() {
-  docker_ps
+  docker_ps || return 1
   if [ -n "$cid" ]; then
     echo "containerID: $cid"
     echo "docker stop $cid"
-    docker stop "$cid"
-    docker ps
+    docker stop "$cid" || return 1
+    docker ps || return 1
   else
-    echo "container not running!"
+    echo "container does not exist!" >&2
+    return 1
   fi
 }
 
 rm_container() {
-  stop
-  if [ -n "$cid" ]; then
-    echo "containerID: $cid"
-    echo "docker rm $cid"
-    docker rm "$cid"
-    docker_ps
-  else
-    echo "image not exists!"
-  fi
+  stop || return 1
+  echo "containerID: $cid"
+  echo "docker rm $cid"
+  docker rm "$cid" || return 1
+  docker_ps || return 1
 }
 
 log() {
-  docker_ps
+  docker_ps || return 1
 
   if [ -n "$cid" ]; then
     echo "containerID: $cid"
-    docker exec -it "$cid" tail -100f "$BASE_DIR/$LOG_FILE"
+    docker exec -it "$cid" tail -100f "$BASE_DIR/$LOG_FILE" || return 1
   else
-    echo "container not exists!"
+    echo "container does not exist!" >&2
+    return 1
   fi
 
 }

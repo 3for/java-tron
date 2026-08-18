@@ -151,6 +151,8 @@ Remove the container without deleting the image or persisted host data:
 bash docker.sh --rm
 ```
 
+The lifecycle commands return a non-zero status when the target container does not exist, the container cannot be queried, or the underlying Docker operation fails. This allows service managers and automation scripts to detect failures reliably.
+
 ## Build an image
 
 `--build` selects `Dockerfile` on x86_64/amd64 and `arm64/Dockerfile` on arm64/aarch64. When the selected Dockerfile is not present, the script downloads it from the java-tron `develop` branch.

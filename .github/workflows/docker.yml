@@ -162,11 +162,14 @@ jobs:
         run: |
           bash -n docker/docker.sh
           bash -n docker/tests/docker-sh-test.sh
+          bash -n docker/tests/docker-lifecycle-test.sh
           bash -n docker/tests/vmoptions-test.sh
-          shellcheck docker/docker.sh docker/tests/docker-sh-test.sh docker/tests/vmoptions-test.sh
+          shellcheck docker/docker.sh docker/tests/docker-sh-test.sh docker/tests/docker-lifecycle-test.sh docker/tests/vmoptions-test.sh
 
-      - name: Test docker.sh build arguments
-        run: bash docker/tests/docker-sh-test.sh
+      - name: Test docker.sh
+        run: |
+          bash docker/tests/docker-sh-test.sh
+          bash docker/tests/docker-lifecycle-test.sh
 
       - name: Check Dockerfiles with local context
         run: |

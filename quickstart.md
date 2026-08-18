@@ -17,7 +17,6 @@ Install Docker and the Docker Compose plugin from the official documentation:
 
 - [Docker Engine on Linux](https://docs.docker.com/engine/install/)
 - [Docker Desktop on macOS](https://docs.docker.com/desktop/setup/install/mac-install/)
-- [Docker Desktop on Windows](https://docs.docker.com/desktop/setup/install/windows-install/)
 
 A Mainnet FullNode requires at least 8 CPU cores and 16 GB of memory. Stable and production deployments require additional memory, SSD capacity, and network bandwidth. See the [Mainnet hardware requirements](README.md#hardware-requirements-for-mainnet) before deploying a node.
 
