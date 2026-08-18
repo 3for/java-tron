@@ -7,6 +7,7 @@ DOCKER_SCRIPT="$REPOSITORY_ROOT/docker/docker.sh"
 TEST_TMP=$(mktemp -d)
 MOCK_BIN="$TEST_TMP/bin"
 SOURCE_ROOT="$TEST_TMP/source"
+SOURCE_WITHOUT_DOCKERFILE="$TEST_TMP/source-without-dockerfile"
 STANDALONE_DIR="$TEST_TMP/standalone"
 DOCKER_LOG="$TEST_TMP/docker-args"
 DOCKER_CONTEXT_LOG="$TEST_TMP/docker-context"
@@ -18,8 +19,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$MOCK_BIN" "$SOURCE_ROOT" "$TEST_TMP/config" \
+mkdir -p "$MOCK_BIN" "$SOURCE_ROOT/docker/arm64" "$TEST_TMP/config" \
+  "$SOURCE_WITHOUT_DOCKERFILE" \
   "$TEST_TMP/external-data/config" "$TEST_TMP/relative-data/config"
+cp "$REPOSITORY_ROOT/docker/Dockerfile" "$SOURCE_ROOT/docker/Dockerfile"
+cp "$REPOSITORY_ROOT/docker/arm64/Dockerfile" "$SOURCE_ROOT/docker/arm64/Dockerfile"
 touch "$SOURCE_ROOT/.env"
 touch "$TEST_TMP/config/main_net_config.conf"
 touch "$TEST_TMP/config/test_net_config.conf"
@@ -147,6 +151,7 @@ MOCK_GRADLEW
 
 chmod +x "$MOCK_BIN/docker" "$MOCK_BIN/uname" "$MOCK_BIN/unzip" \
   "$MOCK_BIN/curl" "$SOURCE_ROOT/gradlew"
+cp "$SOURCE_ROOT/gradlew" "$SOURCE_WITHOUT_DOCKERFILE/gradlew"
 
 assert_argument() {
   local expected="$1"
@@ -247,6 +252,8 @@ run_build() {
 
 run_standalone_build() {
   local architecture="$1"
+  local working_directory="$2"
+  shift 2
   mkdir -p "$STANDALONE_DIR"
   cp "$DOCKER_SCRIPT" "$STANDALONE_DIR/docker.sh"
   : > "$DOCKER_LOG"
@@ -254,14 +261,14 @@ run_standalone_build() {
   : > "$DOCKER_ENV_LOG"
   : > "$DOWNLOAD_LOG"
   (
-    cd -- "$TEST_TMP"
+    cd -- "$working_directory"
     PATH="$MOCK_BIN:$PATH" \
       MOCK_ARCH="$architecture" \
       DOCKER_MOCK_LOG="$DOCKER_LOG" \
       DOCKER_MOCK_CONTEXT_LOG="$DOCKER_CONTEXT_LOG" \
       DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
       DOWNLOAD_MOCK_LOG="$DOWNLOAD_LOG" \
-      bash "$STANDALONE_DIR/docker.sh" --build
+      bash "$STANDALONE_DIR/docker.sh" --build "$@"
   )
 }
 
@@ -356,7 +363,7 @@ if [[ "$remote_output" != *"Local working-tree changes are not included"* ]]; th
   exit 1
 fi
 
-run_standalone_build x86_64 >/dev/null
+run_standalone_build x86_64 "$TEST_TMP" >/dev/null
 if ! grep -Fqx -- \
   "https://raw.githubusercontent.com/tronprotocol/java-tron/master/docker/Dockerfile|$STANDALONE_DIR/Dockerfile" \
   "$DOWNLOAD_LOG"; then
@@ -367,6 +374,30 @@ fi
 assert_argument "SOURCE_REF=master"
 assert_context_only_dockerfile
 assert_buildkit_enabled
+
+rm -f "$STANDALONE_DIR/Dockerfile"
+run_standalone_build x86_64 "$SOURCE_ROOT" --source local >/dev/null
+if grep -Fq -- "/tronprotocol/java-tron/master/docker/Dockerfile" "$DOWNLOAD_LOG"; then
+  echo "The standalone local build downloaded a Dockerfile instead of using the checkout" >&2
+  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
+  exit 1
+fi
+assert_argument "--target"
+assert_argument "local"
+assert_context_file "./Dockerfile"
+assert_context_file "./java-tron/bin/FullNode"
+assert_buildkit_enabled
+
+if missing_dockerfile_output=$(run_standalone_build \
+  x86_64 "$SOURCE_WITHOUT_DOCKERFILE" --source local 2>&1); then
+  echo "A local build without a checkout Dockerfile unexpectedly succeeded" >&2
+  exit 1
+fi
+if [[ "$missing_dockerfile_output" != *"local Dockerfile does not exist"* ]]; then
+  echo "The missing local Dockerfile failure was unclear:" >&2
+  echo "$missing_dockerfile_output" >&2
+  exit 1
+fi
 
 run_build x86_64 "$SOURCE_ROOT" --source local >/dev/null
 assert_argument "--target"

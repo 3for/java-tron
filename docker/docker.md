@@ -217,7 +217,7 @@ From a java-tron checkout, use `--source local` to compile the current working t
 bash docker/docker.sh --build --source local
 ```
 
-In local mode, `docker.sh` runs the Gradle `:framework:distZip` task on the host, extracts the resulting distribution into a temporary directory, and adds the Mainnet configuration file. Only that staged distribution and the selected Dockerfile are sent to the Docker daemon; the source checkout, node database, environment files, and local keys are not part of the Docker build context.
+In local mode, `docker.sh` runs the Gradle `:framework:distZip` task on the host, uses the architecture-specific Dockerfile from the same checkout, extracts the resulting distribution into a temporary directory, and adds the Mainnet configuration file. The build fails instead of downloading a Dockerfile when the checkout does not contain the expected file. Only the staged distribution and local Dockerfile are sent to the Docker daemon; the rest of the source checkout, node database, environment files, and local keys are not part of the Docker build context.
 
 The two architecture-specific Dockerfiles each provide `local` and `remote` BuildKit targets. `docker.sh` selects the appropriate target and supplies its required minimal context. A plain Dockerfile build defaults to the historical `remote` target, but direct `local` target builds require callers to stage the distribution as `java-tron/` first.
 

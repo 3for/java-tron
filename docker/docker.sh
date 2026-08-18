@@ -579,12 +579,6 @@ build() {
       ;;
   esac
 
-  dockerfile_path="$script_dir/$dockerfile_relative"
-  if [ ! -f "$dockerfile_path" ]; then
-    echo "$dockerfile_relative does not exist; downloading it."
-    download_file "$JAVA_TRON_DOCKER_REPOSITORY/$dockerfile_relative" "$dockerfile_path" || return 1
-  fi
-
   if [ "$source_mode" = "local" ]; then
     if [ -x "$(pwd)/gradlew" ]; then
       source_root=$(pwd)
@@ -597,8 +591,19 @@ build() {
       echo "Run this command from the repository root or use docker/docker.sh from a checkout."
       return 1
     fi
+
+    dockerfile_path="$source_root/docker/$dockerfile_relative"
+    if [ ! -f "$dockerfile_path" ]; then
+      echo "build: local Dockerfile does not exist: $dockerfile_path" >&2
+      return 1
+    fi
     build_local_image "$source_root" "$dockerfile_path"
   else
+    dockerfile_path="$script_dir/$dockerfile_relative"
+    if [ ! -f "$dockerfile_path" ]; then
+      echo "$dockerfile_relative does not exist; downloading it."
+      download_file "$JAVA_TRON_DOCKER_REPOSITORY/$dockerfile_relative" "$dockerfile_path" || return 1
+    fi
     build_remote_image "$dockerfile_path" "$source_repository" "$source_ref"
   fi
 }
