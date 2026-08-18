@@ -106,6 +106,11 @@ jobs:
 
           while IFS= read -r path; do
             case "$path" in
+              docker/tests/vmoptions-test.sh)
+                fast=true
+                amd64=true
+                arm64=true
+                ;;
               docker/docker.sh|docker/tests/*)
                 fast=true
                 ;;
@@ -157,7 +162,8 @@ jobs:
         run: |
           bash -n docker/docker.sh
           bash -n docker/tests/docker-sh-test.sh
-          shellcheck docker/docker.sh docker/tests/docker-sh-test.sh
+          bash -n docker/tests/vmoptions-test.sh
+          shellcheck docker/docker.sh docker/tests/docker-sh-test.sh docker/tests/vmoptions-test.sh
 
       - name: Test docker.sh build arguments
         run: bash docker/tests/docker-sh-test.sh
@@ -212,6 +218,9 @@ jobs:
       - name: Validate startup script and VM options
         run: docker run --rm --env JAVA_OPTS=-version "$IMAGE"
 
+      - name: Test JVM options file parsing
+        run: bash docker/tests/vmoptions-test.sh "$IMAGE"
+
   build-arm64:
     name: Build Docker image (arm64)
     needs: [changes, script-check]
@@ -251,6 +260,9 @@ jobs:
 
       - name: Validate startup script and VM options
         run: docker run --rm --env JAVA_OPTS=-version "$IMAGE"
+
+      - name: Test JVM options file parsing
+        run: bash docker/tests/vmoptions-test.sh "$IMAGE"
 
   gate:
     name: Docker CI Gate

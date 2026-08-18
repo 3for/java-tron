@@ -10,6 +10,7 @@ build
 # log
 logs
 consensus-logs
+/gc.log
 
 # lombok
 out
