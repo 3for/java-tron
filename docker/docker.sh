@@ -50,7 +50,10 @@ UPDATE_CONFIG=true
 LOG_FILE="logs/tron.log"
 
 JAVA_TRON_DOCKER_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/java-tron/develop/docker"
+JAVA_TRON_SOURCE_REPOSITORY="https://github.com/tronprotocol/java-tron.git"
+JAVA_TRON_SOURCE_REF="master"
 CONFIG_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/tron-deployment/master"
+DOCKER_SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "warning: docker must be installed, please install docker first."
@@ -293,16 +296,69 @@ run() {
 
 build() {
   local architecture
+  local context
   local dockerfile
+  local dockerfile_path
+  local dockerfile_relative
+  local script_dir
+  local source_mode="remote"
+  local source_ref="$JAVA_TRON_SOURCE_REF"
+  local source_repository="$JAVA_TRON_SOURCE_REPOSITORY"
+  local source_ref_set=false
+  local source_repository_set=false
 
-  echo 'docker build'
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --source)
+        if [ $# -lt 2 ]; then
+          echo "build: arg $1 requires a value"
+          return 1
+        fi
+        if [[ "$2" != "local" && "$2" != "remote" ]]; then
+          echo "build: source $2 is not valid; expected local or remote"
+          return 1
+        fi
+        source_mode=$2
+        shift 2
+        ;;
+      --source-ref)
+        if [ $# -lt 2 ]; then
+          echo "build: arg $1 requires a value"
+          return 1
+        fi
+        source_ref=$2
+        source_ref_set=true
+        shift 2
+        ;;
+      --source-repository)
+        if [ $# -lt 2 ]; then
+          echo "build: arg $1 requires a value"
+          return 1
+        fi
+        source_repository=$2
+        source_repository_set=true
+        shift 2
+        ;;
+      *)
+        echo "build: arg $1 is not a valid parameter"
+        return 1
+        ;;
+    esac
+  done
+
+  if [ "$source_mode" = "local" ] && { [ "$source_ref_set" = true ] || [ "$source_repository_set" = true ]; }; then
+    echo "build: --source-ref and --source-repository can only be used with --source remote"
+    return 1
+  fi
+
+  script_dir=$DOCKER_SCRIPT_DIR
   architecture=$(uname -m)
   case "$architecture" in
     x86_64|amd64)
-      dockerfile="Dockerfile"
+      dockerfile_relative="Dockerfile"
       ;;
     arm64|aarch64)
-      dockerfile="arm64/Dockerfile"
+      dockerfile_relative="arm64/Dockerfile"
       ;;
     *)
       echo "Unsupported architecture: $architecture; expected x86_64, amd64, arm64, or aarch64."
@@ -310,11 +366,39 @@ build() {
       ;;
   esac
 
-  if [ ! -f "$dockerfile" ]; then
-    echo "$dockerfile does not exist; downloading it."
-    download_file "$JAVA_TRON_DOCKER_REPOSITORY/$dockerfile" "$dockerfile" || return 1
+  dockerfile_path="$script_dir/$dockerfile_relative"
+  if [ ! -f "$dockerfile_path" ]; then
+    echo "$dockerfile_relative does not exist; downloading it."
+    download_file "$JAVA_TRON_DOCKER_REPOSITORY/$dockerfile_relative" "$dockerfile_path" || return 1
   fi
-  docker build --file "$dockerfile" -t "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" .
+
+  if [ "$source_mode" = "local" ]; then
+    if [ -x "$(pwd)/gradlew" ]; then
+      context=$(pwd)
+    elif [ -x "$script_dir/gradlew" ]; then
+      context=$script_dir
+    elif [ -x "$script_dir/../gradlew" ]; then
+      context=$(cd -- "$script_dir/.." >/dev/null 2>&1 && pwd)
+    else
+      echo "build: unable to find a java-tron checkout for local source"
+      echo "Run this command from the repository root or use docker/docker.sh from a checkout."
+      return 1
+    fi
+    echo "Building java-tron from local source: $context"
+  else
+    context=$script_dir
+    echo "Building remote java-tron source '$source_ref' from $source_repository."
+    echo "Local working-tree changes are not included; use --source local to include them."
+  fi
+
+  dockerfile=$dockerfile_path
+  docker build \
+    --file "$dockerfile" \
+    --build-arg "SOURCE_MODE=$source_mode" \
+    --build-arg "SOURCE_REPOSITORY=$source_repository" \
+    --build-arg "SOURCE_REF=$source_ref" \
+    -t "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
+    "$context"
 }
 
 pull() {

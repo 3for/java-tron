@@ -67,7 +67,9 @@ For production deployment, snapshot synchronization, JVM tuning, and upgrade pro
 
 Source builds require the JDK matching the CPU architecture: JDK 8 on x86_64/amd64 and JDK 17 on ARM64/aarch64. Follow [Building the Source Code](README.md#building-the-source-code) to build the current checkout.
 
-To build and test Docker images for amd64 or arm64, use the Gradle Docker tooling in `tron-docker`. The Dockerfiles under this repository's `docker/` directory clone a remote java-tron branch and therefore do not build the current working tree.
+To build a development image from the current working tree, run `bash docker/docker.sh --build --source local` from the repository root. The legacy `--build` command without source options continues to build the remote `master` branch. See the [Docker shell guide](docker/docker.md#build-an-image) for source-selection options.
+
+For dedicated amd64 and arm64 image build and test tooling, use the Gradle Docker tooling in `tron-docker`.
 
 ## Run a Super Representative node
 

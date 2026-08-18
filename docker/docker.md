@@ -155,7 +155,37 @@ bash docker.sh --rm
 
 `--build` selects `Dockerfile` on x86_64/amd64 and `arm64/Dockerfile` on arm64/aarch64. When the selected Dockerfile is not present, the script downloads it from the java-tron `develop` branch.
 
-The Dockerfiles clone and compile the remote java-tron `master` branch; they do not build source code from the current working tree.
+For backward compatibility, `--build` without source options clones and compiles the remote java-tron `master` branch. Local working-tree changes are not included:
+
+```shell
+bash docker.sh --build
+```
+
+Use `--source-ref` to build another remote branch or tag. `--source-repository` can select another public Git repository:
+
+```shell
+bash docker.sh --build \
+    --source remote \
+    --source-ref develop
+```
+
+From a java-tron checkout, use `--source local` to compile the current working tree, including uncommitted changes that are not excluded by `.dockerignore`:
+
+```shell
+bash docker/docker.sh --build --source local
+```
+
+The local build can also be invoked directly from the repository root:
+
+```shell
+docker build \
+    --file docker/Dockerfile \
+    --build-arg SOURCE_MODE=local \
+    --tag tronprotocol/java-tron:local \
+    .
+```
+
+Use `docker/arm64/Dockerfile` instead on arm64/aarch64. The Dockerfiles use a separate builder stage so that the source tree is not retained in the runtime image.
 
 To change the local image name, edit these variables in `docker.sh`:
 
@@ -165,17 +195,14 @@ DOCKER_IMAGES="java-tron"
 DOCKER_TARGET="1.0"
 ```
 
-Then build the image:
-
-```shell
-bash docker.sh --build
-```
-
 ## Options
 
 | Option | Description |
 | --- | --- |
-| `--build` | Build a local image for the host architecture. |
+| `--build` | Build an image for the host architecture. Defaults to remote `master` source for backward compatibility. |
+| `--source local\|remote` | Select the source for `--build`. Default: `remote`. |
+| `--source-ref REF` | Select the remote branch or tag for `--build`. Default: `master`. |
+| `--source-repository URL` | Select the public remote Git repository for `--build`. |
 | `--pull` | Pull the configured image from Docker Hub. |
 | `--run` | Create and start a container. |
 | `--start` | Start the existing stopped container. |
