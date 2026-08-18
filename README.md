@@ -83,6 +83,7 @@ The java-tron project comes with several runnable artifacts and helper scripts f
 | **`Toolkit.jar`** | Node management utility (generated in `build/libs/`): partition, prune, copy, convert DBs; shadow-fork tool. [Usage](https://tronprotocol.github.io/documentation-en/using_javatron/toolkit/#toolkit-a-java-tron-node-maintenance-suite) |
 | **`start.sh`**          | Quick start script (x86_64, JDK 8) to download/build/run `FullNode.jar`. See the tool [guide](./shell.md). |
 | **`start.sh.simple`**   | Quick start script template (ARM64, JDK 17). See usage notes inside the script. |
+| **`docker/docker.sh`**  | Bash helper for building or pulling an image and managing a single FullNode container. See the [Docker Shell Guide](docker/docker.md). |
 
 # Running java-tron
 

@@ -7,6 +7,7 @@ DOCKER_SCRIPT="$REPOSITORY_ROOT/docker/docker.sh"
 TEST_TMP=$(mktemp -d)
 MOCK_BIN="$TEST_TMP/bin"
 SOURCE_ROOT="$TEST_TMP/source"
+STANDALONE_DIR="$TEST_TMP/standalone"
 DOCKER_LOG="$TEST_TMP/docker-args"
 DOCKER_CONTEXT_LOG="$TEST_TMP/docker-context"
 DOCKER_ENV_LOG="$TEST_TMP/docker-env"
@@ -241,6 +242,26 @@ run_build() {
   )
 }
 
+run_standalone_build() {
+  local architecture="$1"
+  mkdir -p "$STANDALONE_DIR"
+  cp "$DOCKER_SCRIPT" "$STANDALONE_DIR/docker.sh"
+  : > "$DOCKER_LOG"
+  : > "$DOCKER_CONTEXT_LOG"
+  : > "$DOCKER_ENV_LOG"
+  : > "$DOWNLOAD_LOG"
+  (
+    cd -- "$TEST_TMP"
+    PATH="$MOCK_BIN:$PATH" \
+      MOCK_ARCH="$architecture" \
+      DOCKER_MOCK_LOG="$DOCKER_LOG" \
+      DOCKER_MOCK_CONTEXT_LOG="$DOCKER_CONTEXT_LOG" \
+      DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
+      DOWNLOAD_MOCK_LOG="$DOWNLOAD_LOG" \
+      bash "$STANDALONE_DIR/docker.sh" --build
+  )
+}
+
 run_node() {
   : > "$DOCKER_LOG"
   : > "$DOWNLOAD_LOG"
@@ -330,6 +351,18 @@ if [[ "$remote_output" != *"Local working-tree changes are not included"* ]]; th
   echo "The backward-compatible remote build notice is missing." >&2
   exit 1
 fi
+
+run_standalone_build x86_64 >/dev/null
+if ! grep -Fqx -- \
+  "https://raw.githubusercontent.com/tronprotocol/java-tron/master/docker/Dockerfile|$STANDALONE_DIR/Dockerfile" \
+  "$DOWNLOAD_LOG"; then
+  echo "The standalone build did not download its Dockerfile from master" >&2
+  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
+  exit 1
+fi
+assert_argument "SOURCE_REF=master"
+assert_context_only_dockerfile
+assert_buildkit_enabled
 
 run_build x86_64 "$SOURCE_ROOT" --source local >/dev/null
 assert_argument "--target"

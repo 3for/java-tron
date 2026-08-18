@@ -1,6 +1,6 @@
 # Docker Shell Guide
 
-This guide covers the `docker.sh` workflow maintained in the java-tron repository. It provides the `tronprotocol/java-tron` image on Docker Hub and a Bash helper for building or pulling an image and operating a single FullNode container. The `latest` image is built from the java-tron `master` branch.
+This guide covers the `docker.sh` workflow maintained in the java-tron repository. The Bash helper can build an image locally, pull the `tronprotocol/java-tron` image from Docker Hub, and operate a single FullNode container.
 
 For Docker Compose deployments, multi-node private networks, and dedicated image build and test tooling, use the [tron-docker repository](https://github.com/tronprotocol/tron-docker). The two workflows are maintained independently; their commands, configuration, and defaults are not interchangeable.
 
@@ -18,10 +18,10 @@ Do not invoke the script with `sh`. The script uses Bash-specific syntax.
 Use `docker/docker.sh` from a java-tron checkout, or download it separately:
 
 ```shell
-wget https://raw.githubusercontent.com/tronprotocol/java-tron/develop/docker/docker.sh
+wget https://raw.githubusercontent.com/tronprotocol/java-tron/master/docker/docker.sh
 ```
 
-All examples below assume that `docker.sh` is in the current directory.
+The standalone download follows the stable `master` workflow. To test changes from `develop` or an uncommitted working tree, use `docker/docker.sh` from the corresponding java-tron checkout instead. All examples below assume that `docker.sh` is in the current directory.
 
 ### Pull the image
 

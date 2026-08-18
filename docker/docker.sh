@@ -93,7 +93,7 @@ UPDATE_CONFIG=false
 
 LOG_FILE="logs/tron.log"
 
-JAVA_TRON_DOCKER_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/java-tron/develop/docker"
+JAVA_TRON_DOCKER_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/java-tron/master/docker"
 JAVA_TRON_SOURCE_REPOSITORY="https://github.com/tronprotocol/java-tron.git"
 JAVA_TRON_SOURCE_REF="master"
 CONFIG_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/tron-deployment/master"

@@ -6,8 +6,9 @@ Choose the workflow that matches your goal. Production node operation, local sma
 | --- | --- |
 | Build or run java-tron directly | [java-tron README](README.md) |
 | Run a single FullNode with the Bash helper | [java-tron Docker shell guide](docker/docker.md) |
+| Build a development image from the current checkout | [java-tron Docker shell guide](docker/docker.md#build-an-image) |
 | Run a FullNode with Docker Compose | [tron-docker single-node guide](https://github.com/tronprotocol/tron-docker/tree/main/single_node) |
-| Build and test a java-tron image | [tron-docker image guide](https://github.com/tronprotocol/tron-docker/tree/main/tools/docker) |
+| Build and test release or multi-architecture images | [tron-docker image guide](https://github.com/tronprotocol/tron-docker/tree/main/tools/docker) |
 | Create a multi-node private network | [tron-docker private-network guide](https://github.com/tronprotocol/tron-docker/tree/main/private_net) |
 | Test smart contracts locally | [TronBox Runtime Environment](https://hub.docker.com/r/tronbox/tre) |
 
@@ -68,7 +69,7 @@ Source builds require `unzip` and the JDK matching the CPU architecture: JDK 8 o
 
 To build a development image from the current working tree, run `bash docker/docker.sh --build --source local` from the repository root. This builds the distribution on the host and sends only a temporary distribution-only context to Docker. The legacy `--build` command without source options continues to build the remote `master` branch. See the [Docker shell guide](docker/docker.md#build-an-image) for source-selection options.
 
-For dedicated amd64 and arm64 image build and test tooling, use the Gradle Docker tooling in `tron-docker`.
+For release-oriented and multi-architecture image build and test tooling, use the Gradle Docker tooling in `tron-docker`.
 
 ## Run a Super Representative node
 
