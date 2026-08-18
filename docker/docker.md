@@ -99,6 +99,18 @@ bash docker.sh --run --net main \
     -c /java-tron/custom.conf
 ```
 
+## FullNode arguments
+
+Use `--` to end `docker.sh` option parsing and pass all remaining arguments unchanged to FullNode. For example, to explicitly keep P2P enabled:
+
+```shell
+bash docker.sh --run --net main -- --p2p-disable false
+```
+
+Options before `--` configure the Docker helper; options after it are passed to `./bin/FullNode`. Use the helper's `-c` option for the configuration path instead of passing a second `-c` after `--`.
+
+Witness options such as `-w` and `--witness-address` can also be passed after `--`. This helper does not by itself provide the key protection, monitoring, backup, and upgrade procedures required for a production Super Representative deployment. Follow the [Starting a Block Production Node](https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#starting-a-block-production-node) guide, and prefer an encrypted keystore and password over storing the block-signing private key in plaintext configuration.
+
 By default, the script mounts persistent directories relative to the shell's current working directory when `docker.sh` is invoked, not relative to the script file:
 
 ```text
@@ -237,3 +249,4 @@ DOCKER_TARGET="1.0"
 | `--data-dir PATH` | Store the default `config` and `output-directory` mounts under this host path. Default: invocation directory. |
 | `--memory LIMIT` | Set the container memory limit. Default: `16g`. |
 | `--jvm-opts "OPTIONS"` | Replace the memory-related JVM options supplied by `docker.sh`. |
+| `-- FULLNODE_ARGS...` | Pass all remaining arguments unchanged to FullNode. |

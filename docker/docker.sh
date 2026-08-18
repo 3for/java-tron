@@ -47,6 +47,7 @@ Run options:
   -e NAME=VALUE, --env NAME=VALUE
                                   Set an environment variable; repeatable
   -c CONTAINER_PATH              Use a custom configuration file
+  -- [FULLNODE_ARGS...]          Pass remaining arguments to FullNode
 EOF
 }
 
@@ -234,6 +235,7 @@ run() {
   local -a port_args=()
   local -a environment_args=()
   local -a tron_args=()
+  local -a fullnode_args=()
   local custom_config=false
 
   while [ $# -gt 0 ]; do
@@ -325,6 +327,11 @@ run() {
         jvm_opts=$2
         shift 2
         ;;
+      --)
+        shift
+        fullnode_args=("$@")
+        break
+        ;;
       *)
         echo "run: arg $1 is not a valid parameter"
         return 1
@@ -382,7 +389,8 @@ run() {
     "${environment_args[@]}" \
     --restart always \
     "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
-    "${tron_args[@]}"
+    "${tron_args[@]}" \
+    "${fullnode_args[@]}"
 }
 
 build_local_image() (

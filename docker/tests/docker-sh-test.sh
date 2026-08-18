@@ -175,6 +175,21 @@ assert_argument_count() {
   fi
 }
 
+assert_trailing_arguments() {
+  local expected
+  local actual
+  expected=$(printf '%s\n' "$@")
+  actual=$(tail -n "$#" "$DOCKER_LOG")
+  if [ "$actual" != "$expected" ]; then
+    echo "Unexpected trailing docker arguments:" >&2
+    echo "Expected:" >&2
+    printf '  %s\n' "$@" >&2
+    echo "Actual:" >&2
+    printf '%s\n' "$actual" | sed 's/^/  /' >&2
+    exit 1
+  fi
+}
+
 assert_context_file() {
   local expected="$1"
   if ! grep -Fqx -- "$expected" "$DOCKER_CONTEXT_LOG"; then
@@ -411,7 +426,8 @@ run_node -c /java-tron/custom.conf \
   -e TZ=UTC \
   --env FEATURE_FLAG=enabled \
   --memory 32g \
-  --jvm-opts "-Xms4g -Xmx18g -XX:MaxDirectMemorySize=2g" >/dev/null
+  --jvm-opts "-Xms4g -Xmx18g -XX:MaxDirectMemorySize=2g" \
+  -- --p2p-disable false --log-config "/java-tron/log configs/logback.xml" >/dev/null
 assert_argument "8090:8090"
 assert_argument "50051:50051"
 assert_argument "28888:18888"
@@ -430,6 +446,14 @@ assert_argument "FEATURE_FLAG=enabled"
 assert_argument "32g"
 assert_argument "JAVA_OPTS=-Xms4g -Xmx18g -XX:MaxDirectMemorySize=2g"
 assert_argument "/java-tron/custom.conf"
+assert_trailing_arguments \
+  "tronprotocol/java-tron:latest" \
+  "-c" \
+  "/java-tron/custom.conf" \
+  "--p2p-disable" \
+  "false" \
+  "--log-config" \
+  "/java-tron/log configs/logback.xml"
 assert_argument_count "-p" 4
 assert_argument_count "-v" 4
 assert_argument_count "--env" 3
@@ -466,6 +490,13 @@ done
 expect_run_failure "expected main, test, or private" --net unsupported
 expect_run_failure "must be true or false" --update-config sometimes
 expect_run_failure "is not a valid parameter" --unknown
+
+run_node -c /java-tron/custom.conf -- --unknown-fullnode-option >/dev/null
+assert_trailing_arguments \
+  "tronprotocol/java-tron:latest" \
+  "-c" \
+  "/java-tron/custom.conf" \
+  "--unknown-fullnode-option"
 
 set +e
 duplicate_output=$(MOCK_CONTAINER_EXISTS=true run_node -c /java-tron/custom.conf 2>&1)
