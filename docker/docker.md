@@ -1,6 +1,8 @@
 # Docker Shell Guide
 
-java-tron provides the `tronprotocol/java-tron` image on Docker Hub and a Bash script for common image and container operations. The `latest` image is built from the java-tron `master` branch.
+This guide covers the `docker.sh` workflow maintained in the java-tron repository. It provides the `tronprotocol/java-tron` image on Docker Hub and a Bash helper for building or pulling an image and operating a single FullNode container. The `latest` image is built from the java-tron `master` branch.
+
+For Docker Compose deployments, multi-node private networks, and dedicated image build and test tooling, use the [tron-docker repository](https://github.com/tronprotocol/tron-docker). The two workflows are maintained independently; their commands, configuration, and defaults are not interchangeable.
 
 ## Prerequisites
 

@@ -16,6 +16,7 @@
 
 ## Table of Contents
 
+- [Quick Start](quickstart.md)
 - [What’s TRON?](#whats-tron)
 - [Building the Source Code](#building-the-source-code)
 - [Executables](#executables)
