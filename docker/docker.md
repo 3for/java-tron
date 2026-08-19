@@ -101,13 +101,13 @@ bash docker.sh --run --net main \
 
 ## FullNode arguments
 
-Use `--` to end `docker.sh` option parsing and pass all remaining arguments unchanged to FullNode. For example, to explicitly keep P2P enabled:
+Use `--` to end `docker.sh` option parsing and pass remaining arguments through to FullNode. `docker.sh` keeps those argument boundaries when it calls `docker run`, and the generated `bin/FullNode` script forwards each one to Java without word-splitting, including values that contain spaces. For example, to explicitly keep P2P enabled:
 
 ```shell
 bash docker.sh --run --net main -- --p2p-disable false
 ```
 
-Options before `--` configure the Docker helper; options after it are passed to `./bin/FullNode`. Use the helper's `-c` option for the configuration path instead of passing a second `-c` after `--`.
+Options before `--` configure the Docker helper; options after it become `./bin/FullNode` arguments. Use the helper's `-c` option for the configuration path instead of passing a second `-c` after `--`. The start script still consumes a `-jvm '{...}'` pair before invoking Java; every other FullNode argument is forwarded intact.
 
 Witness options such as `-w` and `--witness-address` can also be passed after `--`. Do not pass `--private-key` or `--password`: command arguments may be visible in process listings and are retained in Docker container metadata. This helper does not by itself provide the secret delivery, key protection, monitoring, backup, and upgrade procedures required for a production Super Representative deployment. Follow the [Starting a Block Production Node](https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#starting-a-block-production-node) guide, use an encrypted keystore, and provide its password through the production deployment's secret-management mechanism.
 

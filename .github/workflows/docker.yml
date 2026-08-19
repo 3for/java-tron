@@ -172,12 +172,14 @@ jobs:
           bash -n docker/tests/docker-sh-run-smoke.sh
           bash -n docker/tests/vmoptions-test.sh
           bash -n docker/tests/verify-runtime-image.sh
-          shellcheck docker/docker.sh docker/tests/docker-sh-test.sh docker/tests/docker-lifecycle-test.sh docker/tests/docker-sh-run-smoke.sh docker/tests/vmoptions-test.sh docker/tests/verify-runtime-image.sh
+          bash -n docker/tests/unix-start-script-test.sh
+          shellcheck docker/docker.sh docker/tests/docker-sh-test.sh docker/tests/docker-lifecycle-test.sh docker/tests/docker-sh-run-smoke.sh docker/tests/vmoptions-test.sh docker/tests/verify-runtime-image.sh docker/tests/unix-start-script-test.sh
 
       - name: Test docker.sh
         run: |
           bash docker/tests/docker-sh-test.sh
           bash docker/tests/docker-lifecycle-test.sh
+          bash docker/tests/unix-start-script-test.sh
 
       - name: Check Dockerfiles with distribution context
         run: |
