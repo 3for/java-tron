@@ -36,6 +36,13 @@ Build options:
   --source-ref REF               Select a remote branch or tag
   --source-repository URL        Select a remote Git repository
 
+Common options:
+  --image NAME[:TAG]             Image for --pull, --build, or --run.
+                                 JAVA_TRON_IMAGE can set the same value.
+                                 Defaults: pull and run latest; build local.
+  --container-name NAME          Container name for --run, --start, --stop,
+                                 --log, and --rm. Default: tronprotocol-java-tron.
+
 Run options:
   --net main|test|private        Select the network configuration
   --update-config true|false     Refresh the selected configuration
@@ -65,8 +72,10 @@ fi
 BASE_DIR="/java-tron"
 DOCKER_REPOSITORY="tronprotocol"
 DOCKER_IMAGES="java-tron"
-# latest or version
-DOCKER_TARGET="latest"
+CONTAINER_NAME="$DOCKER_REPOSITORY-$DOCKER_IMAGES"
+PULL_IMAGE_DEFAULT="$DOCKER_REPOSITORY/$DOCKER_IMAGES:latest"
+BUILD_IMAGE_DEFAULT="$DOCKER_REPOSITORY/$DOCKER_IMAGES:local"
+IMAGE_OVERRIDE="${JAVA_TRON_IMAGE:-}"
 
 HOST_HTTP_PORT=8090
 HOST_RPC_PORT=50051
@@ -121,7 +130,7 @@ if [ "${BASH_REMATCH[1]}" -lt 23 ]; then
 fi
 
 docker_ps() {
-  if ! containerID=$(docker ps -aq --filter "name=^/$DOCKER_REPOSITORY-$DOCKER_IMAGES$"); then
+  if ! containerID=$(docker ps -aq --filter "name=^/${CONTAINER_NAME}$"); then
     echo "failed to query the java-tron container" >&2
     cid=""
     return 1
@@ -129,9 +138,73 @@ docker_ps() {
   cid=$containerID
 }
 
+valid_container_name() {
+  [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]]
+}
+
+set_container_name() {
+  local command_name="$1"
+  local value="$2"
+
+  if ! valid_container_name "$value"; then
+    echo "$command_name: invalid container name: $value" >&2
+    return 1
+  fi
+  CONTAINER_NAME=$value
+}
+
+apply_container_name_args() {
+  local command_name="$1"
+  shift
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --container-name)
+        if [ $# -lt 2 ]; then
+          echo "$command_name: arg $1 requires a value"
+          return 1
+        fi
+        set_container_name "$command_name" "$2" || return 1
+        shift 2
+        ;;
+      *)
+        echo "$command_name: arg $1 is not a valid parameter"
+        return 1
+        ;;
+    esac
+  done
+}
+
+image_exists() {
+  docker image inspect "$1" >/dev/null 2>&1
+}
+
+selected_image() {
+  if [ -n "$IMAGE_OVERRIDE" ]; then
+    printf '%s\n' "$IMAGE_OVERRIDE"
+    return
+  fi
+
+  case "$1" in
+    pull|run)
+      printf '%s\n' "$PULL_IMAGE_DEFAULT"
+      ;;
+    build)
+      printf '%s\n' "$BUILD_IMAGE_DEFAULT"
+      ;;
+    *)
+      echo "selected_image: unknown command $1" >&2
+      return 1
+      ;;
+  esac
+}
+
 docker_image() {
-  if docker image inspect "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" >/dev/null 2>&1; then
-    image="$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET"
+  local ref
+
+  ref=$(selected_image run) || return 1
+  if [ -n "$ref" ] && image_exists "$ref"; then
+    image=$ref
   else
     image=""
   fi
@@ -346,37 +419,6 @@ prepare_runtime_directories() {
 }
 
 run() {
-  docker_ps || return 1
-  if [ -n "$cid" ]; then
-    echo "container $DOCKER_REPOSITORY-$DOCKER_IMAGES already exists (ID: $cid)." >&2
-    echo "Use --start to reuse it, or --rm before creating a new container." >&2
-    return 1
-  fi
-
-  docker_image
-
-  if [ -z "$image" ]; then
-    if [ ! -t 0 ]; then
-      echo "run: no java-tron image found; pull one with --pull or build one with --build" >&2
-      return 1
-    fi
-
-    echo 'warning: no java-tron mirror image, do you need to get the mirror image?[y/n]'
-    read -r need
-
-    if [[ $need == 'y' || $need == 'yes' ]]; then
-      pull || return 1
-      docker_image
-      if [ -z "$image" ]; then
-        echo "run: image is still unavailable after pull" >&2
-        return 1
-      fi
-    else
-      echo "warning: no mirror image found, go ahead and download a mirror."
-      return 1
-    fi
-  fi
-
   local docker_memory="$DOCKER_MEMORY"
   local jvm_opts="$JVM_OPTS"
   local jvm_opts_replaced=false
@@ -490,6 +532,22 @@ run() {
         jvm_opts_replaced=true
         shift 2
         ;;
+      --image)
+        if [ $# -lt 2 ]; then
+          echo "run: arg $1 requires a value"
+          return 1
+        fi
+        IMAGE_OVERRIDE=$2
+        shift 2
+        ;;
+      --container-name)
+        if [ $# -lt 2 ]; then
+          echo "run: arg $1 requires a value"
+          return 1
+        fi
+        set_container_name run "$2" || return 1
+        shift 2
+        ;;
       --)
         shift
         fullnode_args=("$@")
@@ -501,6 +559,41 @@ run() {
         ;;
     esac
   done
+
+  docker_ps || return 1
+  if [ -n "$cid" ]; then
+    echo "container $CONTAINER_NAME already exists (ID: $cid)." >&2
+    echo "Use --start to reuse it, or --rm before creating a new container." >&2
+    return 1
+  fi
+
+  docker_image || return 1
+
+  if [ -z "$image" ]; then
+    if [ -n "$IMAGE_OVERRIDE" ]; then
+      echo "run: image not found: $IMAGE_OVERRIDE" >&2
+      return 1
+    fi
+    if [ ! -t 0 ]; then
+      echo "run: no java-tron image found; pull one with --pull or build one with --build" >&2
+      return 1
+    fi
+
+    echo 'warning: no java-tron mirror image, do you need to get the mirror image?[y/n]'
+    read -r need
+
+    if [[ $need == 'y' || $need == 'yes' ]]; then
+      pull || return 1
+      docker_image || return 1
+      if [ -z "$image" ]; then
+        echo "run: image is still unavailable after pull" >&2
+        return 1
+      fi
+    else
+      echo "warning: no mirror image found, go ahead and download a mirror."
+      return 1
+    fi
+  fi
 
   validate_image_user "$image" || return 1
 
@@ -556,7 +649,7 @@ run() {
     append_jdk8_direct_memory "$image" || return 1
   fi
 
-  docker run -d --name "$DOCKER_REPOSITORY-$DOCKER_IMAGES" \
+  docker run -d --name "$CONTAINER_NAME" \
     --user "$JAVA_TRON_UID:$JAVA_TRON_GID" \
     "${volume_args[@]}" \
     "${port_args[@]}" \
@@ -565,7 +658,7 @@ run() {
     "${environment_args[@]}" \
     --security-opt no-new-privileges \
     --restart always \
-    "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
+    "$image" \
     "${tron_args[@]}" \
     "${fullnode_args[@]}"
 }
@@ -618,7 +711,7 @@ build_local_image() (
   DOCKER_BUILDKIT=1 docker build \
     --target local \
     --file "$build_context/Dockerfile" \
-    -t "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
+    -t "$(selected_image build)" \
     "$build_context"
 )
 
@@ -639,7 +732,7 @@ build_remote_image() (
     --file "$build_context/Dockerfile" \
     --build-arg "SOURCE_REPOSITORY=$source_repository" \
     --build-arg "SOURCE_REF=$source_ref" \
-    -t "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
+    -t "$(selected_image build)" \
     "$build_context"
 )
 
@@ -685,6 +778,14 @@ build() {
         fi
         source_repository=$2
         source_repository_set=true
+        shift 2
+        ;;
+      --image)
+        if [ $# -lt 2 ]; then
+          echo "build: arg $1 requires a value"
+          return 1
+        fi
+        IMAGE_OVERRIDE=$2
         shift 2
         ;;
       *)
@@ -744,11 +845,32 @@ build() {
 }
 
 pull() {
-  echo "docker pull $DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET"
-  docker pull "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET"
+  local image_name
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --image)
+        if [ $# -lt 2 ]; then
+          echo "pull: arg $1 requires a value"
+          return 1
+        fi
+        IMAGE_OVERRIDE=$2
+        shift 2
+        ;;
+      *)
+        echo "pull: arg $1 is not a valid parameter"
+        return 1
+        ;;
+    esac
+  done
+
+  image_name=$(selected_image pull) || return 1
+  echo "docker pull $image_name"
+  docker pull "$image_name"
 }
 
 start() {
+  apply_container_name_args start "$@" || return 1
   docker_ps || return 1
   if [ -n "$cid" ]; then
     echo "containerID: $cid"
@@ -762,6 +884,7 @@ start() {
 }
 
 stop() {
+  apply_container_name_args stop "$@" || return 1
   docker_ps || return 1
   if [ -n "$cid" ]; then
     echo "containerID: $cid"
@@ -775,6 +898,7 @@ stop() {
 }
 
 rm_container() {
+  apply_container_name_args rm "$@" || return 1
   stop || return 1
   echo "containerID: $cid"
   echo "docker rm $cid"
@@ -783,6 +907,7 @@ rm_container() {
 }
 
 log() {
+  apply_container_name_args log "$@" || return 1
   docker_ps || return 1
 
   if [ -n "$cid" ]; then

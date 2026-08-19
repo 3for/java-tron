@@ -49,7 +49,7 @@ Run a Mainnet FullNode:
 bash docker.sh --run --net main
 ```
 
-The helper manages one container named `tronprotocol-java-tron`. Running `--run` again while that container exists returns an error; use `--start` to reuse a stopped container, or `--rm` before creating a replacement. If no local image exists, `--run` prompts before pulling when stdin is a terminal. In non-interactive environments it exits with an error; run `--pull` or `--build` first.
+The helper manages one container named `tronprotocol-java-tron` by default. Use `--container-name` to choose another name; `--start`, `--stop`, `--log`, and `--rm` accept the same option. Running `--run` again while that container exists returns an error; use `--start` to reuse a stopped container, or `--rm` before creating a replacement. If no local image exists, `--run` prompts before pulling when stdin is a terminal. In non-interactive environments it exits with an error; run `--pull` or `--build` first.
 
 Use repeatable `-p` options to change individual mappings. Defaults are retained for container ports and protocols that are not explicitly mapped, so the following command changes only the HTTP and gRPC host ports:
 
@@ -233,12 +233,18 @@ In local mode, `docker.sh` runs the Gradle `:framework:distZip` task on the host
 
 The two architecture-specific Dockerfiles each provide `local` and `remote` BuildKit targets. `docker.sh` selects the appropriate target and supplies its required minimal context. A plain Dockerfile build defaults to the historical `remote` target, but direct `local` target builds require callers to stage the distribution as `java-tron/` first.
 
-To change the local image name, edit these variables in `docker.sh`:
+`--build` tags `tronprotocol/java-tron:local` by default so a helper build does not replace a pulled `latest` image. `--pull` and `--run` default to `tronprotocol/java-tron:latest`. To start a helper-built image, pass it explicitly:
 
 ```shell
-DOCKER_REPOSITORY="your_repository"
-DOCKER_IMAGES="java-tron"
-DOCKER_TARGET="1.0"
+bash docker.sh --run --image tronprotocol/java-tron:local --net main
+```
+
+Override the image for `--pull`, `--build`, or `--run` with `--image NAME[:TAG]` or the `JAVA_TRON_IMAGE` environment variable:
+
+```shell
+bash docker.sh --build --source local --image java-tron:dev
+bash docker.sh --run --image java-tron:dev --net main
+JAVA_TRON_IMAGE=java-tron:ci-amd64 bash docker.sh --run --net private
 ```
 
 ## Options
@@ -246,12 +252,14 @@ DOCKER_TARGET="1.0"
 | Option | Description |
 | --- | --- |
 | `-h`, `--help` | Show command usage without requiring a Docker daemon. |
-| `--build` | Build an image for the host architecture. Defaults to remote `master` source for backward compatibility. |
+| `--build` | Build an image for the host architecture. Defaults to remote `master` source for backward compatibility. Tags `tronprotocol/java-tron:local` unless `--image` is set. |
 | `--source local\|remote` | Select a host-built distribution or a remote source build for `--build`. Default: `remote`. |
 | `--source-ref REF` | Select the remote branch or tag for `--build`. Default: `master`. |
 | `--source-repository URL` | Select the public remote Git repository for `--build`. |
-| `--pull` | Pull the configured image from Docker Hub. |
-| `--run` | Create and start a container. |
+| `--image NAME[:TAG]` | Select the image for `--pull`, `--build`, or `--run`. `JAVA_TRON_IMAGE` sets the same value. |
+| `--pull` | Pull the configured image from Docker Hub. Default: `tronprotocol/java-tron:latest`. |
+| `--run` | Create and start a container. Default: `tronprotocol/java-tron:latest`. Use `--image tronprotocol/java-tron:local` for a helper-built image. |
+| `--container-name NAME` | Container name for `--run`, `--start`, `--stop`, `--log`, and `--rm`. Default: `tronprotocol-java-tron`. |
 | `--start` | Start the existing stopped container. |
 | `--log` | Follow the java-tron log in the container. |
 | `--stop` | Stop the running container. |

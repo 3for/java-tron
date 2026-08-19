@@ -63,6 +63,11 @@ case "${1:-}" in
       echo "Error: No such image" >&2
       exit 1
     fi
+    image_ref="${!#}"
+    if [ -n "${MOCK_ABSENT_IMAGE:-}" ] && [ "$image_ref" = "$MOCK_ABSENT_IMAGE" ]; then
+      echo "Error: No such image" >&2
+      exit 1
+    fi
     if [ "${3:-}" = "-f" ]; then
       case "${4:-}" in
         *Architecture*)
@@ -317,6 +322,8 @@ run_node() {
       MOCK_IMAGE_ARCH="${MOCK_IMAGE_ARCH:-amd64}" \
       MOCK_IMAGE_USER="${MOCK_IMAGE_USER:-10001:10001}" \
       MOCK_IMAGE_MISSING="${MOCK_IMAGE_MISSING:-false}" \
+      MOCK_ABSENT_IMAGE="${MOCK_ABSENT_IMAGE:-}" \
+      JAVA_TRON_IMAGE="${JAVA_TRON_IMAGE:-}" \
       MOCK_CURL_FAIL="${MOCK_CURL_FAIL:-false}" \
       MOCK_CURL_EMPTY="${MOCK_CURL_EMPTY:-false}" \
       bash "$DOCKER_SCRIPT" --run "$@"
@@ -386,6 +393,7 @@ fi
 remote_output=$(run_build x86_64 "$REPOSITORY_ROOT")
 assert_argument "--target"
 assert_argument "remote"
+assert_argument "tronprotocol/java-tron:local"
 assert_argument "SOURCE_REPOSITORY=https://github.com/tronprotocol/java-tron.git"
 assert_argument "SOURCE_REF=master"
 assert_no_argument "SOURCE_MODE=remote"
@@ -489,6 +497,11 @@ expect_failure "requires a value" --source
 expect_failure "expected local or remote" --source invalid
 expect_failure "can only be used with --source remote" --source local --source-ref develop
 expect_failure "is not a valid parameter" --unknown
+expect_failure "requires a value" --image
+
+run_build x86_64 "$REPOSITORY_ROOT" --image example/java-tron:dev >/dev/null
+assert_argument "example/java-tron:dev"
+assert_no_argument "tronprotocol/java-tron:local"
 
 if output=$(
   cd -- "$REPOSITORY_ROOT"
@@ -525,7 +538,10 @@ assert_no_argument "$TEST_TMP/config:/java-tron/config"
 assert_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
 assert_argument "$TEST_TMP/logs:/java-tron/logs"
 assert_argument "/java-tron/config/main_net_config.conf"
+assert_argument "--name"
+assert_argument "tronprotocol-java-tron"
 assert_argument "tronprotocol/java-tron:latest"
+assert_no_argument "tronprotocol/java-tron:local"
 assert_argument_count "-p" 4
 assert_argument_count "-v" 3
 assert_argument_count "--env" 1
@@ -705,7 +721,7 @@ if compgen -G "$TEST_TMP/config/main_net_config.conf.tmp.*" >/dev/null; then
   exit 1
 fi
 
-for option in -v -p -e --env -c --net --update-config --memory --jvm-opts --data-dir; do
+for option in -v -p -e --env -c --net --update-config --memory --jvm-opts --data-dir --image --container-name; do
   expect_run_failure "requires a value" "$option"
 done
 expect_run_failure "expected main, test, or private" --net unsupported
@@ -722,6 +738,26 @@ assert_trailing_arguments \
   "-c" \
   "/java-tron/custom.conf" \
   "--unknown-fullnode-option"
+
+run_node --image example/java-tron:ci -c /java-tron/custom.conf >/dev/null
+assert_argument "example/java-tron:ci"
+assert_no_argument "tronprotocol/java-tron:local"
+
+run_node --container-name java-tron-smoke-ci -c /java-tron/custom.conf >/dev/null
+assert_argument "--name"
+assert_argument "java-tron-smoke-ci"
+assert_no_argument "tronprotocol-java-tron"
+expect_run_failure "invalid container name" --container-name "-bad" -c /java-tron/custom.conf
+
+JAVA_TRON_IMAGE=example/java-tron:from-env run_node -c /java-tron/custom.conf >/dev/null
+assert_argument "example/java-tron:from-env"
+
+run_node --image tronprotocol/java-tron:local -c /java-tron/custom.conf >/dev/null
+assert_argument "tronprotocol/java-tron:local"
+assert_no_argument "tronprotocol/java-tron:latest"
+
+MOCK_IMAGE_MISSING=true expect_run_failure "image not found: missing/java-tron:tag" \
+  --image missing/java-tron:tag -c /java-tron/custom.conf
 
 set +e
 duplicate_output=$(MOCK_CONTAINER_EXISTS=true run_node -c /java-tron/custom.conf 2>&1)
