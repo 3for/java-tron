@@ -141,6 +141,8 @@ bash docker.sh --run --net main --data-dir /var/lib/java-tron
 
 This produces `/var/lib/java-tron/config` (still mounted read-only at `/java-tron/config`), `/var/lib/java-tron/output-directory`, and `/var/lib/java-tron/logs` host mounts. The default data directory is the current working directory, so running `--run` from a checkout writes `config/`, `output-directory/`, and `logs/` into that tree. Use `--data-dir` to keep those runtime files out of the Git worktree. Persisting `logs` also keeps `tron.log` available after the container is removed.
 
+The data directory itself may be a symbolic link, and `docker.sh` resolves it to its physical directory before creating mounts. The managed `config`, `output-directory`, and `logs` paths underneath it must be real directories and must not be symbolic links. To place the node data on another disk, point `--data-dir` at that disk or at a data-directory link instead of linking an individual managed path. Keep the resolved data directory in a trusted location that other users cannot replace while the helper is running.
+
 ## Memory and JVM options
 
 These memory defaults come from `docker.sh`, not from the image or the packaged `java-tron.vmoptions` file. A plain `docker run` or `bin/FullNode` invocation without the helper still uses the JVM ergonomics default of about 25% of visible memory.

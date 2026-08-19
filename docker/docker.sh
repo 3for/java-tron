@@ -270,6 +270,65 @@ check_download_config() {
   fi
 }
 
+normalize_data_directory() {
+  local requested_directory="$1"
+  local normalized_directory
+
+  if [[ "$requested_directory" != /* ]]; then
+    requested_directory="$(pwd)/$requested_directory"
+  fi
+
+  if [ -e "$requested_directory" ] && [ ! -d "$requested_directory" ]; then
+    echo "run: data directory is not a directory: $requested_directory" >&2
+    return 1
+  fi
+  if [ -L "$requested_directory" ] && [ ! -d "$requested_directory" ]; then
+    echo "run: data directory link does not resolve to a directory: $requested_directory" >&2
+    return 1
+  fi
+
+  mkdir -p "$requested_directory" || return 1
+  if [ ! -d "$requested_directory" ]; then
+    echo "run: data directory is not a directory: $requested_directory" >&2
+    return 1
+  fi
+
+  if ! normalized_directory=$(cd -P -- "$requested_directory" >/dev/null 2>&1 && pwd -P); then
+    echo "run: failed to resolve data directory: $requested_directory" >&2
+    return 1
+  fi
+  printf '%s\n' "$normalized_directory"
+}
+
+assert_managed_directory() {
+  local directory="$1"
+
+  if [ -L "$directory" ]; then
+    echo "run: managed path must not be a symbolic link: $directory" >&2
+    return 1
+  fi
+  if [ ! -d "$directory" ]; then
+    echo "run: managed path is not a directory: $directory" >&2
+    return 1
+  fi
+}
+
+prepare_managed_directory() {
+  local directory="$1"
+
+  if [ -L "$directory" ]; then
+    echo "run: managed path must not be a symbolic link: $directory" >&2
+    return 1
+  fi
+  if [ -e "$directory" ] && [ ! -d "$directory" ]; then
+    echo "run: managed path is not a directory: $directory" >&2
+    return 1
+  fi
+
+  mkdir -p "$directory" || return 1
+  assert_managed_directory "$directory"
+}
+
 has_port_mapping() {
   local expected_port="$1"
   local expected_protocol="$2"
@@ -354,6 +413,8 @@ prepare_runtime_directories() {
   local -a mount_args=()
   local -a host_directories=()
   local -a container_directories=()
+  local -a initialize_mount_args=()
+  local -a initialize_host_directories=()
   local -a initialize_directories=()
   shift
 
@@ -362,11 +423,7 @@ prepare_runtime_directories() {
     container_directory="$2"
     shift 2
 
-    if [ -e "$host_directory" ] && [ ! -d "$host_directory" ]; then
-      echo "run: runtime path is not a directory: $host_directory" >&2
-      return 1
-    fi
-    mkdir -p "$host_directory" || return 1
+    prepare_managed_directory "$host_directory" || return 1
     if ! first_entry=$(find "$host_directory" -mindepth 1 -maxdepth 1 -print -quit); then
       echo "run: failed to inspect runtime directory: $host_directory" >&2
       return 1
@@ -376,16 +433,26 @@ prepare_runtime_directories() {
     host_directories+=("$host_directory")
     container_directories+=("$container_directory")
     if [ -z "$first_entry" ]; then
+      initialize_mount_args+=("-v" "$host_directory:$container_directory")
+      initialize_host_directories+=("$host_directory")
       initialize_directories+=("$container_directory")
     fi
   done
 
   if [ ${#initialize_directories[@]} -gt 0 ]; then
+    for host_directory in "${initialize_host_directories[@]}"; do
+      assert_managed_directory "$host_directory" || return 1
+    done
+
     if ! docker run --rm \
       --user 0:0 \
       --security-opt no-new-privileges \
+      --network none \
+      --read-only \
+      --cap-drop ALL \
+      --cap-add CHOWN \
       --entrypoint chown \
-      "${mount_args[@]}" \
+      "${initialize_mount_args[@]}" \
       "$image_ref" \
       "$JAVA_TRON_UID:$JAVA_TRON_GID" \
       "${initialize_directories[@]}"; then
@@ -393,6 +460,10 @@ prepare_runtime_directories() {
       return 1
     fi
   fi
+
+  for host_directory in "${host_directories[@]}"; do
+    assert_managed_directory "$host_directory" || return 1
+  done
 
   if docker run --rm \
     --security-opt no-new-privileges \
@@ -434,6 +505,8 @@ run() {
   local -a fullnode_args=()
   local -a default_runtime_directories=()
   local custom_config=false
+  local default_config_mount=false
+  local runtime_directory_index
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -597,12 +670,18 @@ run() {
 
   validate_image_user "$image" || return 1
 
-  if [[ "$data_dir" != /* ]]; then
-    data_dir="$(pwd)/$data_dir"
-  fi
+  data_dir=$(normalize_data_directory "$data_dir") || return 1
   config_directory="$data_dir/config"
   output_directory="$data_dir/output-directory"
   logs_directory="$data_dir/logs"
+
+  if ! has_volume_mount "/java-tron/config" "${volume_args[@]}"; then
+    default_config_mount=true
+  fi
+
+  if [ "$custom_config" = false ] || [ "$default_config_mount" = true ]; then
+    prepare_managed_directory "$config_directory" || return 1
+  fi
 
   if [ "$custom_config" = false ]; then
     if [ "$UPDATE_CONFIG" = true ]; then
@@ -612,7 +691,7 @@ run() {
     fi
   fi
 
-  if ! has_volume_mount "/java-tron/config" "${volume_args[@]}"; then
+  if [ "$default_config_mount" = true ]; then
     volume_args+=("-v" "$config_directory:/java-tron/config:ro")
   fi
   if ! has_volume_mount "/java-tron/output-directory" "${volume_args[@]}"; then
@@ -648,6 +727,15 @@ run() {
   if [ "$jvm_opts_replaced" = false ]; then
     append_jdk8_direct_memory "$image" || return 1
   fi
+
+  if [ "$default_config_mount" = true ]; then
+    assert_managed_directory "$config_directory" || return 1
+  fi
+  for ((runtime_directory_index=0;
+       runtime_directory_index<${#default_runtime_directories[@]};
+       runtime_directory_index+=2)); do
+    assert_managed_directory "${default_runtime_directories[$runtime_directory_index]}" || return 1
+  done
 
   docker run -d --name "$CONTAINER_NAME" \
     --user "$JAVA_TRON_UID:$JAVA_TRON_GID" \

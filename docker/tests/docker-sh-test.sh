@@ -5,11 +5,13 @@ TEST_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
 REPOSITORY_ROOT=$(cd -- "$TEST_DIR/../.." >/dev/null 2>&1 && pwd)
 DOCKER_SCRIPT="$REPOSITORY_ROOT/docker/docker.sh"
 TEST_TMP=$(mktemp -d)
+TEST_TMP_PHYSICAL=$(cd -P -- "$TEST_TMP" >/dev/null 2>&1 && pwd -P)
 MOCK_BIN="$TEST_TMP/bin"
 SOURCE_ROOT="$TEST_TMP/source"
 SOURCE_WITHOUT_DOCKERFILE="$TEST_TMP/source-without-dockerfile"
 STANDALONE_DIR="$TEST_TMP/standalone"
 DOCKER_LOG="$TEST_TMP/docker-args"
+DOCKER_RUN_LOG="$TEST_TMP/docker-run-history"
 DOCKER_CONTEXT_LOG="$TEST_TMP/docker-context"
 DOCKER_ENV_LOG="$TEST_TMP/docker-env"
 DOWNLOAD_LOG="$TEST_TMP/downloads"
@@ -90,6 +92,7 @@ case "${1:-}" in
     ;;
   run)
     printf '%s\n' "$@" > "$DOCKER_MOCK_LOG"
+    printf '%s\n' "$@" >> "$DOCKER_MOCK_RUN_LOG"
     previous=""
     for argument in "$@"; do
       if [ "$previous" = "--entrypoint" ] \
@@ -216,6 +219,18 @@ assert_argument_count() {
   fi
 }
 
+assert_run_argument_count() {
+  local expected="$1"
+  local count="$2"
+  local actual
+  actual=$(grep -Fxc -- "$expected" "$DOCKER_RUN_LOG" || true)
+  if [ "$actual" -ne "$count" ]; then
+    echo "Expected docker run argument '$expected' $count times, got $actual" >&2
+    sed 's/^/  /' "$DOCKER_RUN_LOG" >&2
+    exit 1
+  fi
+}
+
 assert_trailing_arguments() {
   local expected
   local actual
@@ -308,11 +323,13 @@ run_standalone_build() {
 
 run_node() {
   : > "$DOCKER_LOG"
+  : > "$DOCKER_RUN_LOG"
   : > "$DOWNLOAD_LOG"
   (
     cd -- "$TEST_TMP"
     PATH="$MOCK_BIN:$PATH" \
       DOCKER_MOCK_LOG="$DOCKER_LOG" \
+      DOCKER_MOCK_RUN_LOG="$DOCKER_RUN_LOG" \
       DOCKER_MOCK_CONTEXT_LOG="$DOCKER_CONTEXT_LOG" \
       DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
       DOWNLOAD_MOCK_LOG="$DOWNLOAD_LOG" \
@@ -533,10 +550,10 @@ assert_argument "10001:10001"
 assert_argument "--security-opt"
 assert_argument "no-new-privileges"
 assert_no_argument "--cap-drop"
-assert_argument "$TEST_TMP/config:/java-tron/config:ro"
-assert_no_argument "$TEST_TMP/config:/java-tron/config"
-assert_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
-assert_argument "$TEST_TMP/logs:/java-tron/logs"
+assert_argument "$TEST_TMP_PHYSICAL/config:/java-tron/config:ro"
+assert_no_argument "$TEST_TMP_PHYSICAL/config:/java-tron/config"
+assert_argument "$TEST_TMP_PHYSICAL/output-directory:/java-tron/output-directory"
+assert_argument "$TEST_TMP_PHYSICAL/logs:/java-tron/logs"
 assert_argument "/java-tron/config/main_net_config.conf"
 assert_argument "--name"
 assert_argument "tronprotocol-java-tron"
@@ -545,6 +562,13 @@ assert_no_argument "tronprotocol/java-tron:local"
 assert_argument_count "-p" 4
 assert_argument_count "-v" 3
 assert_argument_count "--env" 1
+assert_run_argument_count "--network" 1
+assert_run_argument_count "none" 1
+assert_run_argument_count "--read-only" 1
+assert_run_argument_count "--cap-drop" 1
+assert_run_argument_count "ALL" 1
+assert_run_argument_count "--cap-add" 1
+assert_run_argument_count "CHOWN" 1
 if [ -s "$DOWNLOAD_LOG" ]; then
   echo "--update-config false unexpectedly downloaded an existing configuration" >&2
   exit 1
@@ -559,18 +583,66 @@ MOCK_IMAGE_USER=root expect_run_failure \
   "must run as UID:GID 10001:10001" -c /java-tron/custom.conf
 
 run_node --data-dir "$TEST_TMP/external-data" >/dev/null
-assert_argument "$TEST_TMP/external-data/config:/java-tron/config:ro"
-assert_no_argument "$TEST_TMP/external-data/config:/java-tron/config"
-assert_argument "$TEST_TMP/external-data/output-directory:/java-tron/output-directory"
-assert_argument "$TEST_TMP/external-data/logs:/java-tron/logs"
-assert_no_argument "$TEST_TMP/config:/java-tron/config"
-assert_no_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
+assert_argument "$TEST_TMP_PHYSICAL/external-data/config:/java-tron/config:ro"
+assert_no_argument "$TEST_TMP_PHYSICAL/external-data/config:/java-tron/config"
+assert_argument "$TEST_TMP_PHYSICAL/external-data/output-directory:/java-tron/output-directory"
+assert_argument "$TEST_TMP_PHYSICAL/external-data/logs:/java-tron/logs"
+assert_no_argument "$TEST_TMP_PHYSICAL/config:/java-tron/config"
+assert_no_argument "$TEST_TMP_PHYSICAL/output-directory:/java-tron/output-directory"
 
 run_node --data-dir relative-data >/dev/null
-assert_argument "$TEST_TMP/relative-data/config:/java-tron/config:ro"
-assert_no_argument "$TEST_TMP/relative-data/config:/java-tron/config"
-assert_argument "$TEST_TMP/relative-data/output-directory:/java-tron/output-directory"
-assert_argument "$TEST_TMP/relative-data/logs:/java-tron/logs"
+assert_argument "$TEST_TMP_PHYSICAL/relative-data/config:/java-tron/config:ro"
+assert_no_argument "$TEST_TMP_PHYSICAL/relative-data/config:/java-tron/config"
+assert_argument "$TEST_TMP_PHYSICAL/relative-data/output-directory:/java-tron/output-directory"
+assert_argument "$TEST_TMP_PHYSICAL/relative-data/logs:/java-tron/logs"
+
+DATA_DIR_TARGET="$TEST_TMP/data-dir-target"
+DATA_DIR_LINK="$TEST_TMP/data-dir-link"
+mkdir -p "$DATA_DIR_TARGET"
+ln -s "$DATA_DIR_TARGET" "$DATA_DIR_LINK"
+run_node --data-dir "$DATA_DIR_LINK" -c /java-tron/custom.conf >/dev/null
+assert_argument "$TEST_TMP_PHYSICAL/data-dir-target/config:/java-tron/config:ro"
+assert_argument "$TEST_TMP_PHYSICAL/data-dir-target/output-directory:/java-tron/output-directory"
+assert_argument "$TEST_TMP_PHYSICAL/data-dir-target/logs:/java-tron/logs"
+assert_no_argument "$DATA_DIR_LINK/output-directory:/java-tron/output-directory"
+
+LEAF_LINK_TARGET="$TEST_TMP/managed-leaf-target"
+mkdir -p "$LEAF_LINK_TARGET/existing-entry"
+for managed_leaf in config output-directory logs; do
+  MANAGED_LINK_DATA="$TEST_TMP/managed-link-$managed_leaf"
+  mkdir -p "$MANAGED_LINK_DATA"
+  if [ "$managed_leaf" = logs ]; then
+    mkdir -p "$MANAGED_LINK_DATA/output-directory"
+  fi
+  ln -s "$LEAF_LINK_TARGET" "$MANAGED_LINK_DATA/$managed_leaf"
+  expect_run_failure "managed path must not be a symbolic link" \
+    --data-dir "$MANAGED_LINK_DATA" -c /java-tron/custom.conf
+  if [ -s "$DOCKER_RUN_LOG" ]; then
+    echo "A managed leaf symlink reached docker run: $managed_leaf" >&2
+    sed 's/^/  /' "$DOCKER_RUN_LOG" >&2
+    exit 1
+  fi
+done
+
+DANGLING_LINK_DATA="$TEST_TMP/managed-link-dangling"
+mkdir -p "$DANGLING_LINK_DATA"
+ln -s "$TEST_TMP/missing-managed-target" "$DANGLING_LINK_DATA/output-directory"
+expect_run_failure "managed path must not be a symbolic link" \
+  --data-dir "$DANGLING_LINK_DATA" -c /java-tron/custom.conf
+if [ -s "$DOCKER_RUN_LOG" ]; then
+  echo "A dangling managed leaf symlink reached docker run" >&2
+  sed 's/^/  /' "$DOCKER_RUN_LOG" >&2
+  exit 1
+fi
+
+PARTIAL_DATA_DIR="$TEST_TMP/partial-runtime-data"
+mkdir -p "$PARTIAL_DATA_DIR/output-directory" "$PARTIAL_DATA_DIR/logs"
+touch "$PARTIAL_DATA_DIR/output-directory/existing-database-entry"
+run_node --data-dir "$PARTIAL_DATA_DIR" -c /java-tron/custom.conf >/dev/null
+assert_run_argument_count \
+  "$TEST_TMP_PHYSICAL/partial-runtime-data/output-directory:/java-tron/output-directory" 2
+assert_run_argument_count \
+  "$TEST_TMP_PHYSICAL/partial-runtime-data/logs:/java-tron/logs" 3
 
 run_node -c /java-tron/custom.conf \
   -p 8090:8090 \
@@ -594,9 +666,9 @@ assert_no_argument "18888:18888"
 assert_argument "/host/config.conf:/java-tron/config:ro"
 assert_argument "/host/logs:/java-tron/logs"
 assert_argument "/host/extra:/extra:ro"
-assert_no_argument "$TEST_TMP/config:/java-tron/config"
-assert_no_argument "$TEST_TMP/logs:/java-tron/logs"
-assert_argument "$TEST_TMP/output-directory:/java-tron/output-directory"
+assert_no_argument "$TEST_TMP_PHYSICAL/config:/java-tron/config"
+assert_no_argument "$TEST_TMP_PHYSICAL/logs:/java-tron/logs"
+assert_argument "$TEST_TMP_PHYSICAL/output-directory:/java-tron/output-directory"
 assert_argument "TZ=UTC"
 assert_argument "FEATURE_FLAG=enabled"
 assert_argument "32g"
@@ -624,7 +696,7 @@ assert_argument "/java-tron/config/test_net_config.conf"
 run_node --net private --update-config false >/dev/null
 assert_argument "/java-tron/config/private_net_config.conf"
 if ! grep -Fq -- \
-  "https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/private_net_config.conf|$TEST_TMP/config/private_net_config.conf.tmp." \
+  "https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/private_net_config.conf|$TEST_TMP_PHYSICAL/config/private_net_config.conf.tmp." \
   "$DOWNLOAD_LOG"; then
   echo "--update-config false did not download a missing configuration" >&2
   sed 's/^/  /' "$DOWNLOAD_LOG" >&2
@@ -637,7 +709,7 @@ fi
 
 run_node --net main --update-config true >/dev/null
 if ! grep -Fq -- \
-  "https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/main_net_config.conf|$TEST_TMP/config/main_net_config.conf.tmp." \
+  "https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/main_net_config.conf|$TEST_TMP_PHYSICAL/config/main_net_config.conf.tmp." \
   "$DOWNLOAD_LOG"; then
   echo "--update-config true did not refresh the selected configuration" >&2
   sed 's/^/  /' "$DOWNLOAD_LOG" >&2
