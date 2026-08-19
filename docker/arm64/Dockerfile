@@ -46,8 +46,39 @@ RUN apt-get update $NO_PROXY_CACHE \
 RUN groupadd --gid 10001 tron \
   && useradd --uid 10001 --gid 10001 --no-create-home --home-dir "$BASE_DIR" \
     --shell /usr/sbin/nologin tron \
-  && mkdir -p "$BASE_DIR" \
-  && chown 10001:10001 "$BASE_DIR"
+  && mkdir -p "$BASE_DIR"
+
+# Keep in sync with docker/Dockerfile. Defined here so docker.sh can build
+# from a Dockerfile-only context.
+COPY <<'LOCKDOWN' /usr/local/sbin/lockdown-java-tron
+#!/bin/sh
+set -eu
+
+base=/java-tron
+vm_options="$base/bin/java-tron.vmoptions"
+
+if [ ! -d "$base/bin" ] || [ ! -f "$vm_options" ]; then
+  echo "lockdown-java-tron: application files are missing under $base" >&2
+  exit 1
+fi
+
+chown -R root:root "$base"
+chmod 755 "$base"
+mkdir -p "$base/output-directory" "$base/logs"
+chown 10001:10001 "$base/output-directory" "$base/logs"
+chmod 755 "$base/output-directory" "$base/logs"
+
+sed -i \
+  -e 's|^-Xloggc:./gc.log|-Xloggc:/java-tron/logs/gc.log|' \
+  -e 's|:file=gc.log:|:file=/java-tron/logs/gc.log:|' \
+  "$vm_options"
+
+grep -q -- '-XX:HeapDumpPath=' "$vm_options" \
+  || echo '-XX:HeapDumpPath=/java-tron/logs' >> "$vm_options"
+grep -q -- '-XX:ErrorFile=' "$vm_options" \
+  || echo '-XX:ErrorFile=/java-tron/logs/hs_err_pid%p.log' >> "$vm_options"
+LOCKDOWN
+RUN chmod 0755 /usr/local/sbin/lockdown-java-tron
 
 WORKDIR $BASE_DIR
 
@@ -67,10 +98,12 @@ LABEL org.label-schema.build-date=$BUILD_DATE \
       org.label-schema.schema-version="1.0"
 
 FROM runtime-base AS local
-COPY --chown=10001:10001 --from=local-distribution /java-tron /java-tron
+COPY --from=local-distribution /java-tron /java-tron
+RUN /usr/local/sbin/lockdown-java-tron
 USER 10001:10001
 
 # Keep remote last so a plain BuildKit build retains the historical behavior.
 FROM runtime-base AS remote
-COPY --chown=10001:10001 --from=remote-builder /java-tron /java-tron
+COPY --from=remote-builder /java-tron /java-tron
+RUN /usr/local/sbin/lockdown-java-tron
 USER 10001:10001

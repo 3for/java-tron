@@ -112,7 +112,7 @@ jobs:
 
           while IFS= read -r path; do
             case "$path" in
-              docker/tests/vmoptions-test.sh|docker/tests/docker-sh-run-smoke.sh)
+              docker/tests/vmoptions-test.sh|docker/tests/docker-sh-run-smoke.sh|docker/tests/verify-runtime-image.sh)
                 fast=true
                 amd64=true
                 arm64=true
@@ -171,7 +171,8 @@ jobs:
           bash -n docker/tests/docker-lifecycle-test.sh
           bash -n docker/tests/docker-sh-run-smoke.sh
           bash -n docker/tests/vmoptions-test.sh
-          shellcheck docker/docker.sh docker/tests/docker-sh-test.sh docker/tests/docker-lifecycle-test.sh docker/tests/docker-sh-run-smoke.sh docker/tests/vmoptions-test.sh
+          bash -n docker/tests/verify-runtime-image.sh
+          shellcheck docker/docker.sh docker/tests/docker-sh-test.sh docker/tests/docker-lifecycle-test.sh docker/tests/docker-sh-run-smoke.sh docker/tests/vmoptions-test.sh docker/tests/verify-runtime-image.sh
 
       - name: Test docker.sh
         run: |
@@ -235,38 +236,7 @@ jobs:
           fi
 
       - name: Verify runtime image
-        run: |
-          set -euo pipefail
-          test "$(docker image inspect --format '{{.Config.User}}' "$IMAGE")" = "10001:10001"
-          docker run --rm --entrypoint sh "$IMAGE" -ec '
-            test "$(id -u)" = 10001
-            test "$(id -g)" = 10001
-            test -x /java-tron/bin/FullNode
-            test -f /java-tron/bin/java-tron.vmoptions
-            test -f /java-tron/config.conf
-            touch /java-tron/.write-test
-            rm /java-tron/.write-test
-          '
-          runtime_dir=$(mktemp -d)
-          trap 'rm -rf "$runtime_dir"' EXIT
-          mkdir -p "$runtime_dir/output-directory" "$runtime_dir/logs"
-          docker run --rm --user 0:0 --entrypoint chown \
-            -v "$runtime_dir/output-directory:/java-tron/output-directory" \
-            -v "$runtime_dir/logs:/java-tron/logs" \
-            "$IMAGE" 10001:10001 /java-tron/output-directory /java-tron/logs
-          docker run --rm --security-opt no-new-privileges --entrypoint sh \
-            -v "$runtime_dir/output-directory:/java-tron/output-directory" \
-            -v "$runtime_dir/logs:/java-tron/logs" \
-            "$IMAGE" -ec '
-              grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
-              touch /java-tron/output-directory/.write-test
-              touch /java-tron/logs/.write-test
-            '
-          test -f "$runtime_dir/output-directory/.write-test"
-          test -f "$runtime_dir/logs/.write-test"
-          version=$(docker run --rm --entrypoint java "$IMAGE" -version 2>&1)
-          echo "$version"
-          grep -Eq 'version "1\.8' <<< "$version"
+        run: bash docker/tests/verify-runtime-image.sh "$IMAGE" 'version "1\.8'
 
       - name: Validate startup script and VM options
         run: docker run --rm --env JAVA_OPTS=-version "$IMAGE"
@@ -313,38 +283,7 @@ jobs:
           fi
 
       - name: Verify runtime image
-        run: |
-          set -euo pipefail
-          test "$(docker image inspect --format '{{.Config.User}}' "$IMAGE")" = "10001:10001"
-          docker run --rm --entrypoint sh "$IMAGE" -ec '
-            test "$(id -u)" = 10001
-            test "$(id -g)" = 10001
-            test -x /java-tron/bin/FullNode
-            test -f /java-tron/bin/java-tron.vmoptions
-            test -f /java-tron/config.conf
-            touch /java-tron/.write-test
-            rm /java-tron/.write-test
-          '
-          runtime_dir=$(mktemp -d)
-          trap 'rm -rf "$runtime_dir"' EXIT
-          mkdir -p "$runtime_dir/output-directory" "$runtime_dir/logs"
-          docker run --rm --user 0:0 --entrypoint chown \
-            -v "$runtime_dir/output-directory:/java-tron/output-directory" \
-            -v "$runtime_dir/logs:/java-tron/logs" \
-            "$IMAGE" 10001:10001 /java-tron/output-directory /java-tron/logs
-          docker run --rm --security-opt no-new-privileges --entrypoint sh \
-            -v "$runtime_dir/output-directory:/java-tron/output-directory" \
-            -v "$runtime_dir/logs:/java-tron/logs" \
-            "$IMAGE" -ec '
-              grep -Eq "^NoNewPrivs:[[:space:]]+1$" /proc/self/status
-              touch /java-tron/output-directory/.write-test
-              touch /java-tron/logs/.write-test
-            '
-          test -f "$runtime_dir/output-directory/.write-test"
-          test -f "$runtime_dir/logs/.write-test"
-          version=$(docker run --rm --entrypoint java "$IMAGE" -version 2>&1)
-          echo "$version"
-          grep -Eq 'version "17\.' <<< "$version"
+        run: bash docker/tests/verify-runtime-image.sh "$IMAGE" 'version "17\.'
 
       - name: Validate startup script and VM options
         run: docker run --rm --env JAVA_OPTS=-version "$IMAGE"

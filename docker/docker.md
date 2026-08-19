@@ -121,7 +121,9 @@ By default, the script mounts persistent directories relative to the shell's cur
 
 The default configuration mount is read-only because FullNode only needs to read it. This prevents the container from persisting configuration changes onto the host. Additional `-v` options retain these defaults. A custom mount replaces a default only when it uses the same container destination; callers that explicitly replace the configuration mount control its access mode.
 
-The image runs FullNode as the non-root `tron` account with fixed UID and GID `10001:10001`. For new, empty default `output-directory` and `logs` mounts, `docker.sh` initializes the mount-point ownership and verifies that the container user can write to them. It also starts FullNode with `no-new-privileges`. Custom writable mounts supplied with `-v` must already be accessible to UID and GID `10001:10001`.
+The image runs FullNode as the non-root `tron` account with fixed UID and GID `10001:10001`. Application files under `/java-tron` (`bin/`, `lib/`, `java-tron.vmoptions`, and the baked-in `config.conf`) stay root-owned and are not writable by that user. Only `/java-tron/output-directory` and `/java-tron/logs` belong to `10001:10001`. The image points JVM GC logs, heap dumps, and `hs_err` files at `/java-tron/logs`; the packaged `java-tron.vmoptions` used outside Docker is unchanged.
+
+For new, empty default `output-directory` and `logs` mounts, `docker.sh` initializes the mount-point ownership and verifies that the container user can write to them. It also starts FullNode with `no-new-privileges`. Custom writable mounts supplied with `-v` must already be accessible to UID and GID `10001:10001`.
 
 Data written by an older root-based image may require a one-time ownership migration. Stop the node before changing ownership, then adjust the paths for the selected data directory:
 
