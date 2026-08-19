@@ -25,7 +25,7 @@ The standalone download follows the stable `master` workflow. To test changes fr
 
 ### Pull the image
 
-The image contains the java-tron distribution and a Java runtime. It also bakes in `/java-tron/config.conf` from the `tron-deployment` `master` branch at build time. `docker.sh --run` does not use that file; it passes `-c` and a host-mounted configuration instead. A plain `docker run` without `-c` reads the baked-in file, which is not pinned to the image's java-tron version.
+The image contains the java-tron distribution and a Java runtime. It also bakes in `/java-tron/config.conf` from the java-tron `master` branch's [`framework/src/main/resources/config.conf`](https://github.com/tronprotocol/java-tron/blob/master/framework/src/main/resources/config.conf) at build time. `docker.sh --run` does not use that file; it passes `-c` and a host-mounted configuration instead. A plain `docker run` without `-c` reads the baked-in file, which is not pinned to the image's java-tron version.
 
 ```shell
 bash docker.sh --pull
@@ -81,9 +81,15 @@ bash docker.sh --run --net private
 
 ## Configuration
 
-For `main`, `test`, and `private`, the script downloads the corresponding configuration file from the [tron-deployment repository](https://github.com/tronprotocol/tron-deployment). By default, an existing local configuration is retained; a missing or empty file is downloaded automatically for the initial run.
+The script downloads each network configuration from its maintained source:
 
-Configuration templates are maintained separately from java-tron. Verify that a downloaded configuration is compatible with the image version before using it in production.
+- `main`: java-tron `master` [`framework/src/main/resources/config.conf`](https://github.com/tronprotocol/java-tron/blob/master/framework/src/main/resources/config.conf)
+- `test`: nile-testnet `master` [`framework/src/main/resources/config-nile.conf`](https://github.com/tron-nile-testnet/nile-testnet/blob/master/framework/src/main/resources/config-nile.conf)
+- `private`: tron-deployment `master` [`private_net_config.conf`](https://github.com/tronprotocol/tron-deployment/blob/master/private_net_config.conf)
+
+By default, an existing local configuration is retained; a missing or empty file is downloaded automatically for the initial run.
+
+These branch-based templates can change independently of a previously built image. Verify that a downloaded configuration is compatible with the image version before using it in production.
 
 Use `--update-config true` to explicitly refresh the selected local copy before creating the container:
 

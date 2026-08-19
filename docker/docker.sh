@@ -111,7 +111,9 @@ LOG_FILE="logs/tron.log"
 JAVA_TRON_DOCKER_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/java-tron/master/docker"
 JAVA_TRON_SOURCE_REPOSITORY="https://github.com/tronprotocol/java-tron.git"
 JAVA_TRON_SOURCE_REF="master"
-CONFIG_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/tron-deployment/master"
+MAIN_NET_CONFIG_URL="https://raw.githubusercontent.com/tronprotocol/java-tron/master/framework/src/main/resources/config.conf"
+TEST_NET_CONFIG_URL="https://raw.githubusercontent.com/tron-nile-testnet/nile-testnet/master/framework/src/main/resources/config-nile.conf"
+PRIVATE_NET_CONFIG_URL="https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/private_net_config.conf"
 DOCKER_SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
 
 if ! command -v docker >/dev/null 2>&1; then
@@ -255,9 +257,26 @@ download_file() {
 download_config() {
   local config_directory="$1"
   local config_file="$2"
+  local config_url
+
+  case "$config_file" in
+    "$MAIN_NET_CONFIG_FILE")
+      config_url=$MAIN_NET_CONFIG_URL
+      ;;
+    "$TEST_NET_CONFIG_FILE")
+      config_url=$TEST_NET_CONFIG_URL
+      ;;
+    "$PRIVATE_NET_CONFIG_FILE")
+      config_url=$PRIVATE_NET_CONFIG_URL
+      ;;
+    *)
+      echo "Unsupported configuration file: $config_file" >&2
+      return 1
+      ;;
+  esac
 
   echo "Downloading $config_file"
-  download_file "$CONFIG_REPOSITORY/$config_file" "$config_directory/$config_file"
+  download_file "$config_url" "$config_directory/$config_file"
 }
 
 check_download_config() {
@@ -791,7 +810,7 @@ build_local_image() (
     return 1
   fi
 
-  download_file "$CONFIG_REPOSITORY/$MAIN_NET_CONFIG_FILE" \
+  download_file "$MAIN_NET_CONFIG_URL" \
     "$build_context/java-tron/config.conf" || return 1
   cp "$dockerfile_path" "$build_context/Dockerfile" || return 1
 

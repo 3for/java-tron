@@ -46,7 +46,7 @@ RUN git clone --depth 1 --branch "$SOURCE_REF" -- "$SOURCE_REPOSITORY" "$TMP_DIR
   && cd framework/build/distributions \
   && 7z x -y java-tron-1.0.0.zip \
   && mv java-tron-1.0.0 /java-tron \
-  && curl -fsSLo /java-tron/config.conf https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/main_net_config.conf
+  && curl -fsSLo /java-tron/config.conf https://raw.githubusercontent.com/tronprotocol/java-tron/master/framework/src/main/resources/config.conf
 
 # docker.sh creates this minimal context from a distribution built on the host.
 FROM scratch AS local-distribution

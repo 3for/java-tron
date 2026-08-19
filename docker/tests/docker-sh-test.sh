@@ -709,7 +709,7 @@ fi
 
 run_node --net main --update-config true >/dev/null
 if ! grep -Fq -- \
-  "https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/main_net_config.conf|$TEST_TMP_PHYSICAL/config/main_net_config.conf.tmp." \
+  "https://raw.githubusercontent.com/tronprotocol/java-tron/master/framework/src/main/resources/config.conf|$TEST_TMP_PHYSICAL/config/main_net_config.conf.tmp." \
   "$DOWNLOAD_LOG"; then
   echo "--update-config true did not refresh the selected configuration" >&2
   sed 's/^/  /' "$DOWNLOAD_LOG" >&2
@@ -759,6 +759,13 @@ if [[ "$empty_config_output" != *"is missing or empty"* ]]; then
 fi
 if [ "$(cat "$TEST_TMP/config/test_net_config.conf")" != "downloaded-content" ]; then
   echo "An empty configuration was treated as valid and not replaced" >&2
+  exit 1
+fi
+if ! grep -Fq -- \
+  "https://raw.githubusercontent.com/tron-nile-testnet/nile-testnet/master/framework/src/main/resources/config-nile.conf|$TEST_TMP_PHYSICAL/config/test_net_config.conf.tmp." \
+  "$DOWNLOAD_LOG"; then
+  echo "The empty Nile configuration was not downloaded from nile-testnet" >&2
+  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
   exit 1
 fi
 

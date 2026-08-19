@@ -117,6 +117,9 @@ jobs:
                 amd64=true
                 arm64=true
                 ;;
+              # Keep docker.sh-only PRs fast: mock tests cover helper behavior.
+              # Real architecture smoke runs for image-affecting changes and
+              # in the scheduled weekly build.
               docker/docker.sh|docker/tests/*)
                 fast=true
                 ;;

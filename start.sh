@@ -21,7 +21,6 @@
 FULL_NODE_DIR="FullNode"
 FULL_NODE_CONFIG_DIR="config"
 # config file
-FULL_NODE_CONFIG_MAIN_NET="main_net_config.conf"
 FULL_NODE_CONFIG_TEST_NET="test_net_config.conf"
 FULL_NODE_CONFIG_PRIVATE_NET="private_net_config.conf"
 DEFAULT_FULL_NODE_CONFIG='config.conf'
@@ -34,6 +33,9 @@ GITHUB_CLONE_TYPE='HTTPS'
 GITHUB_REPOSITORY=''
 GITHUB_REPOSITORY_HTTPS_URL='https://github.com/tronprotocol/java-tron.git'
 GITHUB_REPOSITORY_SSH_URL='git@github.com:tronprotocol/java-tron.git'
+FULL_NODE_CONFIG_MAIN_NET_URL='https://raw.githubusercontent.com/tronprotocol/java-tron/master/framework/src/main/resources/config.conf'
+FULL_NODE_CONFIG_TEST_NET_URL='https://raw.githubusercontent.com/tron-nile-testnet/nile-testnet/master/framework/src/main/resources/config-nile.conf'
+FULL_NODE_CONFIG_PRIVATE_NET_URL='https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/private_net_config.conf'
 
 # Shell option
 ALL_OPT_LENGTH=$#
@@ -192,6 +194,20 @@ download() {
   fi
 }
 
+downloadTo() {
+  local url=$1
+  local file_name=$2
+  if type wget >/dev/null 2>&1; then
+    wget -q -O "$file_name" "$url"
+  elif type curl >/dev/null 2>&1; then
+    echo "curl -fsSL -o $file_name $url"
+    curl -fsSL -o "$file_name" "$url"
+  else
+    echo 'info: no exists wget or curl, make sure the system can use the "wget" or "curl" command'
+    return 1
+  fi
+}
+
 mkdirFullNode() {
   if [ ! -d $FULL_NODE_DIR ]; then
     echo "info: create $FULL_NODE_DIR"
@@ -209,8 +225,10 @@ quickStart() {
     mkdirFullNode
     echo "info: check latest version: $full_node_version"
     echo 'info: download config'
-    download https://raw.githubusercontent.com/tronprotocol/tron-deployment/$GITHUB_BRANCH/$FULL_NODE_CONFIG_MAIN_NET $FULL_NODE_CONFIG_MAIN_NET
-    mv $FULL_NODE_CONFIG_MAIN_NET 'config.conf'
+    if ! downloadTo "$FULL_NODE_CONFIG_MAIN_NET_URL" 'config.conf'; then
+      echo 'info: failed to download Mainnet config'
+      exit 1
+    fi
 
     echo "info: download $full_node_version"
     download $RELEASE_URL/download/$full_node_version/$JAR_NAME $JAR_NAME
@@ -402,10 +420,13 @@ specifyConfig(){
   echo "info: specify the net: $1"
   local netType=$1
   local configName;
+  local configUrl;
   if [[ "$netType" = 'test' ]]; then
     configName=$FULL_NODE_CONFIG_TEST_NET
+    configUrl=$FULL_NODE_CONFIG_TEST_NET_URL
   elif [[ "$netType" = 'private' ]]; then
     configName=$FULL_NODE_CONFIG_PRIVATE_NET
+    configUrl=$FULL_NODE_CONFIG_PRIVATE_NET_URL
   else
     echo "warn: no support config $nodeType"
     exit
@@ -421,8 +442,10 @@ specifyConfig(){
   fi
 
   if [[ ! -f $FULL_NODE_CONFIG_DIR/$configName ]]; then
-    download https://raw.githubusercontent.com/tronprotocol/tron-deployment/$GITHUB_BRANCH/$configName $configName
-    mv  $configName $FULL_NODE_CONFIG_DIR/$configName
+    if ! downloadTo "$configUrl" "$FULL_NODE_CONFIG_DIR/$configName"; then
+      echo "info: failed to download $netType config"
+      exit 1
+    fi
     DEFAULT_FULL_NODE_CONFIG=$FULL_NODE_CONFIG_DIR/$configName
   fi
 }
@@ -620,4 +643,3 @@ fi
 if [[ $RUN == true ]]; then
   restart
 fi
-
