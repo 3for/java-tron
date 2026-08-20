@@ -115,11 +115,11 @@ assert_java_args_after_main \
   --log-config "/java-tron/log configs/logback.xml"
 
 run_fullnode \
-  -c /java-tron/config/main_net_config.conf \
+  -c /java-tron/config.conf \
   -jvm "{-Xms256m}" \
   --log-config "/java-tron/log configs/logback.xml"
 assert_java_args_after_main \
-  -c /java-tron/config/main_net_config.conf \
+  -c /java-tron/config.conf \
   --log-config "/java-tron/log configs/logback.xml"
 
 echo "unix start script argument quoting tests passed"

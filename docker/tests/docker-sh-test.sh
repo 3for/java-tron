@@ -21,16 +21,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$MOCK_BIN" "$SOURCE_ROOT/docker/arm64" "$TEST_TMP/config" \
+mkdir -p "$MOCK_BIN" "$SOURCE_ROOT/docker/arm64" \
+  "$SOURCE_ROOT/framework/src/main/resources" "$TEST_TMP/config" \
   "$SOURCE_WITHOUT_DOCKERFILE" \
   "$TEST_TMP/external-data/config" "$TEST_TMP/relative-data/config"
 cp "$REPOSITORY_ROOT/docker/Dockerfile" "$SOURCE_ROOT/docker/Dockerfile"
 cp "$REPOSITORY_ROOT/docker/arm64/Dockerfile" "$SOURCE_ROOT/docker/arm64/Dockerfile"
+printf 'local-source-config\n' > "$SOURCE_ROOT/framework/src/main/resources/config.conf"
 touch "$SOURCE_ROOT/.env"
-printf 'seed-config\n' > "$TEST_TMP/config/main_net_config.conf"
 printf 'seed-config\n' > "$TEST_TMP/config/test_net_config.conf"
-printf 'seed-config\n' > "$TEST_TMP/external-data/config/main_net_config.conf"
-printf 'seed-config\n' > "$TEST_TMP/relative-data/config/main_net_config.conf"
 
 cat > "$MOCK_BIN/docker" <<'MOCK_DOCKER'
 #!/bin/bash
@@ -463,6 +462,12 @@ if grep -Fq -- "/tronprotocol/java-tron/master/docker/Dockerfile" "$DOWNLOAD_LOG
   sed 's/^/  /' "$DOWNLOAD_LOG" >&2
   exit 1
 fi
+if grep -Fq -- "/tronprotocol/java-tron/master/framework/src/main/resources/config.conf" \
+  "$DOWNLOAD_LOG"; then
+  echo "The standalone local build downloaded config.conf instead of using the checkout" >&2
+  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
+  exit 1
+fi
 assert_argument "--target"
 assert_argument "local"
 assert_context_file "./Dockerfile"
@@ -550,17 +555,17 @@ assert_argument "10001:10001"
 assert_argument "--security-opt"
 assert_argument "no-new-privileges"
 assert_no_argument "--cap-drop"
-assert_argument "$TEST_TMP_PHYSICAL/config:/java-tron/config:ro"
+assert_no_argument "$TEST_TMP_PHYSICAL/config:/java-tron/config:ro"
 assert_no_argument "$TEST_TMP_PHYSICAL/config:/java-tron/config"
 assert_argument "$TEST_TMP_PHYSICAL/output-directory:/java-tron/output-directory"
 assert_argument "$TEST_TMP_PHYSICAL/logs:/java-tron/logs"
-assert_argument "/java-tron/config/main_net_config.conf"
+assert_argument "/java-tron/config.conf"
 assert_argument "--name"
 assert_argument "tronprotocol-java-tron"
 assert_argument "tronprotocol/java-tron:latest"
 assert_no_argument "tronprotocol/java-tron:local"
 assert_argument_count "-p" 4
-assert_argument_count "-v" 3
+assert_argument_count "-v" 2
 assert_argument_count "--env" 1
 assert_run_argument_count "--network" 1
 assert_run_argument_count "none" 1
@@ -573,7 +578,6 @@ if [ -s "$DOWNLOAD_LOG" ]; then
   echo "--update-config false unexpectedly downloaded an existing configuration" >&2
   exit 1
 fi
-
 MOCK_IMAGE_ARCH=arm64 run_node >/dev/null
 assert_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0"
 assert_no_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g"
@@ -583,7 +587,7 @@ MOCK_IMAGE_USER=root expect_run_failure \
   "must run as UID:GID 10001:10001" -c /java-tron/custom.conf
 
 run_node --data-dir "$TEST_TMP/external-data" >/dev/null
-assert_argument "$TEST_TMP_PHYSICAL/external-data/config:/java-tron/config:ro"
+assert_no_argument "$TEST_TMP_PHYSICAL/external-data/config:/java-tron/config:ro"
 assert_no_argument "$TEST_TMP_PHYSICAL/external-data/config:/java-tron/config"
 assert_argument "$TEST_TMP_PHYSICAL/external-data/output-directory:/java-tron/output-directory"
 assert_argument "$TEST_TMP_PHYSICAL/external-data/logs:/java-tron/logs"
@@ -591,7 +595,7 @@ assert_no_argument "$TEST_TMP_PHYSICAL/config:/java-tron/config"
 assert_no_argument "$TEST_TMP_PHYSICAL/output-directory:/java-tron/output-directory"
 
 run_node --data-dir relative-data >/dev/null
-assert_argument "$TEST_TMP_PHYSICAL/relative-data/config:/java-tron/config:ro"
+assert_no_argument "$TEST_TMP_PHYSICAL/relative-data/config:/java-tron/config:ro"
 assert_no_argument "$TEST_TMP_PHYSICAL/relative-data/config:/java-tron/config"
 assert_argument "$TEST_TMP_PHYSICAL/relative-data/output-directory:/java-tron/output-directory"
 assert_argument "$TEST_TMP_PHYSICAL/relative-data/logs:/java-tron/logs"
@@ -601,14 +605,14 @@ DATA_DIR_LINK="$TEST_TMP/data-dir-link"
 mkdir -p "$DATA_DIR_TARGET"
 ln -s "$DATA_DIR_TARGET" "$DATA_DIR_LINK"
 run_node --data-dir "$DATA_DIR_LINK" -c /java-tron/custom.conf >/dev/null
-assert_argument "$TEST_TMP_PHYSICAL/data-dir-target/config:/java-tron/config:ro"
+assert_no_argument "$TEST_TMP_PHYSICAL/data-dir-target/config:/java-tron/config:ro"
 assert_argument "$TEST_TMP_PHYSICAL/data-dir-target/output-directory:/java-tron/output-directory"
 assert_argument "$TEST_TMP_PHYSICAL/data-dir-target/logs:/java-tron/logs"
 assert_no_argument "$DATA_DIR_LINK/output-directory:/java-tron/output-directory"
 
 LEAF_LINK_TARGET="$TEST_TMP/managed-leaf-target"
 mkdir -p "$LEAF_LINK_TARGET/existing-entry"
-for managed_leaf in config output-directory logs; do
+for managed_leaf in output-directory logs; do
   MANAGED_LINK_DATA="$TEST_TMP/managed-link-$managed_leaf"
   mkdir -p "$MANAGED_LINK_DATA"
   if [ "$managed_leaf" = logs ]; then
@@ -623,6 +627,17 @@ for managed_leaf in config output-directory logs; do
     exit 1
   fi
 done
+
+MANAGED_CONFIG_LINK_DATA="$TEST_TMP/managed-link-config"
+mkdir -p "$MANAGED_CONFIG_LINK_DATA"
+ln -s "$LEAF_LINK_TARGET" "$MANAGED_CONFIG_LINK_DATA/config"
+expect_run_failure "managed path must not be a symbolic link" \
+  --data-dir "$MANAGED_CONFIG_LINK_DATA" --net test
+if [ -s "$DOCKER_RUN_LOG" ]; then
+  echo "A managed configuration symlink reached docker run" >&2
+  sed 's/^/  /' "$DOCKER_RUN_LOG" >&2
+  exit 1
+fi
 
 DANGLING_LINK_DATA="$TEST_TMP/managed-link-dangling"
 mkdir -p "$DANGLING_LINK_DATA"
@@ -707,31 +722,26 @@ if [ "$(cat "$TEST_TMP/config/private_net_config.conf")" != "downloaded-content"
   exit 1
 fi
 
-run_node --net main --update-config true >/dev/null
-if ! grep -Fq -- \
-  "https://raw.githubusercontent.com/tronprotocol/java-tron/master/framework/src/main/resources/config.conf|$TEST_TMP_PHYSICAL/config/main_net_config.conf.tmp." \
-  "$DOWNLOAD_LOG"; then
-  echo "--update-config true did not refresh the selected configuration" >&2
+MISSING_MAIN_DATA="$TEST_TMP/missing-main-data"
+run_node --data-dir "$MISSING_MAIN_DATA" --net main --update-config false >/dev/null
+assert_argument "/java-tron/config.conf"
+assert_no_argument "$TEST_TMP_PHYSICAL/missing-main-data/config:/java-tron/config:ro"
+if [ -s "$DOWNLOAD_LOG" ]; then
+  echo "The missing Mainnet configuration unexpectedly triggered a download" >&2
   sed 's/^/  /' "$DOWNLOAD_LOG" >&2
   exit 1
 fi
-if [ "$(cat "$TEST_TMP/config/main_net_config.conf")" != "downloaded-content" ]; then
-  echo "--update-config true did not replace the configuration atomically" >&2
+if [ -e "$MISSING_MAIN_DATA/config/main_net_config.conf" ]; then
+  echo "The Mainnet run left a host-side main_net_config.conf" >&2
   exit 1
 fi
 
-printf 'valid-config\n' > "$TEST_TMP/config/main_net_config.conf"
-if MOCK_CURL_FAIL=true run_node --net main --update-config true >/dev/null 2>&1; then
-  echo "A failed configuration refresh unexpectedly succeeded" >&2
-  exit 1
-fi
-if [ "$(cat "$TEST_TMP/config/main_net_config.conf")" != "valid-config" ]; then
-  echo "A failed refresh corrupted the existing configuration" >&2
-  cat "$TEST_TMP/config/main_net_config.conf" >&2
-  exit 1
-fi
-if compgen -G "$TEST_TMP/config/main_net_config.conf.tmp.*" >/dev/null; then
-  echo "A failed refresh left a temporary configuration file" >&2
+run_node --image example/java-tron:ci --net main --update-config true >/dev/null
+assert_argument "example/java-tron:ci"
+assert_argument "/java-tron/config.conf"
+if [ -s "$DOWNLOAD_LOG" ]; then
+  echo "--update-config true unexpectedly downloaded a Mainnet configuration" >&2
+  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
   exit 1
 fi
 
@@ -782,21 +792,6 @@ fi
 if [[ "$output" == *"[y/n]"* ]]; then
   echo "A missing image prompted for a pull without a TTY" >&2
   echo "$output" >&2
-  exit 1
-fi
-
-printf 'valid-config\n' > "$TEST_TMP/config/main_net_config.conf"
-if MOCK_CURL_EMPTY=true run_node --net main --update-config true >/dev/null 2>&1; then
-  echo "An empty downloaded configuration unexpectedly succeeded" >&2
-  exit 1
-fi
-if [ "$(cat "$TEST_TMP/config/main_net_config.conf")" != "valid-config" ]; then
-  echo "An empty download replaced the existing configuration" >&2
-  cat "$TEST_TMP/config/main_net_config.conf" >&2
-  exit 1
-fi
-if compgen -G "$TEST_TMP/config/main_net_config.conf.tmp.*" >/dev/null; then
-  echo "An empty download left a temporary configuration file" >&2
   exit 1
 fi
 

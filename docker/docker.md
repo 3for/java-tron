@@ -25,7 +25,7 @@ The standalone download follows the stable `master` workflow. To test changes fr
 
 ### Pull the image
 
-The image contains the java-tron distribution and a Java runtime. It also bakes in `/java-tron/config.conf` from the java-tron `master` branch's [`framework/src/main/resources/config.conf`](https://github.com/tronprotocol/java-tron/blob/master/framework/src/main/resources/config.conf) at build time. `docker.sh --run` does not use that file; it passes `-c` and a host-mounted configuration instead. A plain `docker run` without `-c` reads the baked-in file, which is not pinned to the image's java-tron version.
+The image contains the java-tron distribution and a Java runtime. It also bakes in `/java-tron/config.conf` from the same source checkout used to build the distribution: the selected remote ref for remote builds, or the local checkout for local builds. `docker.sh --run` passes that file with `-c` for Mainnet. A plain `docker run` without `-c` reads the same file directly.
 
 ```shell
 bash docker.sh --pull
@@ -81,20 +81,20 @@ bash docker.sh --run --net private
 
 ## Configuration
 
-The script downloads each network configuration from its maintained source:
+The script selects network configuration as follows:
 
-- `main`: java-tron `master` [`framework/src/main/resources/config.conf`](https://github.com/tronprotocol/java-tron/blob/master/framework/src/main/resources/config.conf)
+- `main`: uses `/java-tron/config.conf` directly from the selected image, so no host-side Mainnet configuration is created
 - `test`: nile-testnet `master` [`framework/src/main/resources/config-nile.conf`](https://github.com/tron-nile-testnet/nile-testnet/blob/master/framework/src/main/resources/config-nile.conf)
 - `private`: tron-deployment `master` [`private_net_config.conf`](https://github.com/tronprotocol/tron-deployment/blob/master/private_net_config.conf)
 
-By default, an existing local configuration is retained; a missing or empty file is downloaded automatically for the initial run.
+Test and private-network configurations are stored in the host data directory. An existing local copy is retained by default; a missing or empty file is downloaded from its maintained source.
 
-These branch-based templates can change independently of a previously built image. Verify that a downloaded configuration is compatible with the image version before using it in production.
+The test and private-network templates can change independently of a previously built image. Verify that a downloaded configuration is compatible with the image version before using it in production.
 
-Use `--update-config true` to explicitly refresh the selected local copy before creating the container:
+Use `--update-config true` to explicitly refresh a test or private-network local copy before creating the container. Mainnet always uses the configuration in the selected image, so this option has no effect with `--net main`:
 
 ```shell
-bash docker.sh --run --net main --update-config true
+bash docker.sh --run --net test --update-config true
 ```
 
 Use `-c` to select a custom configuration file. The value must be a path inside the container, so mount the host file with `-v`:
@@ -239,7 +239,7 @@ From a java-tron checkout, use `--source local` to compile the current working t
 bash docker/docker.sh --build --source local
 ```
 
-In local mode, `docker.sh` runs the Gradle `:framework:distZip` task on the host, uses the architecture-specific Dockerfile from the same checkout, extracts the resulting distribution into a temporary directory, and adds the Mainnet configuration file. The build fails instead of downloading a Dockerfile when the checkout does not contain the expected file. Only the staged distribution and local Dockerfile are sent to the Docker daemon; the rest of the source checkout, node database, environment files, and local keys are not part of the Docker build context.
+In local mode, `docker.sh` runs the Gradle `:framework:distZip` task on the host, uses the architecture-specific Dockerfile and Mainnet configuration from the same checkout, and extracts the resulting distribution into a temporary directory. The build fails instead of downloading a Dockerfile or configuration when the checkout does not contain the expected file. Only the staged distribution, configuration, and local Dockerfile are sent to the Docker daemon; the rest of the source checkout, node database, environment files, and local keys are not part of the Docker build context.
 
 The two architecture-specific Dockerfiles each provide `local` and `remote` BuildKit targets. `docker.sh` selects the appropriate target and supplies its required minimal context. A plain Dockerfile build defaults to the historical `remote` target, but direct `local` target builds require callers to stage the distribution as `java-tron/` first.
 
@@ -279,8 +279,8 @@ JAVA_TRON_IMAGE=java-tron:ci-amd64 bash docker.sh --run --net private
 | `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. Writable custom mounts must be accessible to UID:GID `10001:10001`. A replacement for `/java-tron/config` uses the caller's access mode instead of the default read-only mount. |
 | `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. JVM option environment variables are rejected; use `--jvm-opts`. |
 | `--net main\|test\|private` | Select the Mainnet, Nile Testnet, or private-network configuration. |
-| `--update-config true\|false` | Refresh the selected configuration before creating the container. Default: `false`; missing or empty files are still downloaded. |
-| `--data-dir PATH` | Store the default `config`, `output-directory`, and `logs` mounts under this host path. Default: invocation directory. The default `config` mount remains read-only in the container. |
+| `--update-config true\|false` | Refresh the selected test or private-network configuration before creating the container. Default: `false`; missing or empty files are still downloaded. This option has no effect with `--net main`. |
+| `--data-dir PATH` | Store the default runtime data under this host path. Mainnet uses only `output-directory` and `logs`; test/private also use `config`. Default: invocation directory. The managed `config` mount is read-only in the container. |
 | `--memory LIMIT` | Set the container memory limit. Default: `16g`. |
 | `--jvm-opts "OPTIONS"` | Replace the JVM options supplied by `docker.sh`. The image itself does not set these defaults. |
 | `-- FULLNODE_ARGS...` | Pass all remaining arguments unchanged to FullNode. |

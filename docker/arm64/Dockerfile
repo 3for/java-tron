@@ -10,7 +10,7 @@ ENV JAVA_HOME="/usr/lib/jvm/java-17-openjdk-arm64"
 ENV PATH="$PATH:$JAVA_HOME/bin"
 
 RUN apt-get update $NO_PROXY_CACHE \
-  && apt-get --quiet --yes install --no-install-recommends git 7zip curl ca-certificates openjdk-17-jdk-headless=17* \
+  && apt-get --quiet --yes install --no-install-recommends git 7zip ca-certificates openjdk-17-jdk-headless=17* \
   && apt-get clean \
   && rm -rf /var/cache/apt/archives/* /var/cache/apt/archives/partial/* \
   && rm -rf /var/lib/apt/lists/*
@@ -21,7 +21,7 @@ RUN git clone --depth 1 --branch "$SOURCE_REF" -- "$SOURCE_REPOSITORY" "$TMP_DIR
   && cd framework/build/distributions \
   && 7z x -y java-tron-1.0.0.zip \
   && mv java-tron-1.0.0 /java-tron \
-  && curl -4 -fsSLo /java-tron/config.conf https://raw.githubusercontent.com/tronprotocol/java-tron/master/framework/src/main/resources/config.conf
+  && cp "$TMP_DIR/java-tron/framework/src/main/resources/config.conf" /java-tron/config.conf
 
 # docker.sh creates this minimal context from a distribution built on the host.
 FROM scratch AS local-distribution

@@ -45,7 +45,7 @@ Common options:
 
 Run options:
   --net main|test|private        Select the network configuration
-  --update-config true|false     Refresh the selected configuration
+  --update-config true|false     Refresh a test/private configuration
   --data-dir PATH                Set the host runtime-data directory
   --memory LIMIT                 Set the container memory limit
   --jvm-opts "OPTIONS"           Replace docker.sh default JVM options
@@ -97,13 +97,13 @@ JVM_OPTS="-Xms2g -XX:MaxRAMPercentage=60.0"
 DEFAULT_DATA_DIR=$(pwd)
 
 CONFIG_PATH="/java-tron/config/"
-CONFIG_FILE="main_net_config.conf"
-MAIN_NET_CONFIG_FILE="main_net_config.conf"
+MAIN_NET_CONFIG_PATH="$BASE_DIR/config.conf"
+CONFIG_FILE=""
 TEST_NET_CONFIG_FILE="test_net_config.conf"
 PRIVATE_NET_CONFIG_FILE="private_net_config.conf"
 
-# Preserve an existing configuration by default. A missing or empty file is
-# downloaded for the initial run; use --update-config true to refresh it.
+# Preserve an existing test/private configuration by default. A missing or
+# empty file is downloaded; use --update-config true to refresh it.
 UPDATE_CONFIG=false
 
 LOG_FILE="logs/tron.log"
@@ -111,7 +111,6 @@ LOG_FILE="logs/tron.log"
 JAVA_TRON_DOCKER_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/java-tron/master/docker"
 JAVA_TRON_SOURCE_REPOSITORY="https://github.com/tronprotocol/java-tron.git"
 JAVA_TRON_SOURCE_REF="master"
-MAIN_NET_CONFIG_URL="https://raw.githubusercontent.com/tronprotocol/java-tron/master/framework/src/main/resources/config.conf"
 TEST_NET_CONFIG_URL="https://raw.githubusercontent.com/tron-nile-testnet/nile-testnet/master/framework/src/main/resources/config-nile.conf"
 PRIVATE_NET_CONFIG_URL="https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/private_net_config.conf"
 DOCKER_SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
@@ -260,9 +259,6 @@ download_config() {
   local config_url
 
   case "$config_file" in
-    "$MAIN_NET_CONFIG_FILE")
-      config_url=$MAIN_NET_CONFIG_URL
-      ;;
     "$TEST_NET_CONFIG_FILE")
       config_url=$TEST_NET_CONFIG_URL
       ;;
@@ -576,7 +572,7 @@ run() {
           return 1
         fi
         if [[ "$2" = "main" ]]; then
-          CONFIG_FILE=$MAIN_NET_CONFIG_FILE
+          CONFIG_FILE=""
         elif [[ "$2" = "test" ]]; then
           CONFIG_FILE=$TEST_NET_CONFIG_FILE
         elif [[ "$2" = "private" ]]; then
@@ -694,15 +690,16 @@ run() {
   output_directory="$data_dir/output-directory"
   logs_directory="$data_dir/logs"
 
-  if ! has_volume_mount "/java-tron/config" "${volume_args[@]}"; then
+  if [ "$custom_config" = false ] && [ -n "$CONFIG_FILE" ] \
+    && ! has_volume_mount "/java-tron/config" "${volume_args[@]}"; then
     default_config_mount=true
   fi
 
-  if [ "$custom_config" = false ] || [ "$default_config_mount" = true ]; then
+  if [ "$custom_config" = false ] && [ -n "$CONFIG_FILE" ]; then
     prepare_managed_directory "$config_directory" || return 1
   fi
 
-  if [ "$custom_config" = false ]; then
+  if [ "$custom_config" = false ] && [ -n "$CONFIG_FILE" ]; then
     if [ "$UPDATE_CONFIG" = true ]; then
       download_config "$config_directory" "$CONFIG_FILE" || return 1
     else
@@ -740,7 +737,11 @@ run() {
   fi
 
   if [ ${#tron_args[@]} -eq 0 ]; then
-    tron_args=("-c" "$CONFIG_PATH$CONFIG_FILE")
+    if [ -n "$CONFIG_FILE" ]; then
+      tron_args=("-c" "$CONFIG_PATH$CONFIG_FILE")
+    else
+      tron_args=("-c" "$MAIN_NET_CONFIG_PATH")
+    fi
   fi
 
   if [ "$jvm_opts_replaced" = false ]; then
@@ -810,7 +811,11 @@ build_local_image() (
     return 1
   fi
 
-  download_file "$MAIN_NET_CONFIG_URL" \
+  if [ ! -f "$source_root/framework/src/main/resources/config.conf" ]; then
+    echo "build: local configuration does not exist: $source_root/framework/src/main/resources/config.conf" >&2
+    return 1
+  fi
+  cp "$source_root/framework/src/main/resources/config.conf" \
     "$build_context/java-tron/config.conf" || return 1
   cp "$dockerfile_path" "$build_context/Dockerfile" || return 1
 
