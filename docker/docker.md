@@ -129,7 +129,7 @@ The default configuration mount is read-only because FullNode only needs to read
 
 The image runs FullNode as the non-root `tron` account with fixed UID and GID `10001:10001`. Application files under `/java-tron` (`bin/`, `lib/`, `java-tron.vmoptions`, and the baked-in `config.conf`) stay root-owned and are not writable by that user. Only `/java-tron/output-directory` and `/java-tron/logs` belong to `10001:10001`. The image points JVM GC logs, heap dumps, and `hs_err` files at `/java-tron/logs`; the packaged `java-tron.vmoptions` used outside Docker is unchanged.
 
-For new, empty default `output-directory` and `logs` mounts, `docker.sh` initializes the mount-point ownership and verifies that the container user can write to them. It also starts FullNode with `no-new-privileges`. Custom writable mounts supplied with `-v` must already be accessible to UID and GID `10001:10001`.
+For new, empty default `output-directory` and `logs` mounts, `docker.sh` initializes the mount-point ownership and verifies that the container user can write to them. For non-empty mounts, this preflight check covers the mount point and its direct children only; it does not traverse the complete database tree. It also starts FullNode with `no-new-privileges`. Custom writable mounts supplied with `-v` must already be accessible to UID and GID `10001:10001`.
 
 Data written by an older root-based image may require a one-time ownership migration. Stop the node before changing ownership, then adjust the paths for the selected data directory:
 
@@ -139,7 +139,7 @@ sudo chown -R 10001:10001 \
   /var/lib/java-tron/logs
 ```
 
-The helper deliberately does not recursively change a non-empty directory because scanning a multi-terabyte database during startup would be slow and unexpected. It fails with the migration command instead. Direct `docker run` users must prepare writable mounts themselves and should also specify `--security-opt no-new-privileges`.
+The helper deliberately does not recursively inspect or change a non-empty directory because scanning a multi-terabyte database during every startup would be slow and unexpected. A partially migrated tree can therefore pass the shallow preflight check but fail later when FullNode reaches a deeper file. Run the one-time recursive ownership migration above for data created by a root-based image. When the shallow check detects a problem, the helper fails and prints the same migration command. Direct `docker run` users must prepare writable mounts themselves and should also specify `--security-opt no-new-privileges`.
 
 Use `--data-dir` to keep these three directories in an explicit location, preferably outside the source checkout. Relative values are resolved against the invocation directory:
 
