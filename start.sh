@@ -21,7 +21,6 @@
 FULL_NODE_DIR="FullNode"
 FULL_NODE_CONFIG_DIR="config"
 # config file
-FULL_NODE_CONFIG_TEST_NET="test_net_config.conf"
 FULL_NODE_CONFIG_PRIVATE_NET="private_net_config.conf"
 DEFAULT_FULL_NODE_CONFIG='config.conf'
 JAR_NAME="FullNode.jar"
@@ -34,7 +33,6 @@ GITHUB_REPOSITORY=''
 GITHUB_REPOSITORY_HTTPS_URL='https://github.com/tronprotocol/java-tron.git'
 GITHUB_REPOSITORY_SSH_URL='git@github.com:tronprotocol/java-tron.git'
 FULL_NODE_CONFIG_MAIN_NET_URL='https://raw.githubusercontent.com/tronprotocol/java-tron/master/framework/src/main/resources/config.conf'
-FULL_NODE_CONFIG_TEST_NET_URL='https://raw.githubusercontent.com/tron-nile-testnet/nile-testnet/master/framework/src/main/resources/config-nile.conf'
 FULL_NODE_CONFIG_PRIVATE_NET_URL='https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/private_net_config.conf'
 
 # Shell option
@@ -422,14 +420,16 @@ specifyConfig(){
   local configName;
   local configUrl;
   if [[ "$netType" = 'test' ]]; then
-    configName=$FULL_NODE_CONFIG_TEST_NET
-    configUrl=$FULL_NODE_CONFIG_TEST_NET_URL
+    echo "error: Since Nile Testnet may incorporate features not yet available on the Mainnet," >&2
+    echo "build and run the node by following the nile-testnet source-code instructions:" >&2
+    echo "https://github.com/tron-nile-testnet/nile-testnet#building-the-source-code" >&2
+    exit 1
   elif [[ "$netType" = 'private' ]]; then
     configName=$FULL_NODE_CONFIG_PRIVATE_NET
     configUrl=$FULL_NODE_CONFIG_PRIVATE_NET_URL
   else
-    echo "warn: no support config $nodeType"
-    exit
+    echo "warn: no support config $netType" >&2
+    exit 1
   fi
 
   if [[ ! -d $FULL_NODE_CONFIG_DIR ]]; then

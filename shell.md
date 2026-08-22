@@ -44,9 +44,10 @@ The script is available in the java-tron project at [github](https://github.com/
   sh start.sh -cb --run
   ```
 
-* Select a supported network,default network `main`, optional network `test`,`private`
+* Select the private-network configuration; the default network is `main`.
+
   ```
-  sh start.sh --net test
+  sh start.sh --net private
   ```
 
 
@@ -79,7 +80,8 @@ The script is available in the java-tron project at [github](https://github.com/
   Specify the maximum memory of the `FullNode.jar` service in`MB`, jvm's startup maximum memory will be adjusted according to this parameter.
   
 * `--net`
-    Select test and private networks.
+
+  Select the private-network configuration. Since Nile Testnet may incorporate features not yet available on the Mainnet, build and run the node by following the [nile-testnet source-code instructions](https://github.com/tron-nile-testnet/nile-testnet#building-the-source-code) instead of using `start.sh --net test` from this repository.
 
 ### build project
 

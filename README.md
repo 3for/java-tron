@@ -136,10 +136,14 @@ tail -f ./logs/tron.log
 Use [TronScan](https://tronscan.org/#/), TRON's official block explorer, to view main network transactions, blocks, accounts, witness voting, and governance metrics, etc.
 
 ### 2. Join Nile test network
-Utilize the `-c` flag to direct the node to the configuration file corresponding to the desired network. Since Nile Testnet may incorporate features not yet available on the Mainnet, it is **strongly advised** to compile the source code following the [Building the Source Code](https://github.com/tron-nile-testnet/nile-testnet/blob/master/README.md#building-the-source-code) instructions for the Nile Testnet.
+Since Nile Testnet may incorporate features not yet available on the Mainnet, this java-tron checkout and its `start.sh` helper do not provide a Nile node startup mode. Build and run the node by following the [nile-testnet source-code instructions](https://github.com/tron-nile-testnet/nile-testnet/blob/master/README.md#building-the-source-code) instead.
 
-```bash
-java -jar ./build/libs/FullNode.jar -c config-nile.conf
+Running `start.sh --net test` from this repository fails with the following guidance:
+
+```text
+error: Since Nile Testnet may incorporate features not yet available on the Mainnet,
+build and run the node by following the nile-testnet source-code instructions:
+https://github.com/tron-nile-testnet/nile-testnet#building-the-source-code
 ```
 
 Nile resources: explorer, faucet, wallet, developer docs, and network statistics at [nileex.io](https://nileex.io/).
