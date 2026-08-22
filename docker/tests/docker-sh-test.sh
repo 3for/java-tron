@@ -29,7 +29,6 @@ cp "$REPOSITORY_ROOT/docker/Dockerfile" "$SOURCE_ROOT/docker/Dockerfile"
 cp "$REPOSITORY_ROOT/docker/arm64/Dockerfile" "$SOURCE_ROOT/docker/arm64/Dockerfile"
 printf 'local-source-config\n' > "$SOURCE_ROOT/framework/src/main/resources/config.conf"
 touch "$SOURCE_ROOT/.env"
-printf 'seed-config\n' > "$TEST_TMP/config/test_net_config.conf"
 
 cat > "$MOCK_BIN/docker" <<'MOCK_DOCKER'
 #!/bin/bash
@@ -632,7 +631,7 @@ MANAGED_CONFIG_LINK_DATA="$TEST_TMP/managed-link-config"
 mkdir -p "$MANAGED_CONFIG_LINK_DATA"
 ln -s "$LEAF_LINK_TARGET" "$MANAGED_CONFIG_LINK_DATA/config"
 expect_run_failure "managed path must not be a symbolic link" \
-  --data-dir "$MANAGED_CONFIG_LINK_DATA" --net test
+  --data-dir "$MANAGED_CONFIG_LINK_DATA" --net private
 if [ -s "$DOCKER_RUN_LOG" ]; then
   echo "A managed configuration symlink reached docker run" >&2
   sed 's/^/  /' "$DOCKER_RUN_LOG" >&2
@@ -705,9 +704,6 @@ if [ -s "$DOWNLOAD_LOG" ]; then
   exit 1
 fi
 
-run_node --net test --update-config false >/dev/null
-assert_argument "/java-tron/config/test_net_config.conf"
-
 run_node --net private --update-config false >/dev/null
 assert_argument "/java-tron/config/private_net_config.conf"
 if ! grep -Fq -- \
@@ -760,25 +756,6 @@ if compgen -G "$CONFIG_FILE_FOR_TEST.tmp.*" >/dev/null; then
   exit 1
 fi
 
-: > "$TEST_TMP/config/test_net_config.conf"
-empty_config_output=$(run_node --net test --update-config false)
-if [[ "$empty_config_output" != *"is missing or empty"* ]]; then
-  echo "An empty configuration did not report that it was missing or empty:" >&2
-  echo "$empty_config_output" >&2
-  exit 1
-fi
-if [ "$(cat "$TEST_TMP/config/test_net_config.conf")" != "downloaded-content" ]; then
-  echo "An empty configuration was treated as valid and not replaced" >&2
-  exit 1
-fi
-if ! grep -Fq -- \
-  "https://raw.githubusercontent.com/tron-nile-testnet/nile-testnet/master/framework/src/main/resources/config-nile.conf|$TEST_TMP_PHYSICAL/config/test_net_config.conf.tmp." \
-  "$DOWNLOAD_LOG"; then
-  echo "The empty Nile configuration was not downloaded from nile-testnet" >&2
-  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
-  exit 1
-fi
-
 if output=$(MOCK_IMAGE_MISSING=true run_node -c /java-tron/custom.conf </dev/null 2>&1); then
   echo "A missing image unexpectedly started a container without a TTY" >&2
   echo "$output" >&2
@@ -798,7 +775,8 @@ fi
 for option in -v -p -e --env -c --net --update-config --memory --jvm-opts --data-dir --image --container-name; do
   expect_run_failure "requires a value" "$option"
 done
-expect_run_failure "expected main, test, or private" --net unsupported
+expect_run_failure "expected main or private" --net test
+expect_run_failure "expected main or private" --net unsupported
 expect_run_failure "must be true or false" --update-config sometimes
 expect_run_failure "is not a valid parameter" --unknown
 for jvm_env_name in JAVA_OPTS FULL_NODE_OPTS JAVA_TOOL_OPTIONS _JAVA_OPTIONS JDK_JAVA_OPTIONS; do

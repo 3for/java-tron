@@ -44,8 +44,8 @@ Common options:
                                  --log, and --rm. Default: tronprotocol-java-tron.
 
 Run options:
-  --net main|test|private        Select the network configuration
-  --update-config true|false     Refresh a test/private configuration
+  --net main|private             Select the network configuration
+  --update-config true|false     Refresh the private configuration
   --data-dir PATH                Set the host runtime-data directory
   --memory LIMIT                 Set the container memory limit
   --jvm-opts "OPTIONS"           Replace docker.sh default JVM options
@@ -99,10 +99,9 @@ DEFAULT_DATA_DIR=$(pwd)
 CONFIG_PATH="/java-tron/config/"
 MAIN_NET_CONFIG_PATH="$BASE_DIR/config.conf"
 CONFIG_FILE=""
-TEST_NET_CONFIG_FILE="test_net_config.conf"
 PRIVATE_NET_CONFIG_FILE="private_net_config.conf"
 
-# Preserve an existing test/private configuration by default. A missing or
+# Preserve an existing private configuration by default. A missing or
 # empty file is downloaded; use --update-config true to refresh it.
 UPDATE_CONFIG=false
 
@@ -111,7 +110,6 @@ LOG_FILE="logs/tron.log"
 JAVA_TRON_DOCKER_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/java-tron/master/docker"
 JAVA_TRON_SOURCE_REPOSITORY="https://github.com/tronprotocol/java-tron.git"
 JAVA_TRON_SOURCE_REF="master"
-TEST_NET_CONFIG_URL="https://raw.githubusercontent.com/tron-nile-testnet/nile-testnet/master/framework/src/main/resources/config-nile.conf"
 PRIVATE_NET_CONFIG_URL="https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/private_net_config.conf"
 DOCKER_SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
 
@@ -259,9 +257,6 @@ download_config() {
   local config_url
 
   case "$config_file" in
-    "$TEST_NET_CONFIG_FILE")
-      config_url=$TEST_NET_CONFIG_URL
-      ;;
     "$PRIVATE_NET_CONFIG_FILE")
       config_url=$PRIVATE_NET_CONFIG_URL
       ;;
@@ -573,12 +568,10 @@ run() {
         fi
         if [[ "$2" = "main" ]]; then
           CONFIG_FILE=""
-        elif [[ "$2" = "test" ]]; then
-          CONFIG_FILE=$TEST_NET_CONFIG_FILE
         elif [[ "$2" = "private" ]]; then
           CONFIG_FILE=$PRIVATE_NET_CONFIG_FILE
         else
-          echo "run: network $2 is not valid; expected main, test, or private"
+          echo "run: network $2 is not valid; expected main or private"
           return 1
         fi
         shift 2

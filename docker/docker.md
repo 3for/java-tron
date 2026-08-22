@@ -67,11 +67,11 @@ bash docker.sh --run --net main -p 0.0.0.0:8090:8090
 
 Only expose HTTP or gRPC after restricting access with a firewall, trusted reverse proxy, or equivalent network controls.
 
-Run a Nile Testnet FullNode:
+### Nile Testnet nodes
 
-```shell
-bash docker.sh --run --net test
-```
+Since Nile Testnet may incorporate features not yet available on the Mainnet, it may require code that is not included in this java-tron checkout or its images. The `docker.sh` helper in this repository therefore does not provide a Nile network mode.
+
+For a Nile Docker deployment, follow the [tron-docker](https://github.com/tronprotocol/tron-docker) instructions and select the image appropriate for the current Nile release.
 
 Run a private-network FullNode:
 
@@ -84,17 +84,16 @@ bash docker.sh --run --net private
 The script selects network configuration as follows:
 
 - `main`: uses `/java-tron/config.conf` directly from the selected image, so no host-side Mainnet configuration is created
-- `test`: nile-testnet `master` [`framework/src/main/resources/config-nile.conf`](https://github.com/tron-nile-testnet/nile-testnet/blob/master/framework/src/main/resources/config-nile.conf)
 - `private`: tron-deployment `master` [`private_net_config.conf`](https://github.com/tronprotocol/tron-deployment/blob/master/private_net_config.conf)
 
-Test and private-network configurations are stored in the host data directory. An existing local copy is retained by default; a missing or empty file is downloaded from its maintained source.
+The private-network configuration is stored in the host data directory. An existing local copy is retained by default; a missing or empty file is downloaded from its maintained source.
 
-The test and private-network templates can change independently of a previously built image. Verify that a downloaded configuration is compatible with the image version before using it in production.
+The private-network template can change independently of a previously built image. Verify that a downloaded configuration is compatible with the image version before using it.
 
-Use `--update-config true` to explicitly refresh a test or private-network local copy before creating the container. Mainnet always uses the configuration in the selected image, so this option has no effect with `--net main`:
+Use `--update-config true` to explicitly refresh the private-network local copy before creating the container. Mainnet always uses the configuration in the selected image, so this option has no effect with `--net main`:
 
 ```shell
-bash docker.sh --run --net test --update-config true
+bash docker.sh --run --net private --update-config true
 ```
 
 Use `-c` to select a custom configuration file. The value must be a path inside the container, so mount the host file with `-v`:
@@ -278,9 +277,9 @@ JAVA_TRON_IMAGE=java-tron:ci-amd64 bash docker.sh --run --net private
 | `-c CONTAINER_PATH` | Use a configuration file at the specified path inside the container. |
 | `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. Writable custom mounts must be accessible to UID:GID `10001:10001`. A replacement for `/java-tron/config` uses the caller's access mode instead of the default read-only mount. |
 | `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. JVM option environment variables are rejected; use `--jvm-opts`. |
-| `--net main\|test\|private` | Select the Mainnet, Nile Testnet, or private-network configuration. |
-| `--update-config true\|false` | Refresh the selected test or private-network configuration before creating the container. Default: `false`; missing or empty files are still downloaded. This option has no effect with `--net main`. |
-| `--data-dir PATH` | Store the default runtime data under this host path. Mainnet uses only `output-directory` and `logs`; test/private also use `config`. Default: invocation directory. The managed `config` mount is read-only in the container. |
+| `--net main\|private` | Select the Mainnet or private-network configuration. Since Nile may incorporate features not yet available on the Mainnet, use the separate [nile-testnet](https://github.com/tron-nile-testnet/nile-testnet) codebase and follow [tron-docker](https://github.com/tronprotocol/tron-docker). |
+| `--update-config true\|false` | Refresh the private-network configuration before creating the container. Default: `false`; a missing or empty file is still downloaded. This option has no effect with `--net main`. |
+| `--data-dir PATH` | Store the default runtime data under this host path. Mainnet uses only `output-directory` and `logs`; private mode also uses `config`. Default: invocation directory. The managed `config` mount is read-only in the container. |
 | `--memory LIMIT` | Set the container memory limit. Default: `16g`. |
 | `--jvm-opts "OPTIONS"` | Replace the JVM options supplied by `docker.sh`. The image itself does not set these defaults. |
 | `-- FULLNODE_ARGS...` | Pass all remaining arguments unchanged to FullNode. |
