@@ -282,11 +282,15 @@ check_download_config() {
 
 normalize_data_directory() {
   local requested_directory="$1"
+  local requested_parent
   local normalized_directory
 
   if [[ "$requested_directory" != /* ]]; then
     requested_directory="$(pwd)/$requested_directory"
   fi
+  while [ "$requested_directory" != / ] && [[ "$requested_directory" == */ ]]; do
+    requested_directory=${requested_directory%/}
+  done
 
   if [ -e "$requested_directory" ] && [ ! -d "$requested_directory" ]; then
     echo "run: data directory is not a directory: $requested_directory" >&2
@@ -297,7 +301,11 @@ normalize_data_directory() {
     return 1
   fi
 
-  mkdir -p "$requested_directory" || return 1
+  requested_parent=${requested_directory%/*}
+  [ -n "$requested_parent" ] || requested_parent=/
+  assert_trusted_path_prefixes "$requested_parent" || return 1
+
+  secure_mkdir_p "$requested_directory" || return 1
   if [ ! -d "$requested_directory" ]; then
     echo "run: data directory is not a directory: $requested_directory" >&2
     return 1
@@ -308,6 +316,104 @@ normalize_data_directory() {
     return 1
   fi
   printf '%s\n' "$normalized_directory"
+}
+
+secure_mkdir_p() (
+  local current_umask
+  local secure_umask
+
+  current_umask=$(umask)
+  if [[ ! "$current_umask" =~ ^[0-7]{3,4}$ ]]; then
+    echo "run: could not determine a safe directory-creation mask" >&2
+    return 1
+  fi
+  secure_umask=$((8#$current_umask | 0022))
+  printf -v secure_umask '%04o' "$secure_umask"
+  umask "$secure_umask"
+  mkdir -p "$1"
+)
+
+assert_trusted_path_prefixes() {
+  local path="$1"
+  local prefix=/
+  local remainder=${path#/}
+  local component
+  local normalized_prefix
+
+  while [ -n "$remainder" ]; do
+    component=${remainder%%/*}
+    if [ "$component" = "$remainder" ]; then
+      remainder=
+    else
+      remainder=${remainder#*/}
+    fi
+    [ -n "$component" ] || continue
+
+    if [ "$prefix" = / ]; then
+      prefix="/$component"
+    else
+      prefix="$prefix/$component"
+    fi
+    if [ -d "$prefix" ]; then
+      if ! normalized_prefix=$(cd -P -- "$prefix" >/dev/null 2>&1 && pwd -P); then
+        echo "run: failed to resolve data directory path prefix: $prefix" >&2
+        return 1
+      fi
+      assert_trusted_data_directory "$normalized_prefix" || return 1
+    fi
+  done
+}
+
+directory_owner_and_mode() {
+  local directory="$1"
+
+  if stat -f '%u %Lp' "$directory" 2>/dev/null; then
+    return 0
+  fi
+  stat -c '%u %a' "$directory" 2>/dev/null
+}
+
+assert_trusted_data_directory() {
+  local directory="$1"
+  local trusted_uid
+  local metadata
+  local owner_uid
+  local mode
+  local numeric_mode
+
+  trusted_uid=$(id -u) || {
+    echo "run: failed to determine the current user ID" >&2
+    return 1
+  }
+  if [ "$trusted_uid" = 0 ] && [[ "${SUDO_UID:-}" =~ ^[0-9]+$ ]]; then
+    trusted_uid=$SUDO_UID
+  fi
+
+  while :; do
+    if ! metadata=$(directory_owner_and_mode "$directory"); then
+      echo "run: failed to inspect data directory path: $directory" >&2
+      return 1
+    fi
+    owner_uid=${metadata%% *}
+    mode=${metadata#* }
+    if [[ ! "$owner_uid" =~ ^[0-9]+$ || ! "$mode" =~ ^[0-7]{3,4}$ ]]; then
+      echo "run: received invalid ownership metadata for data directory path: $directory" >&2
+      return 1
+    fi
+    if [ "$owner_uid" != 0 ] && [ "$owner_uid" != "$trusted_uid" ]; then
+      echo "run: data directory path must be owned by root or UID $trusted_uid: $directory (owner UID $owner_uid)" >&2
+      return 1
+    fi
+    numeric_mode=$((8#$mode))
+    if ((numeric_mode & 0022)); then
+      echo "run: data directory path must not be group- or other-writable: $directory (mode $mode)" >&2
+      return 1
+    fi
+
+    [ "$directory" = / ] && break
+    directory=${directory%/*}
+    [ -n "$directory" ] || directory=/
+  done
 }
 
 assert_managed_directory() {
@@ -335,7 +441,7 @@ prepare_managed_directory() {
     return 1
   fi
 
-  mkdir -p "$directory" || return 1
+  secure_mkdir_p "$directory" || return 1
   assert_managed_directory "$directory"
 }
 
@@ -516,6 +622,7 @@ run() {
   local -a default_runtime_directories=()
   local custom_config=false
   local default_config_mount=false
+  local manages_data_directory=false
   local runtime_directory_index
 
   while [ $# -gt 0 ]; do
@@ -678,14 +785,23 @@ run() {
 
   validate_image_user "$image" || return 1
 
-  data_dir=$(normalize_data_directory "$data_dir") || return 1
-  config_directory="$data_dir/config"
-  output_directory="$data_dir/output-directory"
-  logs_directory="$data_dir/logs"
-
   if [ "$custom_config" = false ] && [ -n "$CONFIG_FILE" ] \
     && ! has_volume_mount "/java-tron/config" "${volume_args[@]}"; then
     default_config_mount=true
+  fi
+
+  if { [ "$custom_config" = false ] && [ -n "$CONFIG_FILE" ]; } \
+    || ! has_volume_mount "/java-tron/output-directory" "${volume_args[@]}" \
+    || ! has_volume_mount "/java-tron/logs" "${volume_args[@]}"; then
+    manages_data_directory=true
+  fi
+
+  if [ "$manages_data_directory" = true ]; then
+    data_dir=$(normalize_data_directory "$data_dir") || return 1
+    assert_trusted_data_directory "$data_dir" || return 1
+    config_directory="$data_dir/config"
+    output_directory="$data_dir/output-directory"
+    logs_directory="$data_dir/logs"
   fi
 
   if [ "$custom_config" = false ] && [ -n "$CONFIG_FILE" ]; then

@@ -609,6 +609,51 @@ assert_argument "$TEST_TMP_PHYSICAL/data-dir-target/output-directory:/java-tron/
 assert_argument "$TEST_TMP_PHYSICAL/data-dir-target/logs:/java-tron/logs"
 assert_no_argument "$DATA_DIR_LINK/output-directory:/java-tron/output-directory"
 
+GROUP_WRITABLE_DATA="$TEST_TMP/group-writable-data"
+mkdir -p "$GROUP_WRITABLE_DATA"
+chmod 0770 "$GROUP_WRITABLE_DATA"
+expect_run_failure "data directory path must not be group- or other-writable" \
+  --data-dir "$GROUP_WRITABLE_DATA" -c /java-tron/custom.conf
+if [ -s "$DOCKER_RUN_LOG" ]; then
+  echo "A group-writable data directory reached docker run" >&2
+  sed 's/^/  /' "$DOCKER_RUN_LOG" >&2
+  exit 1
+fi
+run_node --data-dir "$GROUP_WRITABLE_DATA" -c /java-tron/custom.conf \
+  -v /host/config.conf:/java-tron/config:ro \
+  -v /host/output:/java-tron/output-directory \
+  -v /host/logs:/java-tron/logs >/dev/null
+assert_argument "/host/config.conf:/java-tron/config:ro"
+assert_argument "/host/output:/java-tron/output-directory"
+assert_argument "/host/logs:/java-tron/logs"
+
+WORLD_WRITABLE_PARENT="$TEST_TMP/world-writable-parent"
+mkdir -p "$WORLD_WRITABLE_PARENT/data"
+chmod 0777 "$WORLD_WRITABLE_PARENT"
+chmod 0700 "$WORLD_WRITABLE_PARENT/data"
+expect_run_failure "data directory path must not be group- or other-writable" \
+  --data-dir "$WORLD_WRITABLE_PARENT/data" -c /java-tron/custom.conf
+if [ -s "$DOCKER_RUN_LOG" ]; then
+  echo "A data directory beneath a world-writable ancestor reached docker run" >&2
+  sed 's/^/  /' "$DOCKER_RUN_LOG" >&2
+  exit 1
+fi
+chmod 0700 "$WORLD_WRITABLE_PARENT"
+
+WORLD_WRITABLE_LINK_PARENT="$TEST_TMP/world-writable-link-parent"
+SAFE_LINK_TARGET="$TEST_TMP/safe-link-target"
+mkdir -p "$WORLD_WRITABLE_LINK_PARENT" "$SAFE_LINK_TARGET"
+chmod 0777 "$WORLD_WRITABLE_LINK_PARENT"
+ln -s "$SAFE_LINK_TARGET" "$WORLD_WRITABLE_LINK_PARENT/data-link"
+expect_run_failure "data directory path must not be group- or other-writable" \
+  --data-dir "$WORLD_WRITABLE_LINK_PARENT/data-link/" -c /java-tron/custom.conf
+if [ -s "$DOCKER_RUN_LOG" ]; then
+  echo "A data-directory link beneath a world-writable parent reached docker run" >&2
+  sed 's/^/  /' "$DOCKER_RUN_LOG" >&2
+  exit 1
+fi
+chmod 0700 "$WORLD_WRITABLE_LINK_PARENT"
+
 LEAF_LINK_TARGET="$TEST_TMP/managed-leaf-target"
 mkdir -p "$LEAF_LINK_TARGET/existing-entry"
 for managed_leaf in output-directory logs; do
