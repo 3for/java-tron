@@ -380,7 +380,7 @@ startService() {
     $JAR_NAME $FULL_START_OPT >>start.log 2>&1 &
   checkPid
   echo "info: start java-tron with pid $pid on $HOSTNAME"
-  echo "info: if you need to stop the service, execute: sh start.sh --stop"
+  echo "info: if you need to stop the service, execute: bash start.sh --stop"
 }
 
 rebuildManifest() {

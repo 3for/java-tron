@@ -116,15 +116,20 @@ Options before `--` configure the Docker helper; options after it become `./bin/
 
 Witness options such as `-w` and `--witness-address` can also be passed after `--`. Do not pass `--private-key` or `--password`: command arguments may be visible in process listings and are retained in Docker container metadata. This helper does not by itself provide the secret delivery, key protection, monitoring, backup, and upgrade procedures required for a production Super Representative deployment. Follow the [Starting a Block Production Node](https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#starting-a-block-production-node) guide, use an encrypted keystore, and provide its password through the production deployment's secret-management mechanism.
 
-By default, the script mounts persistent directories relative to the shell's current working directory when `docker.sh` is invoked, not relative to the script file:
+By default, the script mounts persistent runtime directories relative to the shell's current working directory when `docker.sh` is invoked, not relative to the script file. Mainnet uses the configuration baked into the image and mounts only:
 
 ```text
-./config           -> /java-tron/config (read-only)
 ./output-directory -> /java-tron/output-directory
 ./logs             -> /java-tron/logs
 ```
 
-The default configuration mount is read-only because FullNode only needs to read it. This prevents the container from persisting configuration changes onto the host. Additional `-v` options retain these defaults. A custom mount replaces a default only when it uses the same container destination; callers that explicitly replace the configuration mount control its access mode.
+Private mode mounts the same two runtime directories and additionally mounts:
+
+```text
+./config -> /java-tron/config (read-only)
+```
+
+The private-network configuration mount is read-only because FullNode only needs to read it. This prevents the container from persisting configuration changes onto the host. By default, Mainnet does not create or mount a host `config` directory. Additional `-v` options retain the defaults for the selected mode. A custom mount replaces a default only when it uses the same container destination; callers that explicitly replace the configuration mount control its access mode.
 
 The image runs FullNode as the non-root `tron` account with fixed UID and GID `10001:10001`. Application files under `/java-tron` (`bin/`, `lib/`, `java-tron.vmoptions`, and the baked-in `config.conf`) stay root-owned and are not writable by that user. Only `/java-tron/output-directory` and `/java-tron/logs` belong to `10001:10001`. The image points JVM GC logs, heap dumps, and `hs_err` files at `/java-tron/logs`; the packaged `java-tron.vmoptions` used outside Docker is unchanged.
 
@@ -140,15 +145,15 @@ sudo chown -R 10001:10001 \
 
 The helper deliberately does not recursively inspect or change a non-empty directory because scanning a multi-terabyte database during every startup would be slow and unexpected. A partially migrated tree can therefore pass the shallow preflight check but fail later when FullNode reaches a deeper file. Run the one-time recursive ownership migration above for data created by a root-based image. When the shallow check detects a problem, the helper fails and prints the same migration command. Direct `docker run` users must prepare writable mounts themselves and should also specify `--security-opt no-new-privileges`.
 
-Use `--data-dir` to keep these three directories in an explicit location, preferably outside the source checkout. Relative values are resolved against the invocation directory:
+Use `--data-dir` to keep the default host runtime directories in an explicit location, preferably outside the source checkout. Relative values are resolved against the invocation directory:
 
 ```shell
 bash docker.sh --run --net main --data-dir /var/lib/java-tron
 ```
 
-This produces `/var/lib/java-tron/config` (still mounted read-only at `/java-tron/config`), `/var/lib/java-tron/output-directory`, and `/var/lib/java-tron/logs` host mounts. The default data directory is the current working directory, so running `--run` from a checkout writes `config/`, `output-directory/`, and `logs/` into that tree. Use `--data-dir` to keep those runtime files out of the Git worktree. Persisting `logs` also keeps `tron.log` available after the container is removed.
+For this Mainnet command, the helper creates and mounts `/var/lib/java-tron/output-directory` and `/var/lib/java-tron/logs`; it does not create `/var/lib/java-tron/config`. Using `--net private` with the same data directory additionally creates `/var/lib/java-tron/config` and mounts it read-only at `/java-tron/config`. The default data directory is the current working directory, so a Mainnet `--run` from a checkout writes `output-directory/` and `logs/` into that tree, while private mode also writes `config/`. Use `--data-dir` to keep those runtime files out of the Git worktree. Persisting `logs` also keeps `tron.log` available after the container is removed.
 
-The data directory itself may be a symbolic link, and `docker.sh` resolves it to its physical directory before creating mounts. The selected path's existing parents, the resolved directory, and each of its ancestors must be owned by root or by the user running `docker.sh`, and none may be writable by their group or by other users. The helper enforces this before passing any managed path to `docker run`; use `chown` and `chmod go-w` to correct an unsafe path. The managed `config`, `output-directory`, and `logs` paths underneath it must be real directories and must not be symbolic links. To place the node data on another disk, point `--data-dir` at that disk or at a data-directory link instead of linking an individual managed path.
+The data directory itself may be a symbolic link, and `docker.sh` resolves it to its physical directory before creating mounts. The selected path's existing parents, the resolved directory, and each of its ancestors must be owned by root or by the user running `docker.sh`, and none may be writable by their group or by other users. The helper enforces this before passing any managed path to `docker run`; use `chown` and `chmod go-w` to correct an unsafe path. The managed `output-directory` and `logs` paths, plus `config` in private mode, must be real directories and must not be symbolic links. To place the node data on another disk, point `--data-dir` at that disk or at a data-directory link instead of linking an individual managed path.
 
 ## Memory and JVM options
 
@@ -275,7 +280,7 @@ JAVA_TRON_IMAGE=java-tron:ci-amd64 bash docker.sh --run --net private
 | `--rm` | Remove the container without removing the image or host data. |
 | `-p [HOST_IP:]HOST_PORT:CONTAINER_PORT[/PROTOCOL]` | Publish a container port. Repeat to customize multiple mappings. |
 | `-c CONTAINER_PATH` | Use a configuration file at the specified path inside the container. |
-| `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. Writable custom mounts must be accessible to UID:GID `10001:10001`. A replacement for `/java-tron/config` uses the caller's access mode instead of the default read-only mount. |
+| `-v HOST_PATH:CONTAINER_PATH[:OPTIONS]` | Add or replace a bind mount. The host path should be absolute. Writable custom mounts must be accessible to UID:GID `10001:10001`. In private mode, a replacement for the default `/java-tron/config` mount uses the caller's access mode instead of read-only mode. |
 | `-e NAME=VALUE`, `--env NAME=VALUE` | Set a container environment variable. This option can be repeated. JVM option environment variables are rejected; use `--jvm-opts`. |
 | `--net main\|private` | Select the Mainnet or private-network configuration. Since Nile may incorporate features not yet available on the Mainnet, use the separate [nile-testnet](https://github.com/tron-nile-testnet/nile-testnet) codebase and follow [tron-docker](https://github.com/tronprotocol/tron-docker). |
 | `--update-config true\|false` | Refresh the private-network configuration before creating the container. Default: `false`; a missing or empty file is still downloaded. This option has no effect with `--net main`. |

@@ -8,6 +8,8 @@ If you already downloaded the `FullNode.jar`, you can use `start.sh` to run it, 
 
 The script is available in the java-tron project at [github](https://github.com/tronprotocol/java-tron), or if you need a separate script: [start.sh](https://github.com/tronprotocol/java-tron/blob/develop/start.sh)
 
+Invoke the script with `bash` (or execute it directly); do not use `sh`, because `start.sh` uses Bash-specific syntax.
+
 ***
 
 # Usage
@@ -17,37 +19,37 @@ The script is available in the java-tron project at [github](https://github.com/
 * Start the `FullNode.jar` (`start.sh`, `config.conf` and `FullNode.jar` in the same directory.)
 
   ```
-  sh start.sh --run
+  bash start.sh --run
   ```
   
   Start the service with options.
   
   ```
-  sh start.sh --run -j /data/FullNode.jar -c /data/config.conf -d /data/output-directory
+  bash start.sh --run -j /data/FullNode.jar -c /data/config.conf -d /data/output-directory
   ```
   
 * Stop the `FullNode.jar`
 
   ```
-  sh start.sh --stop
+  bash start.sh --stop
   ```
 
 * Get the latest version of `FullNode.jar` and start it
 
   ```
-  sh start.sh --release --run
+  bash start.sh --release --run
   ```
   
 * Clone the source code, compile `java-tron`, and generate `FullNode.jar` and start it
 
   ```
-  sh start.sh -cb --run
+  bash start.sh -cb --run
   ```
 
 * Select the private-network configuration; the default network is `main`.
 
   ```
-  sh start.sh --net private
+  bash start.sh --net private
   ```
 
 
@@ -128,19 +130,19 @@ The script is available in the java-tron project at [github](https://github.com/
 Format:
 
 ```
-sh start.sh [-j <jarName>] [-d <db database-directory>] [-c <configFile>] [[--run] | [--stop]]
+bash start.sh [-j <jarName>] [-d <db database-directory>] [-c <configFile>] [[--run] | [--stop]]
 ```
 
 **start service**
 
 ```
-sh start.sh --run
+bash start.sh --run
 ```
 
 **stop service**
 
 ```
-sh start.sh --stop
+bash start.sh --stop
 ```
 
 ### 2.online mode
@@ -154,14 +156,14 @@ sh start.sh --stop
 Format:
 
 ```
-sh start.sh <[--release | -cb]> <--run> [-m <manifest size>] | [-b <batch size>] | [-d <db database-directory> | [-dr | --disable-rewrite-manifes]]
+bash start.sh <[--release | -cb]> <--run> [-m <manifest size>] | [-b <batch size>] | [-d <db database-directory> | [-dr | --disable-rewrite-manifes]]
 ```
 
 Get the latest released version.
 
 
 ```
-sh start.sh --release --run
+bash start.sh --release --run
 ```
 
 Following file structure will be generated after executing the above command and the `FullNode.jar` will be started. 
@@ -183,7 +185,7 @@ After using this command, the "FullNode" directory will be created, the compiled
 demo:
 
 ```
-sh start.sh -cb --run
+bash start.sh -cb --run
 ```
 
 Following file structure will be created：
@@ -226,13 +228,13 @@ This tool provides the ability to reformat the manifest based on current databas
 1.Local mode:
 
 ```
-sh start.sh --run -d /tmp/db/database -m 128 -b 64000
+bash start.sh --run -d /tmp/db/database -m 128 -b 64000
 ```
 
 2.Online mode  
 
 ```
-sh start.sh --release --run -d /tmp/db/database -m 128 -b 64000
+bash start.sh --release --run -d /tmp/db/database -m 128 -b 64000
 ```
 
 For more design details, please refer to: [TIP298](https://github.com/tronprotocol/tips/issues/298) | [Leveldb Startup Optimization Plugins](https://github.com/tronprotocol/documentation-en/blob/master/docs/developers/archive-manifest.md)
