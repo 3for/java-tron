@@ -98,6 +98,8 @@ sed -i \
   -e 's|:file=gc.log:|:file=/java-tron/logs/gc.log:|' \
   "$vm_options"
 
+grep -Fqx -- '-XX:+HeapDumpOnOutOfMemoryError' "$vm_options" \
+  || echo '-XX:+HeapDumpOnOutOfMemoryError' >> "$vm_options"
 grep -q -- '-XX:HeapDumpPath=' "$vm_options" \
   || echo '-XX:HeapDumpPath=/java-tron/logs' >> "$vm_options"
 grep -q -- '-XX:ErrorFile=' "$vm_options" \

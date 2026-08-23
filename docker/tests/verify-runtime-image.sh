@@ -49,6 +49,10 @@ docker run --rm --entrypoint sh "$image" -ec '
 
   grep -Eq -- "-Xloggc:/java-tron/logs/gc.log|:file=/java-tron/logs/gc.log:" \
     /java-tron/bin/java-tron.vmoptions
+  test "$(grep -Fxc -- "-XX:+HeapDumpOnOutOfMemoryError" \
+    /java-tron/bin/java-tron.vmoptions)" -eq 1
+  ! grep -Fqx -- "-XX:-HeapDumpOnOutOfMemoryError" \
+    /java-tron/bin/java-tron.vmoptions
   grep -Fq -- "-XX:HeapDumpPath=/java-tron/logs" /java-tron/bin/java-tron.vmoptions
   grep -Fq -- "-XX:ErrorFile=/java-tron/logs/hs_err_pid%p.log" \
     /java-tron/bin/java-tron.vmoptions
