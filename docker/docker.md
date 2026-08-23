@@ -272,6 +272,7 @@ JAVA_TRON_IMAGE=java-tron:ci-amd64 bash docker.sh --run --net private
 | `--source local\|remote` | Select a host-built distribution or a remote source build for `--build`. Default: `remote`. |
 | `--source-ref REF` | Select the remote branch or tag for `--build`. Default: `master`. |
 | `--source-repository URL` | Select the public remote Git repository for `--build`. |
+| `--export-context PATH` | With `--build --source local`, prepare a new minimal build context at `PATH` without building an image. The destination must not already exist. Intended for external BuildKit frontends such as CI. |
 | `--image NAME[:TAG]` | Select the image for `--pull`, `--build`, or `--run`. `JAVA_TRON_IMAGE` sets the same value. |
 | `--pull` | Pull the configured image from Docker Hub. Default: `tronprotocol/java-tron:latest`. |
 | `--run` | Create and start a container. Default: `tronprotocol/java-tron:latest`. Use `--image tronprotocol/java-tron:local` for a helper-built image. |

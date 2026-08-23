@@ -35,6 +35,8 @@ Build options:
   --source local|remote          Build a host distribution or remote source
   --source-ref REF               Select a remote branch or tag
   --source-repository URL        Select a remote Git repository
+  --export-context PATH          Prepare a new local build context without
+                                 building an image
 
 Common options:
   --image NAME[:TAG]             Image for --pull, --build, or --run.
@@ -1147,12 +1149,12 @@ validate_local_image_config() {
   fi
 }
 
-build_local_image() (
+prepare_local_build_context() {
   local source_root="$1"
   local dockerfile_path="$2"
+  local build_context="$3"
   local distribution="$source_root/framework/build/distributions/java-tron-1.0.0.zip"
   local config_path="$source_root/framework/src/main/resources/config.conf"
-  local build_context
 
   if ! command -v unzip >/dev/null 2>&1; then
     echo "build: unzip is required for --source local" >&2
@@ -1177,9 +1179,6 @@ build_local_image() (
     return 1
   fi
 
-  build_context=$(mktemp -d) || return 1
-  trap 'rm -rf "$build_context"' EXIT
-
   if ! unzip -q -o "$distribution" -d "$build_context"; then
     echo "build: failed to extract $distribution" >&2
     return 1
@@ -1198,6 +1197,18 @@ build_local_image() (
 
   cp "$config_path" "$build_context/java-tron/config.conf" || return 1
   cp "$dockerfile_path" "$build_context/Dockerfile" || return 1
+}
+
+build_local_image() (
+  local source_root="$1"
+  local dockerfile_path="$2"
+  local build_context
+
+  build_context=$(mktemp -d) || return 1
+  trap 'rm -rf "$build_context"' EXIT
+
+  prepare_local_build_context "$source_root" "$dockerfile_path" "$build_context" \
+    || return 1
 
   echo "Building the local image from a temporary distribution-only context."
   DOCKER_BUILDKIT=1 docker build \
@@ -1205,6 +1216,39 @@ build_local_image() (
     --file "$build_context/Dockerfile" \
     -t "$(selected_image build)" \
     "$build_context"
+)
+
+export_local_build_context() (
+  local source_root="$1"
+  local dockerfile_path="$2"
+  local build_context="$3"
+  local context_created=false
+
+  # shellcheck disable=SC2329  # Invoked indirectly by the EXIT trap.
+  cleanup_failed_export() {
+    local status=$?
+    trap - EXIT
+    if [ "$status" -ne 0 ] && [ "$context_created" = true ]; then
+      rm -rf -- "$build_context"
+    fi
+    exit "$status"
+  }
+  trap cleanup_failed_export EXIT
+
+  if [ -e "$build_context" ] || [ -L "$build_context" ]; then
+    echo "build: export context already exists: $build_context" >&2
+    return 1
+  fi
+  if ! mkdir -m 700 -- "$build_context"; then
+    echo "build: failed to create export context: $build_context" >&2
+    return 1
+  fi
+  context_created=true
+
+  prepare_local_build_context "$source_root" "$dockerfile_path" "$build_context" \
+    || return 1
+
+  echo "Prepared local Docker build context: $build_context"
 )
 
 build_remote_image() (
@@ -1239,6 +1283,7 @@ build() {
   local source_repository="$JAVA_TRON_SOURCE_REPOSITORY"
   local source_ref_set=false
   local source_repository_set=false
+  local export_context=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -1272,6 +1317,14 @@ build() {
         source_repository_set=true
         shift 2
         ;;
+      --export-context)
+        if [ $# -lt 2 ]; then
+          echo "build: arg $1 requires a value"
+          return 1
+        fi
+        export_context=$2
+        shift 2
+        ;;
       --image)
         if [ $# -lt 2 ]; then
           echo "build: arg $1 requires a value"
@@ -1289,6 +1342,10 @@ build() {
 
   if [ "$source_mode" = "local" ] && { [ "$source_ref_set" = true ] || [ "$source_repository_set" = true ]; }; then
     echo "build: --source-ref and --source-repository can only be used with --source remote"
+    return 1
+  fi
+  if [ -n "$export_context" ] && [ "$source_mode" != "local" ]; then
+    echo "build: --export-context can only be used with --source local"
     return 1
   fi
 
@@ -1325,7 +1382,11 @@ build() {
       echo "build: local Dockerfile does not exist: $dockerfile_path" >&2
       return 1
     fi
-    build_local_image "$source_root" "$dockerfile_path"
+    if [ -n "$export_context" ]; then
+      export_local_build_context "$source_root" "$dockerfile_path" "$export_context"
+    else
+      build_local_image "$source_root" "$dockerfile_path"
+    fi
   else
     dockerfile_path="$script_dir/$dockerfile_relative"
     if ! file_is_usable "$dockerfile_path"; then

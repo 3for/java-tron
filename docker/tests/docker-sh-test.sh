@@ -438,6 +438,28 @@ run_build() {
   )
 }
 
+run_export() {
+  local architecture="$1"
+  local working_directory="$2"
+  local output_context="$3"
+  shift 3
+  : > "$DOCKER_LOG"
+  : > "$DOCKER_CONTEXT_LOG"
+  : > "$DOCKER_ENV_LOG"
+  : > "$GRADLE_LOG"
+  (
+    cd -- "$working_directory"
+    PATH="$MOCK_BIN:$PATH" \
+      MOCK_ARCH="$architecture" \
+      DOCKER_MOCK_LOG="$DOCKER_LOG" \
+      DOCKER_MOCK_CONTEXT_LOG="$DOCKER_CONTEXT_LOG" \
+      DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
+      GRADLE_MOCK_LOG="$GRADLE_LOG" \
+      bash "$DOCKER_SCRIPT" --build --source local \
+        --export-context "$output_context" "$@"
+  )
+}
+
 run_standalone_build() {
   local architecture="$1"
   local working_directory="$2"
@@ -688,6 +710,24 @@ event.subscribe = {
 }
 PLAINTEXT_WITNESS_CONFIG
 expect_local_config_failure "localwitness"
+rejected_export="$TEST_TMP/rejected-secret-context"
+if export_output=$(run_export x86_64 "$SOURCE_ROOT" "$rejected_export" 2>&1); then
+  echo "A context export containing plaintext localwitness unexpectedly succeeded" >&2
+  exit 1
+fi
+if [[ "$export_output" != *"refusing to bake non-empty plaintext localwitness"* ]]; then
+  echo "The context-export secret rejection was unclear:" >&2
+  echo "$export_output" >&2
+  exit 1
+fi
+if [ -e "$rejected_export" ] || [ -L "$rejected_export" ]; then
+  echo "A failed sensitive context export left its destination behind" >&2
+  exit 1
+fi
+if [ -s "$GRADLE_LOG" ] || [ -s "$DOCKER_LOG" ]; then
+  echo "A sensitive context export ran Gradle or Docker before rejection" >&2
+  exit 1
+fi
 
 cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'INLINE_WITNESS_CONFIG'
 localwitness: ["0123456789abcdef"]
@@ -731,6 +771,43 @@ SAFE_LOCAL_CONFIG
 run_build x86_64 "$SOURCE_ROOT" --source local >/dev/null
 assert_context_file "./java-tron/config.conf"
 
+exported_context="$TEST_TMP/exported-local-context"
+run_export x86_64 "$SOURCE_ROOT" "$exported_context" >/dev/null
+for exported_file in \
+  Dockerfile \
+  java-tron/bin/FullNode \
+  java-tron/bin/java-tron.vmoptions \
+  java-tron/config.conf \
+  java-tron/lib/java-tron.jar; do
+  if [ ! -f "$exported_context/$exported_file" ]; then
+    echo "Exported local context is missing: $exported_file" >&2
+    exit 1
+  fi
+done
+if [ "$(file_mode "$exported_context")" != 700 ]; then
+  echo "Exported local context is not mode 700" >&2
+  exit 1
+fi
+if [ -s "$DOCKER_LOG" ]; then
+  echo "Context-only export unexpectedly invoked docker build" >&2
+  sed 's/^/  /' "$DOCKER_LOG" >&2
+  exit 1
+fi
+if second_export_output=$(run_export \
+  x86_64 "$SOURCE_ROOT" "$exported_context" 2>&1); then
+  echo "A context export unexpectedly replaced an existing destination" >&2
+  exit 1
+fi
+if [[ "$second_export_output" != *"export context already exists"* ]]; then
+  echo "The existing export-context rejection was unclear:" >&2
+  echo "$second_export_output" >&2
+  exit 1
+fi
+if [ -s "$GRADLE_LOG" ] || [ -s "$DOCKER_LOG" ]; then
+  echo "An existing export destination was rejected too late" >&2
+  exit 1
+fi
+
 cp "$REPOSITORY_ROOT/framework/src/main/resources/config.conf" \
   "$SOURCE_ROOT/framework/src/main/resources/config.conf"
 run_build x86_64 "$SOURCE_ROOT" --source local >/dev/null
@@ -753,6 +830,8 @@ assert_context_file "./java-tron/bin/FullNode"
 expect_failure "requires a value" --source
 expect_failure "expected local or remote" --source invalid
 expect_failure "can only be used with --source remote" --source local --source-ref develop
+expect_failure "can only be used with --source local" \
+  --source remote --export-context "$TEST_TMP/remote-export-context"
 expect_failure "is not a valid parameter" --unknown
 expect_failure "requires a value" --image
 

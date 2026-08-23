@@ -219,7 +219,7 @@ jobs:
 
   build-amd64:
     name: Build Docker image (amd64)
-    needs: [changes, script-check]
+    needs: changes
     if: needs.changes.outputs.amd64 == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -229,6 +229,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
       - name: Set up JDK 8 for local distribution
         if: env.SOURCE_MODE == 'local'
         uses: actions/setup-java@v5
@@ -237,21 +240,41 @@ jobs:
           java-version: '8'
           cache: gradle
 
-      - name: Build image
+      - name: Prepare local build context
+        if: env.SOURCE_MODE == 'local'
         run: |
           set -euo pipefail
-          if [ "$SOURCE_MODE" = local ]; then
-            umask 077
-            bash docker/docker.sh --build --source local --image "$IMAGE"
-          else
-            DOCKER_BUILDKIT=1 docker build --pull \
-              --target remote \
-              --build-arg "SOURCE_REPOSITORY=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" \
-              --build-arg "SOURCE_REF=$GITHUB_REF_NAME" \
-              --file "$PWD/docker/Dockerfile" \
-              --tag "$IMAGE" \
-              docker
-          fi
+          umask 077
+          bash docker/docker.sh --build --source local \
+            --export-context "$RUNNER_TEMP/java-tron-local-context"
+
+      - name: Build local image
+        if: env.SOURCE_MODE == 'local'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ runner.temp }}/java-tron-local-context
+          target: local
+          load: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=java-tron-amd64-local
+          cache-to: type=gha,mode=max,scope=java-tron-amd64-local,ignore-error=true
+
+      - name: Build remote image
+        if: env.SOURCE_MODE == 'remote'
+        uses: docker/build-push-action@v7
+        with:
+          context: docker
+          file: docker/Dockerfile
+          target: remote
+          pull: true
+          no-cache-filters: remote-builder
+          load: true
+          tags: ${{ env.IMAGE }}
+          build-args: |
+            SOURCE_REPOSITORY=${{ github.server_url }}/${{ github.repository }}.git
+            SOURCE_REF=${{ github.ref_name }}
+          cache-from: type=gha,scope=java-tron-amd64-remote
+          cache-to: type=gha,mode=max,scope=java-tron-amd64-remote,ignore-error=true
 
       - name: Verify runtime image
         run: bash docker/tests/verify-runtime-image.sh "$IMAGE" 'version "1\.8'
@@ -267,7 +290,7 @@ jobs:
 
   build-arm64:
     name: Build Docker image (arm64)
-    needs: [changes, script-check]
+    needs: changes
     if: needs.changes.outputs.arm64 == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
@@ -277,6 +300,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
       - name: Set up JDK 17 for local distribution
         if: env.SOURCE_MODE == 'local'
         uses: actions/setup-java@v5
@@ -285,21 +311,41 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Build image
+      - name: Prepare local build context
+        if: env.SOURCE_MODE == 'local'
         run: |
           set -euo pipefail
-          if [ "$SOURCE_MODE" = local ]; then
-            umask 077
-            bash docker/docker.sh --build --source local --image "$IMAGE"
-          else
-            DOCKER_BUILDKIT=1 docker build --pull \
-              --target remote \
-              --build-arg "SOURCE_REPOSITORY=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" \
-              --build-arg "SOURCE_REF=$GITHUB_REF_NAME" \
-              --file "$PWD/docker/arm64/Dockerfile" \
-              --tag "$IMAGE" \
-              docker
-          fi
+          umask 077
+          bash docker/docker.sh --build --source local \
+            --export-context "$RUNNER_TEMP/java-tron-local-context"
+
+      - name: Build local image
+        if: env.SOURCE_MODE == 'local'
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ runner.temp }}/java-tron-local-context
+          target: local
+          load: true
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=java-tron-arm64-local
+          cache-to: type=gha,mode=max,scope=java-tron-arm64-local,ignore-error=true
+
+      - name: Build remote image
+        if: env.SOURCE_MODE == 'remote'
+        uses: docker/build-push-action@v7
+        with:
+          context: docker
+          file: docker/arm64/Dockerfile
+          target: remote
+          pull: true
+          no-cache-filters: remote-builder
+          load: true
+          tags: ${{ env.IMAGE }}
+          build-args: |
+            SOURCE_REPOSITORY=${{ github.server_url }}/${{ github.repository }}.git
+            SOURCE_REF=${{ github.ref_name }}
+          cache-from: type=gha,scope=java-tron-arm64-remote
+          cache-to: type=gha,mode=max,scope=java-tron-arm64-remote,ignore-error=true
 
       - name: Verify runtime image
         run: bash docker/tests/verify-runtime-image.sh "$IMAGE" 'version "17\.'
