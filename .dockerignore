@@ -1,32 +1,39 @@
-.git
-.github
-.gradle
-.idea
-.vscode
-**/.gradle
-**/build
-**/build/**
-**/*.iml
-**/.DS_Store
-logs
-logs/**
-output-directory
-output-directory/**
-docker/config
-docker/config/**
-docker/logs
-docker/logs/**
-docker/output-directory
-docker/output-directory/**
-/gc.log
-/database*
-/tron-data
-/tron-data/**
-/Wallet
-/Wallet/**
-/nodeId.properties
-/vm_trace
-/vm_trace/**
+# The remote targets do not read from the build context. Direct local-target
+# builds only need a distribution staged as java-tron/.
+*
+!java-tron/
+!java-tron/**
+
+# Never send credentials or private configuration, including files placed in
+# an otherwise allowed staged distribution.
 **/.env
 **/.env.*
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.pkcs12
+**/*.jks
 **/*.keystore
+**/*keystore*.json
+**/private_net_config.conf
+**/credentials
+**/credentials.*
+**/secrets
+**/secrets.*
+
+# Runtime state may contain node identity, wallet, or transaction data and is
+# never part of a supported image build context.
+**/Wallet
+**/Wallet/**
+**/database*
+**/gc.log
+**/logs
+**/logs/**
+**/nodeId.properties
+**/output-directory
+**/output-directory/**
+**/tron-data
+**/tron-data/**
+**/vm_trace
+**/vm_trace/**

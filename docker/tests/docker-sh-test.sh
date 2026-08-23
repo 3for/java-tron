@@ -1020,6 +1020,77 @@ assert_mode 755 "$TEST_TMP/config"
 assert_mode 644 "$TEST_TMP/config/private_net_config.conf"
 assert_run_argument_count \
   "$TEST_TMP_PHYSICAL/config:/java-tron/config:ro" 2
+assert_run_argument_count \
+  "test ! -L \"\$1\" && test -f \"\$1\" && test -s \"\$1\" && test -r \"\$1\"" 1
+
+RETAINED_CONFIG_CONTENT=$(cat "$TEST_TMP/config/private_net_config.conf")
+run_node --net private --update-config false >/dev/null
+if [ "$(cat "$TEST_TMP/config/private_net_config.conf")" != \
+  "$RETAINED_CONFIG_CONTENT" ]; then
+  echo "An existing private configuration was unexpectedly replaced" >&2
+  exit 1
+fi
+if [ -s "$DOWNLOAD_LOG" ]; then
+  echo "An existing private configuration unexpectedly triggered a download" >&2
+  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
+  exit 1
+fi
+
+DIRECTORY_CONFIG_DATA="$TEST_TMP/directory-private-config"
+mkdir -p \
+  "$DIRECTORY_CONFIG_DATA/config/private_net_config.conf"
+expect_run_failure \
+  "Download destination exists but is not a non-symbolic-link regular file" \
+  --data-dir "$DIRECTORY_CONFIG_DATA" --net private --update-config false
+if find "$DIRECTORY_CONFIG_DATA/config/private_net_config.conf" \
+  -mindepth 1 -print -quit | grep -q .; then
+  echo "A downloaded temporary file was moved into the configuration directory" >&2
+  exit 1
+fi
+if [ -s "$DOWNLOAD_LOG" ]; then
+  echo "A directory at the private configuration path triggered a download" >&2
+  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
+  exit 1
+fi
+
+SYMLINK_CONFIG_DATA="$TEST_TMP/symlink-private-config"
+SYMLINK_CONFIG_TARGET="$TEST_TMP/symlink-private-config-target"
+mkdir -p "$SYMLINK_CONFIG_DATA/config"
+printf 'linked-private-config\n' > "$SYMLINK_CONFIG_TARGET"
+ln -s "$SYMLINK_CONFIG_TARGET" \
+  "$SYMLINK_CONFIG_DATA/config/private_net_config.conf"
+expect_run_failure \
+  "Download destination exists but is not a non-symbolic-link regular file" \
+  --data-dir "$SYMLINK_CONFIG_DATA" --net private --update-config false
+if [ "$(cat "$SYMLINK_CONFIG_TARGET")" != "linked-private-config" ]; then
+  echo "The rejected private-configuration symlink target was modified" >&2
+  exit 1
+fi
+if [ ! -L "$SYMLINK_CONFIG_DATA/config/private_net_config.conf" ]; then
+  echo "The rejected private-configuration symlink was replaced" >&2
+  exit 1
+fi
+if [ -s "$DOWNLOAD_LOG" ]; then
+  echo "A symlink at the private configuration path triggered a download" >&2
+  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
+  exit 1
+fi
+
+FIFO_CONFIG_DATA="$TEST_TMP/fifo-private-config"
+mkdir -p "$FIFO_CONFIG_DATA/config"
+mkfifo "$FIFO_CONFIG_DATA/config/private_net_config.conf"
+expect_run_failure \
+  "Download destination exists but is not a non-symbolic-link regular file" \
+  --data-dir "$FIFO_CONFIG_DATA" --net private --update-config true
+if [ ! -p "$FIFO_CONFIG_DATA/config/private_net_config.conf" ]; then
+  echo "The rejected private-configuration FIFO was replaced" >&2
+  exit 1
+fi
+if [ -s "$DOWNLOAD_LOG" ]; then
+  echo "A FIFO at the private configuration path triggered a download" >&2
+  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
+  exit 1
+fi
 
 chmod 0600 "$TEST_TMP/config/private_net_config.conf"
 (
@@ -1079,6 +1150,20 @@ if [ -e "$CONFIG_FILE_FOR_TEST" ]; then
 fi
 if compgen -G "$CONFIG_FILE_FOR_TEST.tmp.*" >/dev/null; then
   echo "A failed initial download left a temporary configuration file" >&2
+  exit 1
+fi
+
+if MOCK_CURL_EMPTY=true run_node --net private --update-config false \
+  >/dev/null 2>&1; then
+  echo "An empty initial configuration download unexpectedly succeeded" >&2
+  exit 1
+fi
+if [ -e "$CONFIG_FILE_FOR_TEST" ]; then
+  echo "An empty initial download left a destination configuration file" >&2
+  exit 1
+fi
+if compgen -G "$CONFIG_FILE_FOR_TEST.tmp.*" >/dev/null; then
+  echo "An empty initial download left a temporary configuration file" >&2
   exit 1
 fi
 

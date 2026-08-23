@@ -177,17 +177,19 @@ jobs:
           bash -n docker/tests/docker-sh-test.sh
           bash -n docker/tests/docker-lifecycle-test.sh
           bash -n docker/tests/docker-sh-run-smoke.sh
+          bash -n docker/tests/dockerignore-test.sh
           bash -n docker/tests/vmoptions-test.sh
           bash -n docker/tests/verify-runtime-image.sh
           bash -n docker/tests/unix-start-script-test.sh
           bash -n docker/tests/start-sh-config-test.sh
           bash -n start.sh
-          shellcheck docker/docker.sh docker/tests/docker-sh-test.sh docker/tests/docker-lifecycle-test.sh docker/tests/docker-sh-run-smoke.sh docker/tests/vmoptions-test.sh docker/tests/verify-runtime-image.sh docker/tests/unix-start-script-test.sh docker/tests/start-sh-config-test.sh
+          shellcheck docker/docker.sh docker/tests/docker-sh-test.sh docker/tests/docker-lifecycle-test.sh docker/tests/docker-sh-run-smoke.sh docker/tests/dockerignore-test.sh docker/tests/vmoptions-test.sh docker/tests/verify-runtime-image.sh docker/tests/unix-start-script-test.sh docker/tests/start-sh-config-test.sh
 
       - name: Test shell helpers
         run: |
           bash docker/tests/docker-sh-test.sh
           bash docker/tests/docker-lifecycle-test.sh
+          bash docker/tests/dockerignore-test.sh
           bash docker/tests/unix-start-script-test.sh
           bash docker/tests/start-sh-config-test.sh
 

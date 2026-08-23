@@ -239,6 +239,19 @@ file_is_usable() {
   [ -f "$1" ] && [ -s "$1" ]
 }
 
+non_symlink_file_is_usable() {
+  [ ! -L "$1" ] && file_is_usable "$1"
+}
+
+download_destination_is_replaceable() {
+  local output="$1"
+
+  if [ -L "$output" ] || { [ -e "$output" ] && [ ! -f "$output" ]; }; then
+    echo "Download destination exists but is not a non-symbolic-link regular file: $output" >&2
+    return 1
+  fi
+}
+
 download_file() {
   local url="$1"
   local output="$2"
@@ -248,6 +261,7 @@ download_file() {
 
   output_dir=$(dirname "$output")
   mkdir -p "$output_dir" || return 1
+  download_destination_is_replaceable "$output" || return 1
   temporary=$(mktemp "${output}.tmp.XXXXXX") || return 1
 
   if command -v curl >/dev/null 2>&1; then
@@ -278,8 +292,16 @@ download_file() {
     return 1
   fi
 
+  if ! download_destination_is_replaceable "$output"; then
+    rm -f "$temporary"
+    return 1
+  fi
   if ! mv -f "$temporary" "$output"; then
     rm -f "$temporary"
+    return 1
+  fi
+  if ! non_symlink_file_is_usable "$output"; then
+    echo "Downloaded file did not produce a non-empty regular destination: $output" >&2
     return 1
   fi
 }
@@ -306,9 +328,11 @@ download_config() {
 check_download_config() {
   local config_directory="$1"
   local config_file="$2"
+  local config_path="$config_directory/$config_file"
 
-  if ! file_is_usable "$config_directory/$config_file"; then
-    echo "$config_directory/$config_file is missing or empty; downloading it for the initial run."
+  if ! non_symlink_file_is_usable "$config_path"; then
+    download_destination_is_replaceable "$config_path" || return 1
+    echo "$config_path is missing or empty; downloading it for the initial run."
     download_config "$config_directory" "$config_file"
   fi
 }
@@ -567,7 +591,8 @@ verify_private_config_readable() {
     --entrypoint sh \
     -v "$config_directory:/java-tron/config:ro" \
     "$image_ref" \
-    -ec 'test -r "$1"' sh "$container_config"; then
+    -ec 'test ! -L "$1" && test -f "$1" && test -s "$1" && test -r "$1"' \
+    sh "$container_config"; then
     assert_managed_directory "$config_directory"
     return
   fi
