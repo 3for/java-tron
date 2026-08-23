@@ -15,6 +15,7 @@ DOCKER_RUN_LOG="$TEST_TMP/docker-run-history"
 DOCKER_CONTEXT_LOG="$TEST_TMP/docker-context"
 DOCKER_ENV_LOG="$TEST_TMP/docker-env"
 DOWNLOAD_LOG="$TEST_TMP/downloads"
+GRADLE_LOG="$TEST_TMP/gradle-args"
 
 cleanup() {
   rm -rf "$TEST_TMP"
@@ -27,7 +28,15 @@ mkdir -p "$MOCK_BIN" "$SOURCE_ROOT/docker/arm64" \
   "$TEST_TMP/external-data/config" "$TEST_TMP/relative-data/config"
 cp "$REPOSITORY_ROOT/docker/Dockerfile" "$SOURCE_ROOT/docker/Dockerfile"
 cp "$REPOSITORY_ROOT/docker/arm64/Dockerfile" "$SOURCE_ROOT/docker/arm64/Dockerfile"
-printf 'local-source-config\n' > "$SOURCE_ROOT/framework/src/main/resources/config.conf"
+cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'SAFE_LOCAL_CONFIG'
+localwitness = [
+]
+event.subscribe = {
+  dbconfig = ""
+}
+# localwitness = ["commented-example-key"]
+# dbconfig = "commented|example|credentials"
+SAFE_LOCAL_CONFIG
 touch "$SOURCE_ROOT/.env"
 
 cat > "$MOCK_BIN/docker" <<'MOCK_DOCKER'
@@ -285,6 +294,7 @@ cat > "$SOURCE_ROOT/gradlew" <<'MOCK_GRADLEW'
 #!/bin/bash
 set -euo pipefail
 
+printf '%s\n' "$@" >> "$GRADLE_MOCK_LOG"
 mkdir -p framework/build/distributions
 touch framework/build/distributions/java-tron-1.0.0.zip
 MOCK_GRADLEW
@@ -415,6 +425,7 @@ run_build() {
   : > "$DOCKER_LOG"
   : > "$DOCKER_CONTEXT_LOG"
   : > "$DOCKER_ENV_LOG"
+  : > "$GRADLE_LOG"
   (
     cd -- "$working_directory"
     PATH="$MOCK_BIN:$PATH" \
@@ -422,6 +433,7 @@ run_build() {
       DOCKER_MOCK_LOG="$DOCKER_LOG" \
       DOCKER_MOCK_CONTEXT_LOG="$DOCKER_CONTEXT_LOG" \
       DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
+      GRADLE_MOCK_LOG="$GRADLE_LOG" \
       bash "$DOCKER_SCRIPT" --build "$@"
   )
 }
@@ -436,6 +448,7 @@ run_standalone_build() {
   : > "$DOCKER_CONTEXT_LOG"
   : > "$DOCKER_ENV_LOG"
   : > "$DOWNLOAD_LOG"
+  : > "$GRADLE_LOG"
   (
     cd -- "$working_directory"
     PATH="$MOCK_BIN:$PATH" \
@@ -443,6 +456,7 @@ run_standalone_build() {
       DOCKER_MOCK_LOG="$DOCKER_LOG" \
       DOCKER_MOCK_CONTEXT_LOG="$DOCKER_CONTEXT_LOG" \
       DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
+      GRADLE_MOCK_LOG="$GRADLE_LOG" \
       DOWNLOAD_MOCK_LOG="$DOWNLOAD_LOG" \
       MOCK_CURL_FAIL="${MOCK_CURL_FAIL:-false}" \
       MOCK_CURL_EMPTY="${MOCK_CURL_EMPTY:-false}" \
@@ -520,6 +534,31 @@ expect_failure() {
   if [[ "$output" != *"$expected_message"* ]]; then
     echo "Expected failure message '$expected_message', got:" >&2
     echo "$output" >&2
+    exit 1
+  fi
+}
+
+expect_local_config_failure() {
+  local expected_setting="$1"
+  local output
+
+  if output=$(run_build x86_64 "$SOURCE_ROOT" --source local 2>&1); then
+    echo "A local image build containing $expected_setting unexpectedly succeeded" >&2
+    exit 1
+  fi
+  if [[ "$output" != *"refusing to bake non-empty plaintext $expected_setting"* ]]; then
+    echo "The $expected_setting rejection was unclear:" >&2
+    echo "$output" >&2
+    exit 1
+  fi
+  if [ -s "$GRADLE_LOG" ]; then
+    echo "Gradle ran before $expected_setting was rejected" >&2
+    sed 's/^/  /' "$GRADLE_LOG" >&2
+    exit 1
+  fi
+  if [ -s "$DOCKER_LOG" ]; then
+    echo "Docker ran before $expected_setting was rejected" >&2
+    sed 's/^/  /' "$DOCKER_LOG" >&2
     exit 1
   fi
 }
@@ -639,6 +678,63 @@ if grep -Fqx -- "./.env" "$DOCKER_CONTEXT_LOG"; then
   exit 1
 fi
 assert_buildkit_enabled
+
+cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'PLAINTEXT_WITNESS_CONFIG'
+localwitness = [
+  "0123456789abcdef"
+]
+event.subscribe = {
+  dbconfig = ""
+}
+PLAINTEXT_WITNESS_CONFIG
+expect_local_config_failure "localwitness"
+
+cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'INLINE_WITNESS_CONFIG'
+localwitness: ["0123456789abcdef"]
+event.subscribe = { dbconfig = "" }
+INLINE_WITNESS_CONFIG
+expect_local_config_failure "localwitness"
+
+cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'DATABASE_CREDENTIAL_CONFIG'
+localwitness = []
+event.subscribe.dbconfig = "events|db-user|db-password"
+DATABASE_CREDENTIAL_CONFIG
+expect_local_config_failure "event.subscribe.dbconfig"
+
+cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'APPENDED_WITNESS_CONFIG'
+localwitness = []
+localwitness += ["0123456789abcdef"]
+event.subscribe = { dbconfig = "" }
+APPENDED_WITNESS_CONFIG
+expect_local_config_failure "localwitness"
+
+cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'SUBSTITUTED_WITNESS_CONFIG'
+localwitness = [] ${?WITNESS_KEYS}
+event.subscribe = { dbconfig = "" }
+SUBSTITUTED_WITNESS_CONFIG
+expect_local_config_failure "localwitness"
+
+cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'SUBSTITUTED_DATABASE_CONFIG'
+localwitness = []
+event.subscribe.dbconfig = "" ${?EVENT_DATABASE_CREDENTIALS}
+SUBSTITUTED_DATABASE_CONFIG
+expect_local_config_failure "event.subscribe.dbconfig"
+
+cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'SAFE_LOCAL_CONFIG'
+localwitness = [
+  ""
+]
+event.subscribe = { dbconfig = "" }
+# localwitness = ["commented-example-key"]
+# dbconfig = "commented|example|credentials"
+SAFE_LOCAL_CONFIG
+run_build x86_64 "$SOURCE_ROOT" --source local >/dev/null
+assert_context_file "./java-tron/config.conf"
+
+cp "$REPOSITORY_ROOT/framework/src/main/resources/config.conf" \
+  "$SOURCE_ROOT/framework/src/main/resources/config.conf"
+run_build x86_64 "$SOURCE_ROOT" --source local >/dev/null
+assert_context_file "./java-tron/config.conf"
 
 run_build x86_64 "$REPOSITORY_ROOT" \
   --source remote \

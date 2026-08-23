@@ -10,8 +10,6 @@ image=$1
 java_version_regex=$2
 test_dir=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
 repository_root=$(cd -- "$test_dir/../.." >/dev/null 2>&1 && pwd)
-invoking_uid=$(id -u)
-invoking_gid=$(id -g)
 
 test "$(docker image inspect --format '{{.Config.User}}' "$image")" = "10001:10001"
 
@@ -64,6 +62,39 @@ docker run --rm --entrypoint sh "$image" -ec '
 
 runtime_dir=$(mktemp -d "$repository_root/.verify-runtime-image.XXXXXX")
 
+remove_runtime_owned_directory() {
+  local directory="$1"
+
+  [ -e "$directory" ] || return 0
+  if rm -rf -- "$directory" 2>/dev/null && [ ! -e "$directory" ]; then
+    return 0
+  fi
+  if [ ! -d "$directory" ]; then
+    echo "Runtime-test path is not a directory: $directory" >&2
+    return 1
+  fi
+
+  # Delete files in the same user namespace and as the same container UID that
+  # created them. This avoids applying a host UID as though it were a container
+  # UID, which produces the wrong owner under rootless/userns-remap daemons.
+  if ! docker run --rm \
+    --user 10001:10001 \
+    --network none \
+    --read-only \
+    --security-opt no-new-privileges \
+    --cap-drop ALL \
+    --entrypoint find \
+    --mount "type=bind,src=$directory,dst=/cleanup" \
+    "$image" /cleanup -mindepth 1 -depth -delete; then
+    echo "Failed to empty container-owned test directory: $directory" >&2
+    return 1
+  fi
+  if ! rmdir -- "$directory"; then
+    echo "Failed to remove empty test directory: $directory" >&2
+    return 1
+  fi
+}
+
 cleanup() {
   local test_status=$?
   local cleanup_status=0
@@ -72,21 +103,12 @@ cleanup() {
   set +e
 
   if [ -d "$runtime_dir" ]; then
-    if ! docker run --rm \
-      --user 0:0 \
-      --network none \
-      --read-only \
-      --security-opt no-new-privileges \
-      --cap-drop ALL \
-      --cap-add CHOWN \
-      --cap-add DAC_READ_SEARCH \
-      --entrypoint chown \
-      --mount "type=bind,src=$runtime_dir,dst=/cleanup" \
-      "$image" -R "$invoking_uid:$invoking_gid" /cleanup; then
-      echo "Failed to restore runtime-test directory ownership: $runtime_dir" >&2
+    if ! remove_runtime_owned_directory "$runtime_dir/output-directory"; then
       cleanup_status=1
     fi
-
+    if ! remove_runtime_owned_directory "$runtime_dir/logs"; then
+      cleanup_status=1
+    fi
     if ! rm -rf -- "$runtime_dir"; then
       echo "Failed to remove runtime-test directory: $runtime_dir" >&2
       cleanup_status=1

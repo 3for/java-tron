@@ -1014,14 +1014,156 @@ run() {
     "${fullnode_args[@]}"
 }
 
+validate_local_image_config() {
+  local config_path="$1"
+  local sensitive_setting
+
+  # config.conf is copied verbatim into the image. Recognize the supported
+  # HOCON forms for the two settings that can directly contain signing keys or
+  # database credentials, while ignoring line comments outside quoted strings.
+  if ! sensitive_setting=$(awk '
+    function uncomment(value, output, position, character, next_character, quoted, escaped) {
+      output = ""
+      quoted = 0
+      escaped = 0
+      for (position = 1; position <= length(value); position++) {
+        character = substr(value, position, 1)
+        next_character = substr(value, position + 1, 1)
+        if (quoted) {
+          output = output character
+          if (escaped) {
+            escaped = 0
+          } else if (character == "\\") {
+            escaped = 1
+          } else if (character == "\"") {
+            quoted = 0
+          }
+        } else if (character == "\"") {
+          quoted = 1
+          output = output character
+        } else if (character == "#" || (character == "/" && next_character == "/")) {
+          return output
+        } else {
+          output = output character
+        }
+      }
+      return output
+    }
+
+    function witness_fragment_has_value(value, compacted) {
+      compacted = value
+      gsub(/[[:space:],]/, "", compacted)
+      while (sub(/""/, "", compacted)) {
+      }
+      return compacted != ""
+    }
+
+    function database_value_is_nonempty(value, remainder) {
+      sub(/^[[:space:]]*/, "", value)
+      if (substr(value, 1, 2) != "\"\"") {
+        return 1
+      }
+      remainder = substr(value, 3)
+      sub(/^[[:space:]]*/, "", remainder)
+      return remainder != "" && substr(remainder, 1, 1) !~ /[,}]/
+    }
+
+    {
+      line = uncomment($0)
+
+      if (in_witness_list) {
+        closing_bracket = index(line, "]")
+        fragment = closing_bracket ? substr(line, 1, closing_bracket - 1) : line
+        if (witness_fragment_has_value(fragment)) {
+          sensitive_setting = "localwitness"
+          exit
+        }
+        if (!closing_bracket) {
+          next
+        }
+        in_witness_list = 0
+        line = substr(line, closing_bracket + 1)
+        remainder = line
+        sub(/^[[:space:]]*/, "", remainder)
+        if (remainder != "" && substr(remainder, 1, 1) !~ /[,}]/) {
+          sensitive_setting = "localwitness"
+          exit
+        }
+      }
+
+      database_line = line
+      while (match(line, /(^|[[:space:]{,.])("localwitness"|localwitness)[[:space:]]*([+]?=|:)/)) {
+        value = substr(line, RSTART + RLENGTH)
+        sub(/^[[:space:]]*/, "", value)
+        if (substr(value, 1, 1) != "[") {
+          sensitive_setting = "localwitness"
+          exit
+        }
+        value = substr(value, 2)
+        closing_bracket = index(value, "]")
+        fragment = closing_bracket ? substr(value, 1, closing_bracket - 1) : value
+        if (witness_fragment_has_value(fragment)) {
+          sensitive_setting = "localwitness"
+          exit
+        }
+        if (!closing_bracket) {
+          in_witness_list = 1
+          line = ""
+        } else {
+          line = substr(value, closing_bracket + 1)
+          remainder = line
+          sub(/^[[:space:]]*/, "", remainder)
+          if (remainder != "" && substr(remainder, 1, 1) !~ /[,}]/) {
+            sensitive_setting = "localwitness"
+            exit
+          }
+        }
+      }
+
+      while (match(database_line, /(^|[[:space:]{,.])("dbconfig"|dbconfig)[[:space:]]*([+]?=|:)/)) {
+        value = substr(database_line, RSTART + RLENGTH)
+        if (database_value_is_nonempty(value)) {
+          sensitive_setting = "event.subscribe.dbconfig"
+          exit
+        }
+        database_line = substr(value, 3)
+      }
+    }
+
+    END {
+      if (sensitive_setting != "") {
+        print sensitive_setting
+      }
+    }
+  ' "$config_path"); then
+    echo "build: failed to inspect local configuration: $config_path" >&2
+    return 1
+  fi
+
+  if [ -n "$sensitive_setting" ]; then
+    echo "build: refusing to bake non-empty plaintext $sensitive_setting into the image: $config_path" >&2
+    echo "Clear the setting and provide sensitive signing or database configuration through a protected runtime mount." >&2
+    return 1
+  fi
+}
+
 build_local_image() (
   local source_root="$1"
   local dockerfile_path="$2"
   local distribution="$source_root/framework/build/distributions/java-tron-1.0.0.zip"
+  local config_path="$source_root/framework/src/main/resources/config.conf"
   local build_context
 
   if ! command -v unzip >/dev/null 2>&1; then
     echo "build: unzip is required for --source local" >&2
+    return 1
+  fi
+
+  if [ ! -f "$config_path" ]; then
+    echo "build: local configuration does not exist: $config_path" >&2
+    return 1
+  fi
+  if ! validate_local_image_config "$config_path"; then
     return 1
   fi
 
@@ -1054,12 +1196,7 @@ build_local_image() (
     return 1
   fi
 
-  if [ ! -f "$source_root/framework/src/main/resources/config.conf" ]; then
-    echo "build: local configuration does not exist: $source_root/framework/src/main/resources/config.conf" >&2
-    return 1
-  fi
-  cp "$source_root/framework/src/main/resources/config.conf" \
-    "$build_context/java-tron/config.conf" || return 1
+  cp "$config_path" "$build_context/java-tron/config.conf" || return 1
   cp "$dockerfile_path" "$build_context/Dockerfile" || return 1
 
   echo "Building the local image from a temporary distribution-only context."
