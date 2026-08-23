@@ -236,6 +236,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$SOURCE_MODE" = local ]; then
+            umask 077
             bash docker/docker.sh --build --source local --image "$IMAGE"
           else
             DOCKER_BUILDKIT=1 docker build --pull \
@@ -283,6 +284,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$SOURCE_MODE" = local ]; then
+            umask 077
             bash docker/docker.sh --build --source local --image "$IMAGE"
           else
             DOCKER_BUILDKIT=1 docker build --pull \

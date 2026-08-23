@@ -23,6 +23,8 @@ docker run --rm --entrypoint sh "$image" -ec '
   test -x /java-tron/bin/FullNode
   test -f /java-tron/bin/java-tron.vmoptions
   test -f /java-tron/config.conf
+  test ! -L /java-tron/config.conf
+  test -r /java-tron/config.conf
   test -d /java-tron/output-directory
   test -d /java-tron/logs
 
@@ -31,6 +33,7 @@ docker run --rm --entrypoint sh "$image" -ec '
   test "$(stat -c %u:%g /java-tron/bin/FullNode)" = "0:0"
   test "$(stat -c %u:%g /java-tron/bin/java-tron.vmoptions)" = "0:0"
   test "$(stat -c %u:%g /java-tron/config.conf)" = "0:0"
+  test "$(stat -c %a /java-tron/config.conf)" = "644"
   lib_jar=$(find /java-tron/lib -maxdepth 1 -type f -name "*.jar" -print -quit)
   test -n "$lib_jar"
   test "$(stat -c %u:%g "$lib_jar")" = "0:0"

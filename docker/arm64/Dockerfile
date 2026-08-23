@@ -55,15 +55,18 @@ COPY <<'LOCKDOWN' /usr/local/sbin/lockdown-java-tron
 set -eu
 
 base=/java-tron
+config="$base/config.conf"
 vm_options="$base/bin/java-tron.vmoptions"
 
-if [ ! -d "$base/bin" ] || [ ! -f "$vm_options" ]; then
+if [ ! -d "$base/bin" ] || [ ! -f "$vm_options" ] \
+  || [ ! -f "$config" ] || [ -L "$config" ]; then
   echo "lockdown-java-tron: application files are missing under $base" >&2
   exit 1
 fi
 
 chown -R root:root "$base"
 chmod 755 "$base"
+chmod 0644 "$config"
 mkdir -p "$base/output-directory" "$base/logs"
 chown 10001:10001 "$base/output-directory" "$base/logs"
 chmod 755 "$base/output-directory" "$base/logs"

@@ -273,7 +273,9 @@ set -euo pipefail
 target=${!#}
 if [ -n "${MOCK_RUNTIME_OWNER_PATH:-}" ] \
   && [ "$target" = "$MOCK_RUNTIME_OWNER_PATH" ]; then
-  printf '10001 %s\n' "${MOCK_RUNTIME_OWNER_MODE:-700}"
+  printf '%s %s\n' \
+    "${MOCK_RUNTIME_HOST_OWNER_UID:-10001}" \
+    "${MOCK_RUNTIME_OWNER_MODE:-700}"
   exit 0
 fi
 exec /usr/bin/stat "$@"
@@ -467,6 +469,7 @@ run_node() {
       MOCK_HOST_FIND_DENIED_PATH="${MOCK_HOST_FIND_DENIED_PATH:-}" \
       MOCK_RUNTIME_FIND_DENIED_PATH="${MOCK_RUNTIME_FIND_DENIED_PATH:-}" \
       MOCK_RUNTIME_OWNER_PATH="${MOCK_RUNTIME_OWNER_PATH:-}" \
+      MOCK_RUNTIME_HOST_OWNER_UID="${MOCK_RUNTIME_HOST_OWNER_UID:-10001}" \
       MOCK_RUNTIME_OWNER_MODE="${MOCK_RUNTIME_OWNER_MODE:-700}" \
       MOCK_CONTAINER_EXISTS="${MOCK_CONTAINER_EXISTS:-false}" \
       MOCK_CONTAINER_NAME="${MOCK_CONTAINER_NAME:-tronprotocol-java-tron}" \
@@ -928,6 +931,7 @@ touch "$RUNTIME_OWNED_PRIVATE_DATA/output-directory/existing-database-entry"
 chmod 0700 "$RUNTIME_OWNED_PRIVATE_DATA/output-directory"
 MOCK_HOST_FIND_DENIED_PATH="$RUNTIME_OWNED_PRIVATE_DATA/output-directory" \
 MOCK_RUNTIME_OWNER_PATH="$RUNTIME_OWNED_PRIVATE_DATA/output-directory" \
+MOCK_RUNTIME_HOST_OWNER_UID=10001 \
 MOCK_EXECUTE_RUNTIME_CHECK=true \
   run_node --data-dir "$RUNTIME_OWNED_PRIVATE_DATA" \
     -c /java-tron/custom.conf \
@@ -935,12 +939,30 @@ MOCK_EXECUTE_RUNTIME_CHECK=true \
 assert_run_argument_count "CHOWN" 0
 assert_mode 700 "$RUNTIME_OWNED_PRIVATE_DATA/output-directory"
 
-HOST_UNREADABLE_WRONG_OWNER_DATA="$TEST_TMP/host-unreadable-wrong-owner-data"
-mkdir -p "$HOST_UNREADABLE_WRONG_OWNER_DATA/output-directory"
-touch "$HOST_UNREADABLE_WRONG_OWNER_DATA/output-directory/existing-database-entry"
-MOCK_HOST_FIND_DENIED_PATH="$HOST_UNREADABLE_WRONG_OWNER_DATA/output-directory" \
-  expect_run_failure "failed to inspect runtime directory" \
-    --data-dir "$HOST_UNREADABLE_WRONG_OWNER_DATA" \
+USERNS_MAPPED_PRIVATE_DATA="$TEST_TMP/userns-mapped-private-data"
+mkdir -p "$USERNS_MAPPED_PRIVATE_DATA/output-directory"
+touch "$USERNS_MAPPED_PRIVATE_DATA/output-directory/existing-database-entry"
+chmod 0700 "$USERNS_MAPPED_PRIVATE_DATA/output-directory"
+MOCK_HOST_FIND_DENIED_PATH="$USERNS_MAPPED_PRIVATE_DATA/output-directory" \
+MOCK_RUNTIME_OWNER_PATH="$USERNS_MAPPED_PRIVATE_DATA/output-directory" \
+MOCK_RUNTIME_HOST_OWNER_UID=231073 \
+MOCK_EXECUTE_RUNTIME_CHECK=true \
+  run_node --data-dir "$USERNS_MAPPED_PRIVATE_DATA" \
+    -c /java-tron/custom.conf \
+    -v /host/logs:/java-tron/logs >/dev/null
+assert_run_argument_count "CHOWN" 0
+assert_mode 700 "$USERNS_MAPPED_PRIVATE_DATA/output-directory"
+
+USERNS_RUNTIME_DENIED_DATA="$TEST_TMP/userns-runtime-denied-data"
+mkdir -p "$USERNS_RUNTIME_DENIED_DATA/output-directory"
+touch "$USERNS_RUNTIME_DENIED_DATA/output-directory/existing-database-entry"
+MOCK_HOST_FIND_DENIED_PATH="$USERNS_RUNTIME_DENIED_DATA/output-directory" \
+MOCK_RUNTIME_FIND_DENIED_PATH="$USERNS_RUNTIME_DENIED_DATA/output-directory" \
+MOCK_RUNTIME_OWNER_PATH="$USERNS_RUNTIME_DENIED_DATA/output-directory" \
+MOCK_RUNTIME_HOST_OWNER_UID=231074 \
+MOCK_EXECUTE_RUNTIME_CHECK=true \
+  expect_run_failure "runtime directories must be writable" \
+    --data-dir "$USERNS_RUNTIME_DENIED_DATA" \
     -c /java-tron/custom.conf \
     -v /host/logs:/java-tron/logs
 

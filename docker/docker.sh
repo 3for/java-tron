@@ -632,14 +632,15 @@ prepare_runtime_directories() {
         return 1
       fi
       numeric_mode=$((8#$mode))
-      if [ "$owner_uid" != "$JAVA_TRON_UID" ] || ((numeric_mode & 0022)); then
+      if ((numeric_mode & 0022)); then
         echo "run: failed to inspect runtime directory: $host_directory" >&2
         return 1
       fi
 
       # A previous initialization can leave a private (0700) directory owned
-      # by the runtime UID. The host cannot enumerate it, but the container-side
-      # check below can validate it without widening its mode.
+      # by either the runtime UID or its user-namespace-mapped host UID. The
+      # host cannot enumerate it, so validate effective access from inside the
+      # restricted container below without widening its mode.
       assert_managed_directory "$host_directory" || return 1
     fi
 
@@ -701,7 +702,9 @@ prepare_runtime_directories() {
   fi
 
   echo "run: runtime directories must be writable by java-tron UID:GID $JAVA_TRON_UID:$JAVA_TRON_GID." >&2
-  echo "Stop the node and migrate existing data before retrying:" >&2
+  echo "Stop the node and migrate existing data with the same Docker daemon and user namespace before retrying." >&2
+  echo "For rootless Docker or userns-remap, use the host UID:GID mapped from container $JAVA_TRON_UID:$JAVA_TRON_GID by that daemon." >&2
+  echo "For rootful Docker without user-namespace remapping:" >&2
   printf '  sudo chown -R %s:%s' "$JAVA_TRON_UID" "$JAVA_TRON_GID" >&2
   for host_directory in "${host_directories[@]}"; do
     printf ' %q' "$host_directory" >&2
