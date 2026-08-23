@@ -61,6 +61,9 @@ REBUILD_BATCH_SIZE=80000
 # Download and upgrade
 DOWNLOAD=false
 RELEASE_URL='https://github.com/tronprotocol/java-tron/releases'
+RELEASE_FULL_NODE_ASSET='FullNode.jar'
+RELEASE_GPG_KEYSERVER='hkps://keyserver.ubuntu.com'
+RELEASE_GPG_PRIMARY_FINGERPRINT='07B23298AEA4E006BD9A42DE785FB96D2C7C3CA5'
 QUICK_START=false
 CLONE_BUILD=false
 
@@ -142,7 +145,9 @@ backupGCLog() {
 }
 
 getLatestReleaseVersion() {
-  full_node_version=`git ls-remote --tags $GITHUB_REPOSITORY |grep GreatVoyage- | awk -F '/' 'END{print $3}'`
+  full_node_version=$(git ls-remote --refs --tags --sort=-version:refname \
+    "$GITHUB_REPOSITORY" 'refs/tags/GreatVoyage-*' | \
+    awk -F/ 'NR == 1 { print $3; exit }')
   if [[ -n $full_node_version ]]; then
    echo $full_node_version
   else
@@ -162,33 +167,19 @@ checkVersion() {
 }
 
 upgrade() {
-  latest_version=$(`echo getLatestReleaseVersion`)
+  local latest_version
+  latest_version=$(getLatestReleaseVersion)
   echo "info: latest version: $latest_version"
   if [[ -n $latest_version ]]; then
-    old_jar="$PWD/$JAR_NAME"
-    if [[ -f $old_jar ]]; then
-      echo "info: backup $old_jar"
-      mv $PWD/$JAR_NAME $PWD/$JAR_NAME'_bak'
+    if ! installVerifiedReleaseArtifact \
+      "$latest_version" "$RELEASE_FULL_NODE_ASSET" "$JAR_NAME" true; then
+      echo "info: failed to download and verify version $latest_version" >&2
+      return 1
     fi
-    download $RELEASE_URL/download/$latest_version/$JAR_NAME $JAR_NAME
-    if [[ $? == 0 ]]; then
-      echo "info: download version $latest_version success"
-    fi
+    echo "info: download and verification of version $latest_version succeeded"
   else
-    echo 'info: nothing to upgrade'
-  fi
-}
-
-download() {
-  local url=$1
-  local file_name=$2
-  if type wget >/dev/null 2>&1; then
-    wget --no-check-certificate -q $url
-  elif type curl >/dev/null 2>&1; then
-    echo "curl -OLJ $url"
-    curl -OLJ $url
-  else
-    echo 'info: no exists wget or curl, make sure the system can use the "wget" or "curl" command'
+    echo 'info: nothing to upgrade' >&2
+    return 1
   fi
 }
 
@@ -199,6 +190,10 @@ downloadTo() {
   local output_name
   local temporary_file
 
+  if [[ "$url" != https://* ]]; then
+    echo "info: refusing non-HTTPS download URL: $url" >&2
+    return 1
+  fi
   if [[ -L "$file_name" ]]; then
     echo "info: refusing to replace symbolic link: $file_name" >&2
     return 1
@@ -219,19 +214,18 @@ downloadTo() {
     return 1
   fi
 
-  if type wget >/dev/null 2>&1; then
-    if ! wget -q -O "$temporary_file" "$url"; then
-      rm -f -- "$temporary_file"
-      return 1
-    fi
-  elif type curl >/dev/null 2>&1; then
-    echo "curl -fsSL -o $temporary_file $url"
-    if ! curl -fsSL -o "$temporary_file" "$url"; then
-      rm -f -- "$temporary_file"
-      return 1
-    fi
-  else
-    echo 'info: no exists wget or curl, make sure the system can use the "wget" or "curl" command'
+  if ! type curl >/dev/null 2>&1; then
+    rm -f -- "$temporary_file"
+    echo 'info: curl is required for strict HTTPS downloads' >&2
+    return 1
+  fi
+
+  # -q must be curl's first argument so a user-level .curlrc cannot enable
+  # insecure TLS behavior. Restrict both the initial URL and every redirect to
+  # HTTPS; wget's --https-only does not provide this guarantee for redirects.
+  echo "curl -q -fsSL --proto =https --proto-redir =https --tlsv1.2 -o $temporary_file $url"
+  if ! curl -q -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 \
+    -o "$temporary_file" "$url"; then
     rm -f -- "$temporary_file"
     return 1
   fi
@@ -252,6 +246,177 @@ downloadTo() {
   fi
 }
 
+verifyReleaseSignature() {
+  local artifact_file=$1
+  local signature_file=$2
+
+  if ! type gpg >/dev/null 2>&1; then
+    echo 'info: gpg is required to verify java-tron release artifacts' >&2
+    return 1
+  fi
+
+  (
+    local fingerprint_output
+    local gpg_home
+    local primary_count
+    local verification_status
+
+    if ! gpg_home=$(mktemp -d "${TMPDIR:-/tmp}/java-tron-gpg.XXXXXX"); then
+      echo 'info: failed to create a temporary GPG home' >&2
+      exit 1
+    fi
+    trap 'rm -rf -- "$gpg_home"' EXIT
+    chmod 700 "$gpg_home" || exit 1
+
+    if ! gpg --homedir "$gpg_home" --no-options --batch --no-tty --quiet \
+      --keyserver "$RELEASE_GPG_KEYSERVER" \
+      --recv-keys "$RELEASE_GPG_PRIMARY_FINGERPRINT"; then
+      echo "info: failed to import the pinned java-tron release signing key from $RELEASE_GPG_KEYSERVER" >&2
+      exit 1
+    fi
+
+    if ! fingerprint_output=$(gpg --homedir "$gpg_home" --no-options --batch --no-tty \
+      --with-colons --fingerprint --fingerprint \
+      "$RELEASE_GPG_PRIMARY_FINGERPRINT" 2>/dev/null); then
+      echo 'info: failed to inspect the java-tron release signing key' >&2
+      exit 1
+    fi
+    primary_count=$(printf '%s\n' "$fingerprint_output" | awk -F: \
+      -v expected="$RELEASE_GPG_PRIMARY_FINGERPRINT" \
+      '$1 == "fpr" && $10 == expected { count++ } END { print count + 0 }')
+    if [[ "$primary_count" -ne 1 ]]; then
+      echo 'info: imported java-tron release key does not match the pinned primary fingerprint' >&2
+      exit 1
+    fi
+
+    if ! verification_status=$(gpg --homedir "$gpg_home" --no-options --batch --no-tty \
+      --status-fd 1 --verify "$signature_file" "$artifact_file" 2>/dev/null); then
+      echo "info: release signature verification failed for $artifact_file" >&2
+      exit 1
+    fi
+    if ! printf '%s\n' "$verification_status" | awk \
+      -v primary="$RELEASE_GPG_PRIMARY_FINGERPRINT" '
+        $1 == "[GNUPG:]" && ($2 == "BADSIG" || $2 == "ERRSIG" ||
+          $2 == "NO_PUBKEY" || $2 == "REVKEYSIG" || $2 == "EXPKEYSIG" ||
+          $2 == "EXPSIG") {
+          rejected = 1
+        }
+        $1 == "[GNUPG:]" && $2 == "VALIDSIG" {
+          count++
+          signing_primary = ($12 == "" ? $3 : $12)
+          if (signing_primary == primary) {
+            valid++
+          }
+        }
+        END { exit !(rejected == 0 && count == 1 && valid == 1) }
+      '; then
+      echo 'info: release signature was not made by the pinned java-tron primary key' >&2
+      exit 1
+    fi
+  )
+}
+
+installVerifiedReleaseArtifact() {
+  local release_version=$1
+  local release_asset=$2
+  local destination=$3
+  local backup_existing=${4:-false}
+
+  if [[ ! "$release_version" =~ ^GreatVoyage-[A-Za-z0-9._-]+$ ]]; then
+    echo "info: invalid java-tron release tag: $release_version" >&2
+    return 1
+  fi
+  case "$release_asset" in
+  FullNode.jar | ArchiveManifest.jar)
+    ;;
+  *)
+    echo "info: unsupported java-tron release artifact: $release_asset" >&2
+    return 1
+    ;;
+  esac
+
+  (
+    local artifact_temporary_file=''
+    local backup_file
+    local backup_temporary_file=''
+    local destination_dir
+    local destination_name
+    local signature_temporary_file=''
+
+    if [[ -L "$destination" ]] || [[ -e "$destination" && ! -f "$destination" ]]; then
+      echo "info: release destination is not a regular file: $destination" >&2
+      exit 1
+    fi
+    destination_dir=$(dirname -- "$destination")
+    destination_name=$(basename -- "$destination")
+    if [[ ! -d "$destination_dir" ]]; then
+      echo "info: release destination directory does not exist: $destination_dir" >&2
+      exit 1
+    fi
+
+    artifact_temporary_file=$(mktemp \
+      "$destination_dir/.${destination_name}.artifact.XXXXXX") || exit 1
+    trap 'rm -f -- "$artifact_temporary_file" "$signature_temporary_file" "$backup_temporary_file"' EXIT
+    signature_temporary_file=$(mktemp \
+      "$destination_dir/.${destination_name}.signature.XXXXXX") || exit 1
+
+    if ! downloadTo \
+      "$RELEASE_URL/download/$release_version/$release_asset" \
+      "$artifact_temporary_file"; then
+      echo "info: failed to download $release_asset for $release_version" >&2
+      exit 1
+    fi
+    if ! downloadTo \
+      "$RELEASE_URL/download/$release_version/$release_asset.sig" \
+      "$signature_temporary_file"; then
+      echo "info: failed to download $release_asset.sig for $release_version" >&2
+      exit 1
+    fi
+    if ! verifyReleaseSignature \
+      "$artifact_temporary_file" "$signature_temporary_file"; then
+      exit 1
+    fi
+
+    if [[ -L "$destination" ]] || [[ -e "$destination" && ! -f "$destination" ]]; then
+      echo "info: release destination changed to a non-regular file: $destination" >&2
+      exit 1
+    fi
+    if [[ "$backup_existing" == true && -f "$destination" ]]; then
+      backup_file="${destination}_bak"
+      if [[ -L "$backup_file" ]] || [[ -e "$backup_file" && ! -f "$backup_file" ]]; then
+        echo "info: release backup destination is not a regular file: $backup_file" >&2
+        exit 1
+      fi
+      backup_temporary_file=$(mktemp \
+        "$destination_dir/.${destination_name}_bak.XXXXXX") || exit 1
+      if ! cp -p -- "$destination" "$backup_temporary_file"; then
+        echo "info: failed to back up $destination" >&2
+        exit 1
+      fi
+      if [[ -L "$backup_file" ]] || [[ -e "$backup_file" && ! -f "$backup_file" ]]; then
+        echo "info: release backup destination changed to a non-regular file: $backup_file" >&2
+        exit 1
+      fi
+      if ! mv -f -- "$backup_temporary_file" "$backup_file"; then
+        echo "info: failed to install release backup: $backup_file" >&2
+        exit 1
+      fi
+      backup_temporary_file=''
+    fi
+
+    if ! mv -f -- "$artifact_temporary_file" "$destination"; then
+      echo "info: failed to install verified release artifact: $destination" >&2
+      exit 1
+    fi
+    if [[ -L "$destination" || ! -f "$destination" || ! -s "$destination" ]]; then
+      echo "info: installed release artifact is not a non-empty regular file: $destination" >&2
+      exit 1
+    fi
+    artifact_temporary_file=''
+    echo "info: verified $release_asset with the pinned java-tron release signing key"
+  )
+}
+
 mkdirFullNode() {
   if [ ! -d $FULL_NODE_DIR ]; then
     echo "info: create $FULL_NODE_DIR"
@@ -268,7 +433,10 @@ quickStart() {
   local main_net_config_url
   full_node_version=$(getLatestReleaseVersion)
   if [[ -n $full_node_version ]]; then
-    mkdirFullNode
+    if ! mkdirFullNode; then
+      echo 'info: failed to prepare the FullNode release directory' >&2
+      return 1
+    fi
     echo "info: check latest version: $full_node_version"
     echo 'info: download config'
     main_net_config_url="$FULL_NODE_CONFIG_MAIN_NET_BASE_URL/$full_node_version/framework/src/main/resources/config.conf"
@@ -278,11 +446,14 @@ quickStart() {
     fi
 
     echo "info: download $full_node_version"
-    download $RELEASE_URL/download/$full_node_version/$JAR_NAME $JAR_NAME
-    checkSign "$full_node_version"
+    if ! installVerifiedReleaseArtifact \
+      "$full_node_version" "$RELEASE_FULL_NODE_ASSET" "$JAR_NAME"; then
+      echo "info: failed to download and verify $full_node_version" >&2
+      return 1
+    fi
   else
-    echo 'info: not getting the latest version'
-    exit
+    echo 'info: not getting the latest version' >&2
+    return 1
   fi
 }
 
@@ -315,32 +486,307 @@ cloneBuild() {
   fi
 }
 
-checkPid() {
-  if [[ $JAR_NAME =~ '/' ]]; then
-    JAR_NAME=$(echo $JAR_NAME |awk -F '/' '{print $NF}')
+normalizeJarPath() {
+  local base_directory=${2:-$PWD}
+  local jar_directory
+  local jar_name
+  local jar_path=$1
+
+  if [[ "$jar_path" != /* ]]; then
+    jar_path="$base_directory/$jar_path"
   fi
-  pid=$(ps -ef | grep -v start | grep $JAR_NAME | grep -v grep | awk '{print $2}')
-  return $pid
+  jar_directory=$(dirname -- "$jar_path")
+  jar_name=$(basename -- "$jar_path")
+  if ! jar_directory=$(cd -- "$jar_directory" 2>/dev/null && pwd -P); then
+    return 1
+  fi
+  if [[ "$jar_directory" == / ]]; then
+    printf '/%s\n' "$jar_name"
+  else
+    printf '%s/%s\n' "$jar_directory" "$jar_name"
+  fi
+}
+
+processWorkingDirectory() {
+  local candidate_pid=$1
+  local cwd_output
+  local os
+  local process_cwd
+  local process_cwd_count
+
+  os=$(uname)
+  if [[ "$os" == Linux ]] || [[ "$os" == linux ]]; then
+    if ! process_cwd=$(readlink "/proc/$candidate_pid/cwd" 2>/dev/null); then
+      return 1
+    fi
+  elif [[ "$os" == Darwin ]]; then
+    if ! type lsof >/dev/null 2>&1; then
+      return 1
+    fi
+    if ! cwd_output=$(lsof -a -p "$candidate_pid" -d cwd -Fn 2>/dev/null); then
+      return 1
+    fi
+    process_cwd_count=$(printf '%s\n' "$cwd_output" | awk '/^n/ { count++ } END { print count + 0 }')
+    if [[ "$process_cwd_count" -ne 1 ]]; then
+      return 1
+    fi
+    process_cwd=$(printf '%s\n' "$cwd_output" | awk '/^n/ { print substr($0, 2); exit }')
+  else
+    return 1
+  fi
+
+  if [[ ! -d "$process_cwd" ]]; then
+    return 1
+  fi
+  (cd -- "$process_cwd" 2>/dev/null && pwd -P)
+}
+
+linuxProcessStartTokenFromStat() {
+  local start_token
+  local stat_fields
+  local stat_line=$1
+
+  # Field 2 (comm) is parenthesized and may itself contain spaces or closing
+  # parentheses. Remove through the final ") " before selecting field 22,
+  # which is field 20 in the remainder beginning with process state.
+  stat_fields=${stat_line##*) }
+  if [[ "$stat_fields" == "$stat_line" ]]; then
+    return 1
+  fi
+  start_token=$(printf '%s\n' "$stat_fields" | awk '{ print $20; exit }')
+  if [[ ! "$start_token" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  printf '%s\n' "$start_token"
+}
+
+processStartToken() {
+  local candidate_pid=$1
+  local os
+  local start_output
+  local start_token
+  local stat_line
+
+  os=$(uname)
+  if [[ "$os" == Linux ]] || [[ "$os" == linux ]]; then
+    if ! stat_line=$(<"/proc/$candidate_pid/stat"); then
+      return 1
+    fi
+    if ! start_token=$(linuxProcessStartTokenFromStat "$stat_line"); then
+      return 1
+    fi
+    printf 'linux:%s\n' "$start_token"
+  elif [[ "$os" == Darwin ]]; then
+    if ! start_output=$(ps -p "$candidate_pid" -o lstart=); then
+      return 1
+    fi
+    if ! start_token=$(printf '%s\n' "$start_output" | awk '
+      NF {
+        count++
+        $1 = $1
+        token = $0
+      }
+      END {
+        if (count != 1) {
+          exit 1
+        }
+        print token
+      }
+    '); then
+      return 1
+    fi
+    printf 'darwin:%s\n' "$start_token"
+  else
+    return 1
+  fi
+}
+
+hasProcessStartToken() {
+  local candidate_pid=$1
+  local expected_token=$2
+  local current_token
+
+  if ! current_token=$(processStartToken "$candidate_pid"); then
+    return 1
+  fi
+  [[ "$current_token" == "$expected_token" ]]
+}
+
+checkPid() {
+  local candidate_jar
+  local candidate_pid
+  local candidate_path
+  local candidate_working_directory
+  local process_list
+  local target_basename
+  local target_path
+  local -a matching_pids=()
+  local -a uncertain_pids=()
+
+  pid=''
+  if ! target_path=$(normalizeJarPath "$JAR_NAME"); then
+    echo "warn: cannot normalize jar path $JAR_NAME" >&2
+    return 1
+  fi
+  if [[ "$target_path" =~ [[:space:]] ]]; then
+    echo "warn: cannot safely inspect a jar path containing whitespace: $target_path" >&2
+    return 1
+  fi
+  target_basename=$(basename -- "$target_path")
+  if ! process_list=$(ps -ww -eo pid=,args=); then
+    echo 'warn: failed to inspect running processes' >&2
+    return 1
+  fi
+
+  while IFS=$'\t' read -r candidate_pid candidate_jar; do
+    if [[ ! "$candidate_pid" =~ ^[0-9]+$ ]] || [[ -z "$candidate_jar" ]]; then
+      continue
+    fi
+    if [[ "$candidate_jar" != /* ]]; then
+      if [[ $(basename -- "$candidate_jar") != "$target_basename" ]]; then
+        continue
+      fi
+      if candidate_working_directory=$(processWorkingDirectory "$candidate_pid") &&
+         candidate_path=$(normalizeJarPath "$candidate_jar" "$candidate_working_directory"); then
+        if [[ "$candidate_path" == "$target_path" ]]; then
+          matching_pids+=("$candidate_pid")
+        fi
+      else
+        uncertain_pids+=("$candidate_pid")
+      fi
+      continue
+    fi
+    if candidate_path=$(normalizeJarPath "$candidate_jar") &&
+       [[ "$candidate_path" == "$target_path" ]]; then
+      matching_pids+=("$candidate_pid")
+    fi
+  done < <(printf '%s\n' "$process_list" | awk '
+    {
+      process_pid = $1
+      for (field = 2; field < NF; field++) {
+        if ($field == "-jar") {
+          printf "%s\t%s\n", process_pid, $(field + 1)
+          break
+        }
+      }
+    }
+  ')
+
+  if [[ ${#uncertain_pids[@]} -gt 0 ]]; then
+    echo "warn: could not determine the working directory for a process using the relative jar name $target_basename" >&2
+    echo "warn: confirm the intended PID and stop it manually: ${uncertain_pids[*]}" >&2
+    return 1
+  fi
+  if [[ ${#matching_pids[@]} -gt 1 ]]; then
+    echo "warn: multiple processes use the exact jar path $target_path; refusing to stop any process" >&2
+    echo "warn: confirm the intended PID and stop it manually: ${matching_pids[*]}" >&2
+    return 1
+  fi
+  if [[ ${#matching_pids[@]} -eq 1 ]]; then
+    pid=${matching_pids[0]}
+  fi
+  return 0
 }
 
 stopService() {
-  count=1
-  while [ $count -le $MAX_STOP_TIME ]; do
-    checkPid
-    if [ $pid ]; then
-      kill -15 $pid
-      sleep 1
-    else
+  local count=0
+  local target_start_token
+  local target_pid
+
+  if ! checkPid; then
+    return 1
+  fi
+  if [[ -z "$pid" ]]; then
+    echo "info: java-tron stop"
+    return 0
+  fi
+  target_pid=$pid
+  if ! target_start_token=$(processStartToken "$target_pid"); then
+    echo "warn: cannot verify the start identity of java-tron process $target_pid; refusing to signal it" >&2
+    return 1
+  fi
+
+  # Close the initial scan-to-signal window as far as a ps-based identity
+  # check permits. Never switch to a replacement PID or process start identity.
+  if ! checkPid; then
+    return 1
+  fi
+  if [[ -z "$pid" ]]; then
+    echo "info: java-tron stop"
+    return 0
+  fi
+  if [[ "$pid" != "$target_pid" ]]; then
+    echo "warn: the process using $JAR_NAME changed from PID $target_pid to PID $pid; refusing to signal the new process" >&2
+    return 1
+  fi
+  if ! hasProcessStartToken "$target_pid" "$target_start_token"; then
+    echo "warn: the start identity of java-tron PID $target_pid changed or could not be verified; refusing to signal it" >&2
+    return 1
+  fi
+  if ! kill -15 "$target_pid"; then
+    echo "warn: failed to stop java-tron process $target_pid" >&2
+    return 1
+  fi
+
+  while [[ $count -lt $MAX_STOP_TIME ]]; do
+    sleep 1
+    if ! checkPid; then
+      return 1
+    fi
+    if [[ -z "$pid" ]]; then
       echo "info: java-tron stop"
-      return
+      return 0
     fi
-    count=$(($count + 1))
-    if [ $count -eq $MAX_STOP_TIME ]; then
-      kill -9 $pid
-      sleep 1
+    if [[ "$pid" != "$target_pid" ]]; then
+      echo "warn: the process using $JAR_NAME changed from PID $target_pid to PID $pid; refusing to signal the new process" >&2
+      return 1
     fi
+    if ! hasProcessStartToken "$target_pid" "$target_start_token"; then
+      echo "warn: the start identity of java-tron PID $target_pid changed or could not be verified; refusing to signal it" >&2
+      return 1
+    fi
+    count=$((count + 1))
   done
-  sleep 5
+
+  # Revalidate the exact JAR identity and original PID immediately before the
+  # forceful signal so a replacement process is never selected during waiting.
+  if ! checkPid; then
+    return 1
+  fi
+  if [[ -z "$pid" ]]; then
+    echo "info: java-tron stop"
+    return 0
+  fi
+  if [[ "$pid" != "$target_pid" ]]; then
+    echo "warn: the process using $JAR_NAME changed from PID $target_pid to PID $pid; refusing to signal the new process" >&2
+    return 1
+  fi
+  if ! hasProcessStartToken "$target_pid" "$target_start_token"; then
+    echo "warn: the start identity of java-tron PID $target_pid changed or could not be verified; refusing to force-stop it" >&2
+    return 1
+  fi
+  if ! kill -9 "$target_pid"; then
+    echo "warn: failed to force-stop java-tron process $target_pid" >&2
+    return 1
+  fi
+  sleep 1
+  if ! checkPid; then
+    return 1
+  fi
+  if [[ -z "$pid" ]]; then
+    echo "info: java-tron stop"
+    return 0
+  fi
+  if [[ "$pid" != "$target_pid" ]]; then
+    echo "warn: the process using $JAR_NAME changed from PID $target_pid to PID $pid after force-stop; refusing to signal the new process" >&2
+    return 1
+  fi
+  if ! hasProcessStartToken "$target_pid" "$target_start_token"; then
+    echo "warn: java-tron PID $target_pid now has a different start identity after force-stop" >&2
+    return 1
+  fi
+  echo "warn: java-tron process $target_pid is still running after force-stop" >&2
+  return 1
 }
 
 checkAllowMemory() {
@@ -410,26 +856,28 @@ setJVMMemory() {
 }
 
 startService() {
+  local jar_path
+
   echo $(date) >>start.log
   if [[ ! $JAR_NAME =~ '-c' ]]; then
      FULL_START_OPT="$FULL_START_OPT -c $DEFAULT_FULL_NODE_CONFIG"
   fi
 
-  if [[ ! -f $JAR_NAME ]]; then
+  if ! jar_path=$(normalizeJarPath "$JAR_NAME") || [[ ! -f "$jar_path" ]]; then
     echo "warn: jar file $JAR_NAME not exist"
-    exit
+    return 1
   fi
 
-  nohup $JAVACMD -Xms$JVM_MS -Xmx$JVM_MX -XX:+UseConcMarkSweepGC -XX:+PrintGCDetails -Xloggc:./gc.log \
+  nohup "$JAVACMD" -Xms$JVM_MS -Xmx$JVM_MX -XX:+UseConcMarkSweepGC -XX:+PrintGCDetails -Xloggc:./gc.log \
     -XX:+PrintGCDateStamps -XX:+CMSParallelRemarkEnabled -XX:ReservedCodeCacheSize=256m -XX:+UseCodeCacheFlushing \
     -XX:MetaspaceSize=256m -XX:MaxMetaspaceSize=512m \
     -XX:MaxDirectMemorySize=$MAX_DIRECT_MEMORY -Dio.netty.allocator.type=pooled \
     -XX:+HeapDumpOnOutOfMemoryError \
     -XX:NewRatio=2 -jar \
-    $JAR_NAME $FULL_START_OPT >>start.log 2>&1 &
-  checkPid
+    "$jar_path" $FULL_START_OPT >>start.log 2>&1 &
+  pid=$!
   echo "info: start java-tron with pid $pid on $HOSTNAME"
-  echo "info: if you need to stop the service, execute: bash start.sh --stop"
+  printf 'info: if you need to stop the service, execute: bash start.sh --stop -j %q\n' "$jar_path"
 }
 
 rebuildManifest() {
@@ -446,20 +894,26 @@ rebuildManifest() {
   ARCHIVE_JAR='ArchiveManifest.jar'
   if [[ -f $ARCHIVE_JAR ]]; then
     echo 'info: execute rebuild manifest.'
-    $JAVACMD -jar $ARCHIVE_JAR -d $REBUILD_DIR -m $REBUILD_MANIFEST_SIZE -b $REBUILD_BATCH_SIZE
   else
     echo 'info: download the rebuild manifest plugin from the github'
-    local latest=$(`echo getLatestReleaseVersion`)
-    download $RELEASE_URL/download/GreatVoyage-v"$latest"/$ARCHIVE_JAR $ARCHIVE_JAR
-    if [[ $download == 0 ]]; then
-      echo 'info: download success, rebuild manifest'
-      $JAVACMD -jar $ARCHIVE_JAR $REBUILD_DIR -m $REBUILD_MANIFEST_SIZE -b $REBUILD_BATCH_SIZE
+    local latest
+    latest=$(getLatestReleaseVersion)
+    if [[ -z "$latest" ]]; then
+      echo 'info: not getting the latest version for ArchiveManifest.jar' >&2
+      return 1
+    fi
+    if ! installVerifiedReleaseArtifact \
+      "$latest" "$ARCHIVE_JAR" "$ARCHIVE_JAR"; then
+      echo 'info: failed to download and verify ArchiveManifest.jar' >&2
+      return 1
     fi
   fi
-  if [[ $? == 0 ]]; then
+  if "$JAVACMD" -jar "$ARCHIVE_JAR" -d "$REBUILD_DIR" \
+    -m "$REBUILD_MANIFEST_SIZE" -b "$REBUILD_BATCH_SIZE"; then
     echo 'info: rebuild manifest success'
   else
-    echo 'info: rebuild manifest fail, log in logs/archive.log'
+    echo 'info: rebuild manifest fail, log in logs/archive.log' >&2
+    return 1
   fi
 }
 
@@ -501,35 +955,14 @@ specifyConfig(){
   DEFAULT_FULL_NODE_CONFIG=$configPath
 }
 
-checkSign() {
-  echo 'info: verify signature'
-  local latest_version=${1:-$(getLatestReleaseVersion)}
-  download $RELEASE_URL/download/$latest_version/sha256sum.txt sha256sum.txt
-  fullNodeSha256=$(cat sha256sum.txt|grep 'FullNode'| awk -F ' ' '{print $1}')
-
-  os=`uname`
-  if [[ $os == 'Linux' ]] || [[ $os == 'linux' ]] ; then
-    releaseFullNodeSha256=$(sha256sum FullNode.jar| grep FullNode | awk -F ' ' '{print $1}')
-  elif [[ $os == 'Darwin' ]]; then
-    releaseFullNodeSha256=$(shasum -a 256 FullNode.jar| grep FullNode | awk -F ' ' '{print $1}')
-    cat $releaseFullNodeSha256 | awk -F ' ' '{print $0}'
-  fi
-
-  echo "info:      release sha256sum sign: $releaseFullNodeSha256"
-  echo "info: FullNode.jar sha256sum sign: $fullNodeSha256"
-
-  if [[ "$fullNodeSha256" == "$releaseFullNodeSha256" ]]; then
-    echo 'info: sha256 signatures pass'
-  else
-    echo 'info: sha256 signature exception!!!'
-    echo 'info: please compile from the code or download the latest version from https://github.com/tronprotocol/java-tron'
-  fi
-}
-
 restart() {
-  stopService
+  if ! stopService; then
+    return 1
+  fi
   checkAllowMemory
-  rebuildManifest
+  if ! rebuildManifest; then
+    return 1
+  fi
   setTCMalloc
   setJVMMemory
   startService
@@ -602,7 +1035,7 @@ while [ -n "$1" ]; do
     SPECIFY_MEMORY=$2
     shift 2
     ;;
-  --disable-rewrite-manifes)
+  --disable-rewrite-manifest|--disable-rewrite-manifes)
     REBUILD_MANIFEST=false
     shift 1
     ;;
@@ -649,8 +1082,10 @@ while [ -n "$1" ]; do
 done
 
 if [[ $STOP == true ]]; then
-  stopService
-  exit
+  if ! stopService; then
+    exit 1
+  fi
+  exit 0
 fi
 
 if [[ $IS_BACKUP_GC_LOG = true ]]; then
@@ -662,21 +1097,31 @@ if [[ $CLONE_BUILD == true ]];then
 fi
 
 if [[ $QUICK_START == true ]]; then
-  quickStart
-fi
-
-if [[ $UPGRADE == true ]]; then
-  upgrade
-fi
-
-if [[ $DOWNLOAD == true ]]; then
-  latest=$(`echo getLatestReleaseVersion`)
-  if [[ -n $latest ]]; then
-    download $RELEASE_URL/download/$latest/$JAR_NAME $latest
-    exit
-  else
-    echo 'info: not getting the latest version'
+  if ! quickStart; then
+    exit 1
   fi
 fi
 
-restart
+if [[ $UPGRADE == true ]]; then
+  if ! upgrade; then
+    exit 1
+  fi
+fi
+
+if [[ $DOWNLOAD == true ]]; then
+  latest=$(getLatestReleaseVersion)
+  if [[ -n $latest ]]; then
+    if ! installVerifiedReleaseArtifact \
+      "$latest" "$RELEASE_FULL_NODE_ASSET" "$JAR_NAME"; then
+      exit 1
+    fi
+    exit 0
+  else
+    echo 'info: not getting the latest version' >&2
+    exit 1
+  fi
+fi
+
+if ! restart; then
+  exit 1
+fi

@@ -10,6 +10,9 @@ The script is available in the java-tron project at [github](https://github.com/
 
 Invoke the script with `bash` (or execute it directly); do not use `sh`, because `start.sh` uses Bash-specific syntax.
 
+Every automatic configuration or release-asset download requires `curl` and
+HTTPS access to the corresponding GitHub host.
+
 ***
 
 # Usage
@@ -33,6 +36,9 @@ Invoke the script with `bash` (or execute it directly); do not use `sh`, because
   ```
   bash start.sh --stop
   ```
+
+  When the node was started with `-j`, pass the same JAR path when stopping it,
+  for example `bash start.sh --stop -j /data/FullNode.jar`.
 
 * Get the latest version of `FullNode.jar` and start it
 
@@ -95,6 +101,15 @@ Invoke the script with `bash` (or execute it directly); do not use `sh`, because
 
   Get the latest released version of the `jar` package from github.
 
+  Release artifact operations (`--release`, `--upgrade`, `--download`, and an
+  automatic `ArchiveManifest.jar` download) additionally require `git`, `gpg`,
+  Git HTTPS access to `github.com`, and HKPS access to
+  `keyserver.ubuntu.com`. The script imports the pinned official java-tron
+  primary signing key into an isolated temporary keyring, verifies the detached
+  `.sig`, and only then installs the JAR. Keys in the user's normal GPG keyring
+  are deliberately not trusted by this check. See the official
+  [release package signature verification guide](https://tronprotocol.github.io/documentation-en/releases/signature_verification/).
+
 
 ### rebuild the manifest
 
@@ -156,7 +171,7 @@ bash start.sh --stop
 Format:
 
 ```
-bash start.sh <[--release | -cb]> <--run> [-m <manifest size>] | [-b <batch size>] | [-d <db database-directory> | [-dr | --disable-rewrite-manifes]]
+bash start.sh <[--release | -cb]> <--run> [-m <manifest size>] | [-b <batch size>] | [-d <db database-directory> | [-dr | --disable-rewrite-manifest]]
 ```
 
 Get the latest released version.
