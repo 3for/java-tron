@@ -32,7 +32,7 @@ GITHUB_CLONE_TYPE='HTTPS'
 GITHUB_REPOSITORY=''
 GITHUB_REPOSITORY_HTTPS_URL='https://github.com/tronprotocol/java-tron.git'
 GITHUB_REPOSITORY_SSH_URL='git@github.com:tronprotocol/java-tron.git'
-FULL_NODE_CONFIG_MAIN_NET_URL='https://raw.githubusercontent.com/tronprotocol/java-tron/master/framework/src/main/resources/config.conf'
+FULL_NODE_CONFIG_MAIN_NET_BASE_URL='https://raw.githubusercontent.com/tronprotocol/java-tron'
 FULL_NODE_CONFIG_PRIVATE_NET_URL='https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/private_net_config.conf'
 
 # Shell option
@@ -49,7 +49,7 @@ JVM_MX=4g
 IS_BACKUP_GC_LOG=true
 
 SPECIFY_MEMORY=0
-RUN=false
+STOP=false
 UPGRADE=false
 
 # Rebuild manifest
@@ -195,13 +195,59 @@ download() {
 downloadTo() {
   local url=$1
   local file_name=$2
+  local output_dir
+  local output_name
+  local temporary_file
+
+  if [[ -L "$file_name" ]]; then
+    echo "info: refusing to replace symbolic link: $file_name" >&2
+    return 1
+  fi
+  if [[ -e "$file_name" && ! -f "$file_name" ]]; then
+    echo "info: download destination is not a regular file: $file_name" >&2
+    return 1
+  fi
+
+  output_dir=$(dirname -- "$file_name")
+  output_name=$(basename -- "$file_name")
+  if [[ ! -d "$output_dir" ]]; then
+    echo "info: download destination directory does not exist: $output_dir" >&2
+    return 1
+  fi
+  if ! temporary_file=$(mktemp "$output_dir/.${output_name}.tmp.XXXXXX"); then
+    echo "info: failed to create a temporary download file in $output_dir" >&2
+    return 1
+  fi
+
   if type wget >/dev/null 2>&1; then
-    wget -q -O "$file_name" "$url"
+    if ! wget -q -O "$temporary_file" "$url"; then
+      rm -f -- "$temporary_file"
+      return 1
+    fi
   elif type curl >/dev/null 2>&1; then
-    echo "curl -fsSL -o $file_name $url"
-    curl -fsSL -o "$file_name" "$url"
+    echo "curl -fsSL -o $temporary_file $url"
+    if ! curl -fsSL -o "$temporary_file" "$url"; then
+      rm -f -- "$temporary_file"
+      return 1
+    fi
   else
     echo 'info: no exists wget or curl, make sure the system can use the "wget" or "curl" command'
+    rm -f -- "$temporary_file"
+    return 1
+  fi
+
+  if [[ ! -s "$temporary_file" ]]; then
+    echo "info: downloaded file is empty: $url" >&2
+    rm -f -- "$temporary_file"
+    return 1
+  fi
+  if [[ -L "$file_name" ]] || [[ -e "$file_name" && ! -f "$file_name" ]]; then
+    echo "info: download destination changed to a non-regular file: $file_name" >&2
+    rm -f -- "$temporary_file"
+    return 1
+  fi
+  if ! mv -f -- "$temporary_file" "$file_name"; then
+    rm -f -- "$temporary_file"
     return 1
   fi
 }
@@ -218,19 +264,22 @@ mkdirFullNode() {
 }
 
 quickStart() {
-  full_node_version=$(`echo getLatestReleaseVersion`)
+  local full_node_version
+  local main_net_config_url
+  full_node_version=$(getLatestReleaseVersion)
   if [[ -n $full_node_version ]]; then
     mkdirFullNode
     echo "info: check latest version: $full_node_version"
     echo 'info: download config'
-    if ! downloadTo "$FULL_NODE_CONFIG_MAIN_NET_URL" 'config.conf'; then
+    main_net_config_url="$FULL_NODE_CONFIG_MAIN_NET_BASE_URL/$full_node_version/framework/src/main/resources/config.conf"
+    if ! downloadTo "$main_net_config_url" 'config.conf'; then
       echo 'info: failed to download Mainnet config'
       exit 1
     fi
 
     echo "info: download $full_node_version"
     download $RELEASE_URL/download/$full_node_version/$JAR_NAME $JAR_NAME
-    checkSign
+    checkSign "$full_node_version"
   else
     echo 'info: not getting the latest version'
     exit
@@ -438,7 +487,7 @@ specifyConfig(){
   fi
 
   configPath=$FULL_NODE_CONFIG_DIR/$configName
-  if [[ -e $configPath && ! -f $configPath ]]; then
+  if [[ -L $configPath ]] || [[ -e $configPath && ! -f $configPath ]]; then
     echo "info: $netType config path is not a regular file: $configPath" >&2
     exit 1
   fi
@@ -454,7 +503,7 @@ specifyConfig(){
 
 checkSign() {
   echo 'info: verify signature'
-  local latest_version=$(`echo getLatestReleaseVersion`)
+  local latest_version=${1:-$(getLatestReleaseVersion)}
   download $RELEASE_URL/download/$latest_version/sha256sum.txt sha256sum.txt
   fullNodeSha256=$(cat sha256sum.txt|grep 'FullNode'| awk -F ' ' '{print $1}')
 
@@ -566,25 +615,19 @@ while [ -n "$1" ]; do
     shift 1
     ;;
   --run)
-    if [[ $ALL_OPT_LENGTH -eq 1 ]]; then
-      restart
-    fi
-    RUN=true
     shift 1
     ;;
   --stop)
-    stopService
+    STOP=true
+    shift 1
     ;;
   FullNode)
-    RUN=true
     shift 1
     ;;
   FullNode.jar)
-    RUN=true
     shift 1
     ;;
   *.jar)
-    RUN=true
     shift 1
     ;;
   *)
@@ -605,6 +648,11 @@ while [ -n "$1" ]; do
   esac
 done
 
+if [[ $STOP == true ]]; then
+  stopService
+  exit
+fi
+
 if [[ $IS_BACKUP_GC_LOG = true ]]; then
   backupGCLog
 fi
@@ -615,13 +663,6 @@ fi
 
 if [[ $QUICK_START == true ]]; then
   quickStart
-  if [[ $? == 0 ]] ; then
-    if [[ $RUN == true ]]; then
-      cd $FULL_NODE_DIR
-      FULL_START_OPT=''
-      restart
-    fi
-  fi
 fi
 
 if [[ $UPGRADE == true ]]; then
@@ -638,10 +679,4 @@ if [[ $DOWNLOAD == true ]]; then
   fi
 fi
 
-if [[ $ALL_OPT_LENGTH -eq 0 || $ALL_OPT_LENGTH -gt 0 ]]; then
-  restart
-fi
-
-if [[ $RUN == true ]]; then
-  restart
-fi
+restart

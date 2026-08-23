@@ -598,6 +598,11 @@ prepare_runtime_directories() {
   local host_directory
   local container_directory
   local first_entry
+  local host_inspection_succeeded
+  local metadata
+  local owner_uid
+  local mode
+  local numeric_mode
   local -a mount_args=()
   local -a host_directories=()
   local -a container_directories=()
@@ -612,15 +617,36 @@ prepare_runtime_directories() {
     shift 2
 
     prepare_managed_directory "$host_directory" || return 1
-    if ! first_entry=$(find "$host_directory" -mindepth 1 -maxdepth 1 -print -quit); then
-      echo "run: failed to inspect runtime directory: $host_directory" >&2
-      return 1
+    host_inspection_succeeded=false
+    if first_entry=$(find "$host_directory" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null); then
+      host_inspection_succeeded=true
+    else
+      if ! metadata=$(directory_owner_and_mode "$host_directory"); then
+        echo "run: failed to inspect runtime directory: $host_directory" >&2
+        return 1
+      fi
+      owner_uid=${metadata%% *}
+      mode=${metadata#* }
+      if [[ ! "$owner_uid" =~ ^[0-9]+$ || ! "$mode" =~ ^[0-7]{3,4}$ ]]; then
+        echo "run: received invalid metadata for runtime directory: $host_directory" >&2
+        return 1
+      fi
+      numeric_mode=$((8#$mode))
+      if [ "$owner_uid" != "$JAVA_TRON_UID" ] || ((numeric_mode & 0022)); then
+        echo "run: failed to inspect runtime directory: $host_directory" >&2
+        return 1
+      fi
+
+      # A previous initialization can leave a private (0700) directory owned
+      # by the runtime UID. The host cannot enumerate it, but the container-side
+      # check below can validate it without widening its mode.
+      assert_managed_directory "$host_directory" || return 1
     fi
 
     mount_args+=("-v" "$host_directory:$container_directory")
     host_directories+=("$host_directory")
     container_directories+=("$container_directory")
-    if [ -z "$first_entry" ]; then
+    if [ "$host_inspection_succeeded" = true ] && [ -z "$first_entry" ]; then
       initialize_mount_args+=("-v" "$host_directory:$container_directory")
       initialize_host_directories+=("$host_directory")
       initialize_directories+=("$container_directory")
@@ -654,14 +680,21 @@ prepare_runtime_directories() {
   done
 
   if docker run --rm \
+    --user "$JAVA_TRON_UID:$JAVA_TRON_GID" \
     --security-opt no-new-privileges \
+    --network none \
+    --read-only \
+    --cap-drop ALL \
     --entrypoint sh \
     "${mount_args[@]}" \
     "$image_ref" \
     -ec '
       for path do
-        test -w "$path"
-        test -z "$(find "$path" -mindepth 1 -maxdepth 1 ! -writable -print -quit)"
+        test -w "$path" || exit 1
+        if ! first_unwritable=$(find "$path" -mindepth 1 -maxdepth 1 ! -writable -print -quit); then
+          exit 1
+        fi
+        test -z "$first_unwritable" || exit 1
       done
     ' sh "${container_directories[@]}"; then
     return 0
@@ -862,7 +895,7 @@ run() {
     default_config_mount=true
   fi
 
-  if { [ "$custom_config" = false ] && [ -n "$CONFIG_FILE" ]; } \
+  if [ "$default_config_mount" = true ] \
     || ! has_volume_mount "/java-tron/output-directory" "${volume_args[@]}" \
     || ! has_volume_mount "/java-tron/logs" "${volume_args[@]}"; then
     manages_data_directory=true
@@ -876,11 +909,11 @@ run() {
     logs_directory="$data_dir/logs"
   fi
 
-  if [ "$custom_config" = false ] && [ -n "$CONFIG_FILE" ]; then
+  if [ "$default_config_mount" = true ]; then
     prepare_managed_config_directory "$config_directory" || return 1
   fi
 
-  if [ "$custom_config" = false ] && [ -n "$CONFIG_FILE" ]; then
+  if [ "$default_config_mount" = true ]; then
     if [ "$UPDATE_CONFIG" = true ]; then
       download_config "$config_directory" "$CONFIG_FILE" || return 1
     else

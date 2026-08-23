@@ -118,11 +118,16 @@ case "${1:-}" in
   run)
     printf '%s\n' "$@" > "$DOCKER_MOCK_LOG"
     printf '%s\n' "$@" >> "$DOCKER_MOCK_RUN_LOG"
+    arguments=("$@")
+    volumes=()
     previous=""
     entrypoint=""
     for argument in "$@"; do
       if [ "$previous" = "--entrypoint" ]; then
         entrypoint=$argument
+      fi
+      if [ "$previous" = "-v" ]; then
+        volumes+=("$argument")
       fi
       previous="$argument"
     done
@@ -132,6 +137,38 @@ case "${1:-}" in
     if [ "$entrypoint" = "sh" ]; then
       if [[ "$*" == *"test -r"* ]]; then
         exit "${MOCK_CONFIG_READ_STATUS:-0}"
+      fi
+      if [ "${MOCK_EXECUTE_RUNTIME_CHECK:-false}" = true ]; then
+        runtime_script=""
+        runtime_path_start=0
+        for ((argument_index=0; argument_index<${#arguments[@]}; argument_index++)); do
+          if [ "${arguments[$argument_index]}" = "-ec" ]; then
+            runtime_script=${arguments[$((argument_index + 1))]}
+            runtime_path_start=$((argument_index + 3))
+            break
+          fi
+        done
+        if [[ "$runtime_script" == *"first_unwritable"* ]]; then
+          runtime_paths=()
+          for ((argument_index=runtime_path_start;
+               argument_index<${#arguments[@]};
+               argument_index++)); do
+            translated_path=${arguments[$argument_index]}
+            for volume in "${volumes[@]}"; do
+              host_path=${volume%%:*}
+              target_and_options=${volume#*:}
+              container_path=${target_and_options%%:*}
+              if [ "$translated_path" = "$container_path" ]; then
+                translated_path=$host_path
+                break
+              fi
+            done
+            runtime_paths+=("$translated_path")
+          done
+          MOCK_FIND_CONTEXT=runtime /bin/sh -ec "$runtime_script" \
+            sh "${runtime_paths[@]}"
+          exit $?
+        fi
       fi
       exit "${MOCK_PERMISSION_STATUS:-0}"
     fi
@@ -210,6 +247,38 @@ fi
 printf 'downloaded-content\n' > "$output"
 MOCK_CURL
 
+cat > "$MOCK_BIN/find" <<'MOCK_FIND'
+#!/bin/bash
+set -euo pipefail
+
+if [ "${MOCK_FIND_CONTEXT:-host}" = runtime ]; then
+  denied_path="${MOCK_RUNTIME_FIND_DENIED_PATH:-}"
+else
+  denied_path="${MOCK_HOST_FIND_DENIED_PATH:-}"
+fi
+if [ -n "$denied_path" ] && [ "${1:-}" = "$denied_path" ]; then
+  echo "find: $denied_path: Permission denied" >&2
+  exit 1
+fi
+if [ "${MOCK_FIND_CONTEXT:-host}" = runtime ]; then
+  exit 0
+fi
+exec /usr/bin/find "$@"
+MOCK_FIND
+
+cat > "$MOCK_BIN/stat" <<'MOCK_STAT'
+#!/bin/bash
+set -euo pipefail
+
+target=${!#}
+if [ -n "${MOCK_RUNTIME_OWNER_PATH:-}" ] \
+  && [ "$target" = "$MOCK_RUNTIME_OWNER_PATH" ]; then
+  printf '10001 %s\n' "${MOCK_RUNTIME_OWNER_MODE:-700}"
+  exit 0
+fi
+exec /usr/bin/stat "$@"
+MOCK_STAT
+
 cat > "$SOURCE_ROOT/gradlew" <<'MOCK_GRADLEW'
 #!/bin/bash
 set -euo pipefail
@@ -219,7 +288,8 @@ touch framework/build/distributions/java-tron-1.0.0.zip
 MOCK_GRADLEW
 
 chmod +x "$MOCK_BIN/docker" "$MOCK_BIN/uname" "$MOCK_BIN/unzip" \
-  "$MOCK_BIN/curl" "$SOURCE_ROOT/gradlew"
+  "$MOCK_BIN/curl" "$MOCK_BIN/find" "$MOCK_BIN/stat" \
+  "$SOURCE_ROOT/gradlew"
 cp "$SOURCE_ROOT/gradlew" "$SOURCE_WITHOUT_DOCKERFILE/gradlew"
 
 assert_argument() {
@@ -393,6 +463,11 @@ run_node() {
       MOCK_RUN_STATUS="${MOCK_RUN_STATUS:-0}" \
       MOCK_PERMISSION_STATUS="${MOCK_PERMISSION_STATUS:-0}" \
       MOCK_CONFIG_READ_STATUS="${MOCK_CONFIG_READ_STATUS:-0}" \
+      MOCK_EXECUTE_RUNTIME_CHECK="${MOCK_EXECUTE_RUNTIME_CHECK:-false}" \
+      MOCK_HOST_FIND_DENIED_PATH="${MOCK_HOST_FIND_DENIED_PATH:-}" \
+      MOCK_RUNTIME_FIND_DENIED_PATH="${MOCK_RUNTIME_FIND_DENIED_PATH:-}" \
+      MOCK_RUNTIME_OWNER_PATH="${MOCK_RUNTIME_OWNER_PATH:-}" \
+      MOCK_RUNTIME_OWNER_MODE="${MOCK_RUNTIME_OWNER_MODE:-700}" \
       MOCK_CONTAINER_EXISTS="${MOCK_CONTAINER_EXISTS:-false}" \
       MOCK_CONTAINER_NAME="${MOCK_CONTAINER_NAME:-tronprotocol-java-tron}" \
       MOCK_CONTAINER_QUERY_STATUS="${MOCK_CONTAINER_QUERY_STATUS:-0}" \
@@ -628,11 +703,11 @@ assert_no_argument "tronprotocol/java-tron:local"
 assert_argument_count "-p" 4
 assert_argument_count "-v" 2
 assert_argument_count "--env" 1
-assert_run_argument_count "--network" 1
-assert_run_argument_count "none" 1
-assert_run_argument_count "--read-only" 1
-assert_run_argument_count "--cap-drop" 1
-assert_run_argument_count "ALL" 1
+assert_run_argument_count "--network" 2
+assert_run_argument_count "none" 2
+assert_run_argument_count "--read-only" 2
+assert_run_argument_count "--cap-drop" 2
+assert_run_argument_count "ALL" 2
 assert_run_argument_count "--cap-add" 1
 assert_run_argument_count "CHOWN" 1
 if [ -s "$DOWNLOAD_LOG" ]; then
@@ -810,6 +885,97 @@ if [ -s "$DOWNLOAD_LOG" ]; then
   echo "A custom configuration unexpectedly triggered a download" >&2
   exit 1
 fi
+
+CUSTOM_PRIVATE_CONFIG_DATA="$TEST_TMP/custom-private-config-data"
+MOCK_CURL_FAIL=true run_node \
+  --net private \
+  --update-config true \
+  --data-dir "$CUSTOM_PRIVATE_CONFIG_DATA" \
+  -v /host/private-config:/java-tron/config:ro >/dev/null
+assert_argument "/host/private-config:/java-tron/config:ro"
+assert_argument "$CUSTOM_PRIVATE_CONFIG_DATA/output-directory:/java-tron/output-directory"
+assert_argument "$CUSTOM_PRIVATE_CONFIG_DATA/logs:/java-tron/logs"
+assert_argument "/java-tron/config/private_net_config.conf"
+if [ -s "$DOWNLOAD_LOG" ]; then
+  echo "A custom private configuration mount unexpectedly triggered a download" >&2
+  sed 's/^/  /' "$DOWNLOAD_LOG" >&2
+  exit 1
+fi
+if [ -e "$CUSTOM_PRIVATE_CONFIG_DATA/config" ]; then
+  echo "A custom private configuration mount created an unused default configuration" >&2
+  exit 1
+fi
+
+STRICT_UMASK_DATA="$TEST_TMP/strict-umask-runtime-data"
+(
+  umask 077
+  run_node --data-dir "$STRICT_UMASK_DATA" -c /java-tron/custom.conf >/dev/null
+)
+assert_mode 700 "$STRICT_UMASK_DATA/output-directory"
+assert_mode 700 "$STRICT_UMASK_DATA/logs"
+touch "$STRICT_UMASK_DATA/output-directory/existing-database-entry"
+touch "$STRICT_UMASK_DATA/logs/existing-log-entry"
+(
+  umask 077
+  run_node --data-dir "$STRICT_UMASK_DATA" -c /java-tron/custom.conf >/dev/null
+)
+assert_mode 700 "$STRICT_UMASK_DATA/output-directory"
+assert_mode 700 "$STRICT_UMASK_DATA/logs"
+
+RUNTIME_OWNED_PRIVATE_DATA="$TEST_TMP/runtime-owned-private-data"
+mkdir -p "$RUNTIME_OWNED_PRIVATE_DATA/output-directory"
+touch "$RUNTIME_OWNED_PRIVATE_DATA/output-directory/existing-database-entry"
+chmod 0700 "$RUNTIME_OWNED_PRIVATE_DATA/output-directory"
+MOCK_HOST_FIND_DENIED_PATH="$RUNTIME_OWNED_PRIVATE_DATA/output-directory" \
+MOCK_RUNTIME_OWNER_PATH="$RUNTIME_OWNED_PRIVATE_DATA/output-directory" \
+MOCK_EXECUTE_RUNTIME_CHECK=true \
+  run_node --data-dir "$RUNTIME_OWNED_PRIVATE_DATA" \
+    -c /java-tron/custom.conf \
+    -v /host/logs:/java-tron/logs >/dev/null
+assert_run_argument_count "CHOWN" 0
+assert_mode 700 "$RUNTIME_OWNED_PRIVATE_DATA/output-directory"
+
+HOST_UNREADABLE_WRONG_OWNER_DATA="$TEST_TMP/host-unreadable-wrong-owner-data"
+mkdir -p "$HOST_UNREADABLE_WRONG_OWNER_DATA/output-directory"
+touch "$HOST_UNREADABLE_WRONG_OWNER_DATA/output-directory/existing-database-entry"
+MOCK_HOST_FIND_DENIED_PATH="$HOST_UNREADABLE_WRONG_OWNER_DATA/output-directory" \
+  expect_run_failure "failed to inspect runtime directory" \
+    --data-dir "$HOST_UNREADABLE_WRONG_OWNER_DATA" \
+    -c /java-tron/custom.conf \
+    -v /host/logs:/java-tron/logs
+
+HOST_UNREADABLE_UNSAFE_MODE_DATA="$TEST_TMP/host-unreadable-unsafe-mode-data"
+mkdir -p "$HOST_UNREADABLE_UNSAFE_MODE_DATA/output-directory"
+touch "$HOST_UNREADABLE_UNSAFE_MODE_DATA/output-directory/existing-database-entry"
+MOCK_HOST_FIND_DENIED_PATH="$HOST_UNREADABLE_UNSAFE_MODE_DATA/output-directory" \
+MOCK_RUNTIME_OWNER_PATH="$HOST_UNREADABLE_UNSAFE_MODE_DATA/output-directory" \
+MOCK_RUNTIME_OWNER_MODE=733 \
+  expect_run_failure "failed to inspect runtime directory" \
+    --data-dir "$HOST_UNREADABLE_UNSAFE_MODE_DATA" \
+    -c /java-tron/custom.conf \
+    -v /host/logs:/java-tron/logs
+
+RUNTIME_FIND_FAILURE_DATA="$TEST_TMP/runtime-find-failure-data"
+mkdir -p "$RUNTIME_FIND_FAILURE_DATA/output-directory"
+touch "$RUNTIME_FIND_FAILURE_DATA/output-directory/existing-database-entry"
+MOCK_RUNTIME_FIND_DENIED_PATH="$RUNTIME_FIND_FAILURE_DATA/output-directory" \
+MOCK_EXECUTE_RUNTIME_CHECK=true \
+  expect_run_failure "runtime directories must be writable" \
+    --data-dir "$RUNTIME_FIND_FAILURE_DATA" \
+    -c /java-tron/custom.conf \
+    -v /host/logs:/java-tron/logs
+
+PRESERVED_RUNTIME_MODES_DATA="$TEST_TMP/preserved-runtime-modes-data"
+mkdir -p "$PRESERVED_RUNTIME_MODES_DATA/output-directory" \
+  "$PRESERVED_RUNTIME_MODES_DATA/logs"
+touch "$PRESERVED_RUNTIME_MODES_DATA/output-directory/existing-database-entry"
+touch "$PRESERVED_RUNTIME_MODES_DATA/logs/existing-log-entry"
+chmod 0700 "$PRESERVED_RUNTIME_MODES_DATA/output-directory" \
+  "$PRESERVED_RUNTIME_MODES_DATA/logs"
+run_node --data-dir "$PRESERVED_RUNTIME_MODES_DATA" \
+  -c /java-tron/custom.conf >/dev/null
+assert_mode 700 "$PRESERVED_RUNTIME_MODES_DATA/output-directory"
+assert_mode 700 "$PRESERVED_RUNTIME_MODES_DATA/logs"
 
 rmdir "$TEST_TMP/config"
 (

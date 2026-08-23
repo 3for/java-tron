@@ -8,7 +8,7 @@ Choose the workflow that matches your goal. Production node operation, local sma
 | Run a single FullNode with the Bash helper | [java-tron Docker shell guide](docker/docker.md) |
 | Build a development image from the current checkout | [java-tron Docker shell guide](docker/docker.md#build-an-image) |
 | Run a FullNode with Docker Compose | [tron-docker single-node guide](https://github.com/tronprotocol/tron-docker/tree/main/single_node) |
-| Build and test release or multi-architecture images | [tron-docker image guide](https://github.com/tronprotocol/tron-docker/tree/main/tools/docker) |
+| Build and test release images (currently amd64 only) | [tron-docker image guide](https://github.com/tronprotocol/tron-docker/tree/main/tools/docker) |
 | Create a multi-node private network | [tron-docker private-network guide](https://github.com/tronprotocol/tron-docker/tree/main/private_net) |
 | Test smart contracts locally | [TronBox Runtime Environment](https://hub.docker.com/r/tronbox/tre) |
 
@@ -29,6 +29,8 @@ java-tron provides two independently maintained Docker workflows:
 - Use [`tron-docker`](https://github.com/tronprotocol/tron-docker) for Docker Compose deployments, private networks, and dedicated image build and test tooling.
 
 The workflows have separate commands, configuration, and defaults and are not interchangeable. The example below uses the `tron-docker` single-node Compose workflow.
+
+> **CPU architecture:** Use a current checkout of [`tron-docker`](https://github.com/tronprotocol/tron-docker/tree/main/single_node) before starting the Compose example. Older copies of `docker-compose-quick-start.yml` included the JDK 8-only `-XX:+UseConcMarkSweepGC` option; the ARM64/aarch64 image uses JDK 17 and rejects that option. If it is present in your local Compose file, update the checkout or remove the option before starting the node. The current upstream quick-start file no longer includes this legacy collector option.
 
 > **Storage and synchronization:** The default Compose file synchronizes a full Mainnet database from genesis. It does not configure a Lite FullNode or preload a data snapshot. Allocate approximately 3.5–4 TB of high-performance SSD storage for this mode. The approximately 200 GB storage tier applies only when using Lite FullNode data. To avoid synchronizing from genesis, configure a compatible [FullNode or Lite FullNode data snapshot](https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#data-snapshot) for the selected network and java-tron version before starting.
 >
@@ -69,7 +71,7 @@ Source builds require `unzip` and the JDK matching the CPU architecture: JDK 8 o
 
 To build a development image from the current working tree, run `bash docker/docker.sh --build --source local` from the repository root. This builds the distribution on the host and sends only a temporary distribution-only context to Docker. The legacy `--build` command without source options continues to build the remote `master` branch. See the [Docker shell guide](docker/docker.md#build-an-image) for source-selection options.
 
-For release-oriented and multi-architecture image build and test tooling, use the Gradle Docker tooling in `tron-docker`.
+For release-oriented amd64 image build and test tooling, use the Gradle Docker tooling in `tron-docker`. The upstream tooling currently supports `linux/amd64` only.
 
 ## Run a Super Representative node
 
