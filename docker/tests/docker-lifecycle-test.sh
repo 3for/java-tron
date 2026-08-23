@@ -25,12 +25,55 @@ case "${1:-}" in
   --version)
     echo "Docker version 23.0.0, build mock"
     ;;
+  container)
+    case "${2:-}" in
+      inspect)
+        if [ "${MOCK_QUERY_STATUS:-0}" -ne 0 ]; then
+          exit "$MOCK_QUERY_STATUS"
+        fi
+
+        requested_name="${@: -1}"
+        if [ "${MOCK_CONTAINER_EXISTS:-false}" = true ] &&
+          [ "$requested_name" = "${MOCK_CONTAINER_NAME:-tronprotocol-java-tron}" ]; then
+          printf 'deadbeef /%s\n' "$requested_name"
+        else
+          exit 1
+        fi
+        ;;
+      ls)
+        if [ "${3:-}" != "-aq" ]; then
+          echo "Unexpected docker container ls command: $*" >&2
+          exit 99
+        fi
+        if [ "${MOCK_QUERY_STATUS:-0}" -ne 0 ]; then
+          exit "$MOCK_QUERY_STATUS"
+        fi
+        if [ "${MOCK_CONTAINER_EXISTS:-false}" = true ]; then
+          echo "deadbeef"
+        fi
+        ;;
+      *)
+        echo "Unexpected docker container command: $*" >&2
+        exit 99
+        ;;
+    esac
+    ;;
   ps)
     if [ "${2:-}" = "-aq" ]; then
       if [ "${MOCK_QUERY_STATUS:-0}" -ne 0 ]; then
         exit "$MOCK_QUERY_STATUS"
       fi
-      if [ "${MOCK_CONTAINER_EXISTS:-false}" = true ]; then
+      name_filter=""
+      previous=""
+      for argument in "$@"; do
+        if [ "$previous" = "--filter" ]; then
+          name_filter=${argument#name=}
+        fi
+        previous=$argument
+      done
+      if [ "${MOCK_CONTAINER_EXISTS:-false}" = true ] \
+        && { [ -z "$name_filter" ] \
+          || [[ "/${MOCK_CONTAINER_NAME:-tronprotocol-java-tron}" =~ $name_filter ]]; }; then
         echo "deadbeef"
       fi
     else
@@ -70,6 +113,19 @@ run_lifecycle() {
     bash "$DOCKER_SCRIPT" "$operation"
 }
 
+run_named_lifecycle() {
+  local operation="$1"
+  local container_name="$2"
+  shift 2
+
+  : > "$DOCKER_LOG"
+  env \
+    PATH="$MOCK_BIN:$PATH" \
+    DOCKER_MOCK_LOG="$DOCKER_LOG" \
+    "$@" \
+    bash "$DOCKER_SCRIPT" "$operation" --container-name "$container_name"
+}
+
 expect_status() {
   local expected="$1"
   shift
@@ -102,19 +158,23 @@ assert_call_count() {
 
 expect_status 1 run_lifecycle --start \
   MOCK_CONTAINER_EXISTS=true MOCK_START_STATUS=42
-assert_call_count '^ps -aq ' 1
+assert_call_count '^container inspect --format .* tronprotocol-java-tron$' 1
 assert_call_count '^ps$' 0
 
 expect_status 1 run_lifecycle --stop \
   MOCK_CONTAINER_EXISTS=true MOCK_STOP_STATUS=43
-assert_call_count '^ps -aq ' 1
+assert_call_count '^container inspect --format .* tronprotocol-java-tron$' 1
 assert_call_count '^ps$' 0
 
 expect_status 1 run_lifecycle --start MOCK_CONTAINER_EXISTS=false
 expect_status 1 run_lifecycle --stop MOCK_CONTAINER_EXISTS=false
 expect_status 1 run_lifecycle --log MOCK_CONTAINER_EXISTS=false
+assert_call_count '^container inspect --format .* tronprotocol-java-tron$' 1
+assert_call_count '^container ls -aq$' 1
 
 expect_status 1 run_lifecycle --start MOCK_QUERY_STATUS=51
+assert_call_count '^container inspect --format .* tronprotocol-java-tron$' 1
+assert_call_count '^container ls -aq$' 1
 assert_call_count '^start ' 0
 
 expect_status 1 run_lifecycle --start \
@@ -128,6 +188,27 @@ expect_status 1 run_lifecycle --log \
 expect_status 1 run_lifecycle --rm \
   MOCK_CONTAINER_EXISTS=true MOCK_RM_STATUS=45
 expect_status 1 run_lifecycle --rm MOCK_CONTAINER_EXISTS=false
+
+# Docker's name filter treats '.' as a regular-expression wildcard. Exact-name
+# lookup must not operate on nodeXone when the requested container is node.one.
+expect_status 0 run_named_lifecycle --stop node.one \
+  MOCK_CONTAINER_EXISTS=true MOCK_CONTAINER_NAME=node.one
+assert_call_count '^stop deadbeef$' 1
+
+expect_status 1 run_named_lifecycle --stop node.one \
+  MOCK_CONTAINER_EXISTS=true MOCK_CONTAINER_NAME=nodeXone
+assert_call_count '^container inspect --format .* node[.]one$' 1
+assert_call_count '^container ls -aq$' 1
+assert_call_count '^stop ' 0
+
+expect_status 1 run_named_lifecycle --log node.one \
+  MOCK_CONTAINER_EXISTS=true MOCK_CONTAINER_NAME=nodeXone
+assert_call_count '^exec ' 0
+
+expect_status 1 run_named_lifecycle --rm node.one \
+  MOCK_CONTAINER_EXISTS=true MOCK_CONTAINER_NAME=nodeXone
+assert_call_count '^stop ' 0
+assert_call_count '^rm ' 0
 
 expect_status 0 run_lifecycle --start MOCK_CONTAINER_EXISTS=true
 assert_call_count '^start deadbeef$' 1

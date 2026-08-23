@@ -4,7 +4,7 @@ set -euo pipefail
 TEST_DIR=$(cd -- "$(dirname -- "$0")" >/dev/null 2>&1 && pwd)
 REPOSITORY_ROOT=$(cd -- "$TEST_DIR/../.." >/dev/null 2>&1 && pwd)
 DOCKER_SCRIPT="$REPOSITORY_ROOT/docker/docker.sh"
-TEST_TMP=$(mktemp -d)
+TEST_TMP=$(mktemp -d "$REPOSITORY_ROOT/.docker-sh-test.XXXXXX")
 TEST_TMP_PHYSICAL=$(cd -P -- "$TEST_TMP" >/dev/null 2>&1 && pwd -P)
 MOCK_BIN="$TEST_TMP/bin"
 SOURCE_ROOT="$TEST_TMP/source"
@@ -79,6 +79,33 @@ case "${1:-}" in
       esac
     fi
     ;;
+  container)
+    case "${2:-}" in
+      inspect)
+        if [ "${MOCK_CONTAINER_QUERY_STATUS:-0}" -ne 0 ]; then
+          exit "$MOCK_CONTAINER_QUERY_STATUS"
+        fi
+        requested_name="${!#}"
+        if [ "${MOCK_CONTAINER_EXISTS:-false}" = true ] \
+          && [ "$requested_name" = "${MOCK_CONTAINER_NAME:-tronprotocol-java-tron}" ]; then
+          printf 'deadbeef /%s\n' "$requested_name"
+        else
+          exit 1
+        fi
+        ;;
+      ls)
+        if [ "${3:-}" != "-aq" ]; then
+          echo "Unexpected docker container ls command: $*" >&2
+          exit 1
+        fi
+        exit "${MOCK_CONTAINER_QUERY_STATUS:-0}"
+        ;;
+      *)
+        echo "Unexpected docker container command: $*" >&2
+        exit 1
+        ;;
+    esac
+    ;;
   ps)
     if [ "${2:-}" != "-aq" ]; then
       echo "Unexpected docker ps command: $*" >&2
@@ -92,13 +119,22 @@ case "${1:-}" in
     printf '%s\n' "$@" > "$DOCKER_MOCK_LOG"
     printf '%s\n' "$@" >> "$DOCKER_MOCK_RUN_LOG"
     previous=""
+    entrypoint=""
     for argument in "$@"; do
-      if [ "$previous" = "--entrypoint" ] \
-        && { [ "$argument" = "chown" ] || [ "$argument" = "sh" ]; }; then
-        exit "${MOCK_PERMISSION_STATUS:-0}"
+      if [ "$previous" = "--entrypoint" ]; then
+        entrypoint=$argument
       fi
       previous="$argument"
     done
+    if [ "$entrypoint" = "chown" ]; then
+      exit "${MOCK_PERMISSION_STATUS:-0}"
+    fi
+    if [ "$entrypoint" = "sh" ]; then
+      if [[ "$*" == *"test -r"* ]]; then
+        exit "${MOCK_CONFIG_READ_STATUS:-0}"
+      fi
+      exit "${MOCK_PERMISSION_STATUS:-0}"
+    fi
     exit "${MOCK_RUN_STATUS:-0}"
     ;;
   *)
@@ -229,6 +265,29 @@ assert_run_argument_count() {
   fi
 }
 
+file_mode() {
+  local path="$1"
+  local mode
+
+  if mode=$(stat -f '%Lp' "$path" 2>/dev/null); then
+    printf '%s\n' "$mode"
+    return 0
+  fi
+  stat -c '%a' "$path"
+}
+
+assert_mode() {
+  local expected="$1"
+  local path="$2"
+  local actual
+
+  actual=$(file_mode "$path")
+  if [ "$actual" != "$expected" ]; then
+    echo "Expected mode $expected for $path, got $actual" >&2
+    exit 1
+  fi
+}
+
 assert_trailing_arguments() {
   local expected
   local actual
@@ -333,7 +392,10 @@ run_node() {
       DOWNLOAD_MOCK_LOG="$DOWNLOAD_LOG" \
       MOCK_RUN_STATUS="${MOCK_RUN_STATUS:-0}" \
       MOCK_PERMISSION_STATUS="${MOCK_PERMISSION_STATUS:-0}" \
+      MOCK_CONFIG_READ_STATUS="${MOCK_CONFIG_READ_STATUS:-0}" \
       MOCK_CONTAINER_EXISTS="${MOCK_CONTAINER_EXISTS:-false}" \
+      MOCK_CONTAINER_NAME="${MOCK_CONTAINER_NAME:-tronprotocol-java-tron}" \
+      MOCK_CONTAINER_QUERY_STATUS="${MOCK_CONTAINER_QUERY_STATUS:-0}" \
       MOCK_IMAGE_ARCH="${MOCK_IMAGE_ARCH:-amd64}" \
       MOCK_IMAGE_USER="${MOCK_IMAGE_USER:-10001:10001}" \
       MOCK_IMAGE_MISSING="${MOCK_IMAGE_MISSING:-false}" \
@@ -749,7 +811,11 @@ if [ -s "$DOWNLOAD_LOG" ]; then
   exit 1
 fi
 
-run_node --net private --update-config false >/dev/null
+rmdir "$TEST_TMP/config"
+(
+  umask 077
+  run_node --net private --update-config false >/dev/null
+)
 assert_argument "/java-tron/config/private_net_config.conf"
 if ! grep -Fq -- \
   "https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/private_net_config.conf|$TEST_TMP_PHYSICAL/config/private_net_config.conf.tmp." \
@@ -760,6 +826,33 @@ if ! grep -Fq -- \
 fi
 if [ "$(cat "$TEST_TMP/config/private_net_config.conf")" != "downloaded-content" ]; then
   echo "The missing configuration was not written to the destination" >&2
+  exit 1
+fi
+assert_mode 755 "$TEST_TMP/config"
+assert_mode 644 "$TEST_TMP/config/private_net_config.conf"
+assert_run_argument_count \
+  "$TEST_TMP_PHYSICAL/config:/java-tron/config:ro" 2
+
+chmod 0600 "$TEST_TMP/config/private_net_config.conf"
+(
+  umask 077
+  run_node --net private --update-config true >/dev/null
+)
+assert_mode 755 "$TEST_TMP/config"
+assert_mode 644 "$TEST_TMP/config/private_net_config.conf"
+
+UNREADABLE_CONFIG_DATA="$TEST_TMP/unreadable-private-config"
+mkdir -p "$UNREADABLE_CONFIG_DATA/config"
+printf 'existing-private-config\n' > \
+  "$UNREADABLE_CONFIG_DATA/config/private_net_config.conf"
+chmod 0755 "$UNREADABLE_CONFIG_DATA/config"
+chmod 0600 "$UNREADABLE_CONFIG_DATA/config/private_net_config.conf"
+MOCK_CONFIG_READ_STATUS=49 expect_run_failure \
+  "private configuration must be readable by java-tron UID:GID 10001:10001" \
+  --data-dir "$UNREADABLE_CONFIG_DATA" --net private
+if grep -Fqx -- "-d" "$DOCKER_RUN_LOG"; then
+  echo "An unreadable private configuration reached the detached node run" >&2
+  sed 's/^/  /' "$DOCKER_RUN_LOG" >&2
   exit 1
 fi
 

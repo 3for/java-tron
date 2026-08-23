@@ -129,12 +129,38 @@ if [ "${BASH_REMATCH[1]}" -lt 23 ]; then
 fi
 
 docker_ps() {
-  if ! containerID=$(docker ps -aq --filter "name=^/${CONTAINER_NAME}$"); then
+  local inspected_container
+  local inspected_id
+  local inspected_name
+
+  if inspected_container=$(docker container inspect \
+    --format '{{.Id}} {{.Name}}' "$CONTAINER_NAME" 2>/dev/null); then
+    inspected_id=${inspected_container%% *}
+    inspected_name=${inspected_container#* }
+    if [ -n "$inspected_id" ] && [ "$inspected_name" = "/$CONTAINER_NAME" ]; then
+      containerID=$inspected_id
+      cid=$containerID
+      return 0
+    fi
+
+    # Docker also accepts container-ID prefixes as inspect targets. Treat an
+    # inspect result with a different name as no exact name match.
+    containerID=""
+    cid=""
+    return 0
+  fi
+
+  # A failed inspect normally means that the exact name is absent. Verify that
+  # the daemon is still queryable so lifecycle commands do not hide API errors.
+  if ! docker container ls -aq >/dev/null 2>&1; then
     echo "failed to query the java-tron container" >&2
+    containerID=""
     cid=""
     return 1
   fi
-  cid=$containerID
+
+  containerID=""
+  cid=""
 }
 
 valid_container_name() {
@@ -216,6 +242,7 @@ file_is_usable() {
 download_file() {
   local url="$1"
   local output="$2"
+  local output_mode="${3:-}"
   local output_dir
   local temporary
 
@@ -245,6 +272,12 @@ download_file() {
     return 1
   fi
 
+  if [ -n "$output_mode" ] && ! chmod "$output_mode" "$temporary"; then
+    echo "Unable to set mode $output_mode on downloaded file: $output" >&2
+    rm -f "$temporary"
+    return 1
+  fi
+
   if ! mv -f "$temporary" "$output"; then
     rm -f "$temporary"
     return 1
@@ -267,7 +300,7 @@ download_config() {
   esac
 
   echo "Downloading $config_file"
-  download_file "$config_url" "$config_directory/$config_file"
+  download_file "$config_url" "$config_directory/$config_file" 0644
 }
 
 check_download_config() {
@@ -366,8 +399,10 @@ assert_trusted_path_prefixes() {
 
 directory_owner_and_mode() {
   local directory="$1"
+  local metadata
 
-  if stat -f '%u %Lp' "$directory" 2>/dev/null; then
+  if metadata=$(stat -f '%u %Lp' "$directory" 2>/dev/null); then
+    printf '%s\n' "$metadata"
     return 0
   fi
   stat -c '%u %a' "$directory" 2>/dev/null
@@ -445,6 +480,17 @@ prepare_managed_directory() {
   assert_managed_directory "$directory"
 }
 
+prepare_managed_config_directory() {
+  local directory="$1"
+
+  prepare_managed_directory "$directory" || return 1
+  if ! chmod 0755 "$directory"; then
+    echo "run: failed to set configuration-directory mode 0755: $directory" >&2
+    return 1
+  fi
+  assert_managed_directory "$directory"
+}
+
 has_port_mapping() {
   local expected_port="$1"
   local expected_protocol="$2"
@@ -503,6 +549,32 @@ validate_image_user() {
     echo "Pull or build an updated non-root java-tron image before retrying." >&2
     return 1
   fi
+}
+
+verify_private_config_readable() {
+  local image_ref="$1"
+  local config_directory="$2"
+  local config_file="$3"
+  local container_config="$CONFIG_PATH$config_file"
+
+  assert_managed_directory "$config_directory" || return 1
+  if docker run --rm \
+    --user "$JAVA_TRON_UID:$JAVA_TRON_GID" \
+    --security-opt no-new-privileges \
+    --network none \
+    --read-only \
+    --cap-drop ALL \
+    --entrypoint sh \
+    -v "$config_directory:/java-tron/config:ro" \
+    "$image_ref" \
+    -ec 'test -r "$1"' sh "$container_config"; then
+    assert_managed_directory "$config_directory"
+    return
+  fi
+
+  echo "run: private configuration must be readable by java-tron UID:GID $JAVA_TRON_UID:$JAVA_TRON_GID: $config_directory/$config_file" >&2
+  echo "Set the directory mode to 0755 and the public configuration-template mode to 0644, then retry." >&2
+  return 1
 }
 
 append_jdk8_direct_memory() {
@@ -805,7 +877,7 @@ run() {
   fi
 
   if [ "$custom_config" = false ] && [ -n "$CONFIG_FILE" ]; then
-    prepare_managed_directory "$config_directory" || return 1
+    prepare_managed_config_directory "$config_directory" || return 1
   fi
 
   if [ "$custom_config" = false ] && [ -n "$CONFIG_FILE" ]; then
@@ -818,6 +890,7 @@ run() {
 
   if [ "$default_config_mount" = true ]; then
     volume_args+=("-v" "$config_directory:/java-tron/config:ro")
+    verify_private_config_readable "$image" "$config_directory" "$CONFIG_FILE" || return 1
   fi
   if ! has_volume_mount "/java-tron/output-directory" "${volume_args[@]}"; then
     default_runtime_directories+=("$output_directory" "/java-tron/output-directory")
