@@ -419,6 +419,7 @@ specifyConfig(){
   local netType=$1
   local configName;
   local configUrl;
+  local configPath;
   if [[ "$netType" = 'test' ]]; then
     echo "error: Since Nile Testnet may incorporate features not yet available on the Mainnet," >&2
     echo "build and run the node by following the nile-testnet source-code instructions:" >&2
@@ -436,18 +437,19 @@ specifyConfig(){
     mkdir -p $FULL_NODE_CONFIG_DIR
   fi
 
-  if [[ -d $FULL_NODE_CONFIG_DIR/$configName ]]; then
-    DEFAULT_FULL_NODE_CONFIG=$FULL_NODE_CONFIG_DIR/$configName
-    break
+  configPath=$FULL_NODE_CONFIG_DIR/$configName
+  if [[ -e $configPath && ! -f $configPath ]]; then
+    echo "info: $netType config path is not a regular file: $configPath" >&2
+    exit 1
   fi
 
-  if [[ ! -f $FULL_NODE_CONFIG_DIR/$configName ]]; then
-    if ! downloadTo "$configUrl" "$FULL_NODE_CONFIG_DIR/$configName"; then
+  if [[ ! -s $configPath ]]; then
+    if ! downloadTo "$configUrl" "$configPath"; then
       echo "info: failed to download $netType config"
       exit 1
     fi
-    DEFAULT_FULL_NODE_CONFIG=$FULL_NODE_CONFIG_DIR/$configName
   fi
+  DEFAULT_FULL_NODE_CONFIG=$configPath
 }
 
 checkSign() {
