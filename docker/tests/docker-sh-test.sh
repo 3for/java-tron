@@ -74,6 +74,10 @@ case "${1:-}" in
       find . ! -type d -print | LC_ALL=C sort
     ) > "$DOCKER_MOCK_CONTEXT_LOG"
     ;;
+  pull)
+    printf '%s\n' "$@" > "$DOCKER_MOCK_LOG"
+    exit "${MOCK_PULL_STATUS:-0}"
+    ;;
   image)
     if [ "${2:-}" != "inspect" ]; then
       echo "Unexpected docker image command: $*" >&2
@@ -568,6 +572,19 @@ run_node() {
   )
 }
 
+run_pull() {
+  : > "$DOCKER_LOG"
+  (
+    cd -- "$REPOSITORY_ROOT"
+    PATH="$MOCK_BIN:$PATH" \
+      DOCKER_MOCK_LOG="$DOCKER_LOG" \
+      MOCK_IMAGE_USER="${MOCK_IMAGE_USER:-10001:10001}" \
+      MOCK_PULL_STATUS="${MOCK_PULL_STATUS:-0}" \
+      JAVA_TRON_IMAGE="${JAVA_TRON_IMAGE:-}" \
+      bash "$DOCKER_SCRIPT" --pull "$@"
+  )
+}
+
 expect_run_failure() {
   local expected_message="$1"
   shift
@@ -652,6 +669,53 @@ if [ "$no_arg_status" -ne 1 ] || [[ "$no_arg_output" != *"Usage: docker.sh COMMA
   echo "Invoking docker.sh without arguments did not return usage and status 1" >&2
   exit 1
 fi
+
+if default_pull_output=$(run_pull 2>&1); then
+  echo "A pull without an explicit image unexpectedly succeeded" >&2
+  exit 1
+fi
+if [[ "$default_pull_output" != *"no compatible default published image is configured"* ]] \
+  || [[ "$default_pull_output" != *"specify --image"* ]]; then
+  echo "The missing pull image did not produce actionable guidance:" >&2
+  echo "$default_pull_output" >&2
+  exit 1
+fi
+if [ -s "$DOCKER_LOG" ]; then
+  echo "docker pull was called before a pull image was selected" >&2
+  sed 's/^/  /' "$DOCKER_LOG" >&2
+  exit 1
+fi
+
+run_pull --image example/java-tron:nonroot >/dev/null
+assert_argument "pull"
+assert_argument "example/java-tron:nonroot"
+
+if failed_pull_output=$(
+  MOCK_PULL_STATUS=55 run_pull --image example/java-tron:unavailable 2>&1
+); then
+  echo "A failed registry pull unexpectedly succeeded" >&2
+  exit 1
+fi
+if [[ "$failed_pull_output" != *"docker pull example/java-tron:unavailable"* ]]; then
+  echo "The failed registry pull did not identify its image:" >&2
+  echo "$failed_pull_output" >&2
+  exit 1
+fi
+
+if incompatible_pull_output=$(
+  MOCK_IMAGE_USER=root run_pull --image example/java-tron:legacy 2>&1
+); then
+  echo "A pulled root image unexpectedly passed validation" >&2
+  exit 1
+fi
+if [[ "$incompatible_pull_output" != *"must run as UID:GID 10001:10001"* ]]; then
+  echo "The incompatible pulled image did not fail with the runtime-user contract:" >&2
+  echo "$incompatible_pull_output" >&2
+  exit 1
+fi
+
+JAVA_TRON_IMAGE=example/java-tron:from-env run_pull >/dev/null
+assert_argument "example/java-tron:from-env"
 
 remote_output=$(run_build x86_64 "$REPOSITORY_ROOT")
 assert_argument "--pull"
@@ -957,8 +1021,8 @@ assert_argument "$TEST_TMP_PHYSICAL/logs:/java-tron/logs"
 assert_argument "/java-tron/config.conf"
 assert_argument "--name"
 assert_argument "tronprotocol-java-tron"
-assert_argument "tronprotocol/java-tron:latest"
-assert_no_argument "tronprotocol/java-tron:local"
+assert_argument "tronprotocol/java-tron:local"
+assert_no_argument "tronprotocol/java-tron:latest"
 assert_argument_count "-p" 4
 assert_argument_count "-v" 2
 assert_argument_count "--env" 1
@@ -972,7 +1036,7 @@ assert_run_argument_count "CHOWN" 1
 assert_run_argument_count "--pull" 1
 assert_run_argument_count "missing" 1
 assert_run_argument_count "$RUNTIME_INIT_IMAGE" 1
-assert_chown_uses_pinned_helper "tronprotocol/java-tron:latest"
+assert_chown_uses_pinned_helper "tronprotocol/java-tron:local"
 if [ -s "$DOWNLOAD_LOG" ]; then
   echo "--update-config false unexpectedly downloaded an existing configuration" >&2
   exit 1
@@ -1175,7 +1239,7 @@ assert_argument "32g"
 assert_argument "JAVA_OPTS=-Xms4g -Xmx18g -XX:MaxDirectMemorySize=2g"
 assert_argument "/java-tron/custom.conf"
 assert_trailing_arguments \
-  "tronprotocol/java-tron:latest" \
+  "tronprotocol/java-tron:local" \
   "-c" \
   "/java-tron/custom.conf" \
   "--p2p-disable" \
@@ -1473,7 +1537,8 @@ if output=$(MOCK_IMAGE_MISSING=true run_node -c /java-tron/custom.conf </dev/nul
   echo "$output" >&2
   exit 1
 fi
-if [[ "$output" != *"no java-tron image found"* ]]; then
+if [[ "$output" != *"compatible local image not found: tronprotocol/java-tron:local"* ]] \
+  || [[ "$output" != *"bash docker.sh --build"* ]]; then
   echo "A missing image did not produce a non-interactive error:" >&2
   echo "$output" >&2
   exit 1
@@ -1498,7 +1563,7 @@ done
 
 run_node -c /java-tron/custom.conf -- --unknown-fullnode-option >/dev/null
 assert_trailing_arguments \
-  "tronprotocol/java-tron:latest" \
+  "tronprotocol/java-tron:local" \
   "-c" \
   "/java-tron/custom.conf" \
   "--unknown-fullnode-option"

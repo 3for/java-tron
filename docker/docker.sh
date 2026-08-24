@@ -22,7 +22,7 @@ usage() {
 Usage: docker.sh COMMAND [OPTIONS]
 
 Commands:
-  --pull                         Pull the configured java-tron image
+  --pull                         Pull an explicitly selected java-tron image
   --build [OPTIONS]              Build an image for the host architecture
   --run [OPTIONS]                Create and start a FullNode container
   --start                        Start the existing container
@@ -41,7 +41,8 @@ Build options:
 Common options:
   --image NAME[:TAG]             Image for --pull, --build, or --run.
                                  JAVA_TRON_IMAGE can set the same value.
-                                 Defaults: pull and run latest; build local.
+                                 Build and run default to the local image;
+                                 pull requires an explicit image.
   --container-name NAME          Container name for --run, --start, --stop,
                                  --log, and --rm. Default: tronprotocol-java-tron.
 
@@ -75,8 +76,8 @@ BASE_DIR="/java-tron"
 DOCKER_REPOSITORY="tronprotocol"
 DOCKER_IMAGES="java-tron"
 CONTAINER_NAME="$DOCKER_REPOSITORY-$DOCKER_IMAGES"
-PULL_IMAGE_DEFAULT="$DOCKER_REPOSITORY/$DOCKER_IMAGES:latest"
 BUILD_IMAGE_DEFAULT="$DOCKER_REPOSITORY/$DOCKER_IMAGES:local"
+RUN_IMAGE_DEFAULT="$BUILD_IMAGE_DEFAULT"
 IMAGE_OVERRIDE="${JAVA_TRON_IMAGE:-}"
 
 HOST_HTTP_PORT=8090
@@ -216,11 +217,15 @@ selected_image() {
   fi
 
   case "$1" in
-    pull|run)
-      printf '%s\n' "$PULL_IMAGE_DEFAULT"
-      ;;
     build)
       printf '%s\n' "$BUILD_IMAGE_DEFAULT"
+      ;;
+    run)
+      printf '%s\n' "$RUN_IMAGE_DEFAULT"
+      ;;
+    pull)
+      echo "pull: no compatible default published image is configured; specify --image NAME[:TAG]" >&2
+      return 1
       ;;
     *)
       echo "selected_image: unknown command $1" >&2
@@ -938,25 +943,10 @@ run() {
       echo "run: image not found: $IMAGE_OVERRIDE" >&2
       return 1
     fi
-    if [ ! -t 0 ]; then
-      echo "run: no java-tron image found; pull one with --pull or build one with --build" >&2
-      return 1
-    fi
-
-    echo 'warning: no java-tron mirror image, do you need to get the mirror image?[y/n]'
-    read -r need
-
-    if [[ $need == 'y' || $need == 'yes' ]]; then
-      pull || return 1
-      docker_image || return 1
-      if [ -z "$image" ]; then
-        echo "run: image is still unavailable after pull" >&2
-        return 1
-      fi
-    else
-      echo "warning: no mirror image found, go ahead and download a mirror."
-      return 1
-    fi
+    echo "run: compatible local image not found: $RUN_IMAGE_DEFAULT" >&2
+    echo "Build it with: bash docker.sh --build" >&2
+    echo "Or select a compatible image with: bash docker.sh --run --image NAME[:TAG]" >&2
+    return 1
   fi
 
   validate_image_user "$image" || return 1
@@ -1482,7 +1472,8 @@ pull() {
 
   image_name=$(selected_image pull) || return 1
   echo "docker pull $image_name"
-  docker pull "$image_name"
+  docker pull "$image_name" || return 1
+  validate_image_user "$image_name"
 }
 
 start() {
