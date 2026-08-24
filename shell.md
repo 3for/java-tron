@@ -8,7 +8,7 @@ If you already downloaded the `FullNode.jar`, you can use `start.sh` to run it, 
 
 The script is available in the java-tron project at [github](https://github.com/tronprotocol/java-tron), or if you need a separate script: [start.sh](https://github.com/tronprotocol/java-tron/blob/develop/start.sh)
 
-Invoke the script with `bash` (or execute it directly); do not use `sh`, because `start.sh` uses Bash-specific syntax.
+Invoke the script with `bash`; do not use `sh`, because `start.sh` uses Bash-specific syntax. To execute it directly, first run `chmod +x start.sh`.
 
 Every automatic configuration or release-asset download requires `curl` and
 HTTPS access to the corresponding GitHub host.
