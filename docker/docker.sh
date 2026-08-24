@@ -92,6 +92,9 @@ DOCKER_LISTEN_PORT=18888
 DOCKER_MEMORY="16g"
 JAVA_TRON_UID=10001
 JAVA_TRON_GID=10001
+# Do not use the selected workload image as a privileged host-mount helper.
+# This multi-architecture Docker Official Image is pinned by OCI index digest.
+RUNTIME_INIT_IMAGE="busybox:1.37.0-musl@sha256:fc6dddc4c44b1bfe37f41cae8e67d1693828e8f42a91862816d7953e2c9d3f23"
 # Helper-only defaults. The image and packaged vmoptions do not set heap size.
 # JDK 8 images also receive -XX:MaxDirectMemorySize=1g at --run time.
 JVM_OPTS="-Xms2g -XX:MaxRAMPercentage=60.0"
@@ -620,6 +623,23 @@ append_jdk8_direct_memory() {
   esac
 }
 
+docker_namespace_mode() {
+  local security_options
+
+  if ! security_options=$(docker info --format '{{json .SecurityOptions}}'); then
+    echo "run: failed to inspect Docker user-namespace configuration" >&2
+    return 1
+  fi
+
+  if [[ "$security_options" == *'name=rootless'* ]]; then
+    printf '%s\n' rootless
+  elif [[ "$security_options" == *'name=userns'* ]]; then
+    printf '%s\n' rootful-userns-remap
+  else
+    printf '%s\n' rootful
+  fi
+}
+
 prepare_runtime_directories() {
   local image_ref="$1"
   local host_directory
@@ -630,6 +650,8 @@ prepare_runtime_directories() {
   local owner_uid
   local mode
   local numeric_mode
+  local namespace_mode
+  local rootful_userns_remap=false
   local -a mount_args=()
   local -a host_directories=()
   local -a container_directories=()
@@ -686,20 +708,29 @@ prepare_runtime_directories() {
       assert_managed_directory "$host_directory" || return 1
     done
 
-    if ! docker run --rm \
-      --user 0:0 \
-      --security-opt no-new-privileges \
-      --network none \
-      --read-only \
-      --cap-drop ALL \
-      --cap-add CHOWN \
-      --entrypoint chown \
-      "${initialize_mount_args[@]}" \
-      "$image_ref" \
-      "$JAVA_TRON_UID:$JAVA_TRON_GID" \
-      "${initialize_directories[@]}"; then
-      echo "run: failed to initialize runtime-directory ownership" >&2
-      return 1
+    namespace_mode=$(docker_namespace_mode) || return 1
+    if [ "$namespace_mode" = rootful-userns-remap ]; then
+      # Remapped root generally cannot chown a directory created by the host
+      # user. Skip the privileged attempt and let the runtime-identity
+      # preflight below accept correctly pre-provisioned mapped ownership.
+      rootful_userns_remap=true
+    else
+      if ! docker run --rm \
+        --pull missing \
+        --user 0:0 \
+        --security-opt no-new-privileges \
+        --network none \
+        --read-only \
+        --cap-drop ALL \
+        --cap-add CHOWN \
+        --entrypoint chown \
+        "${initialize_mount_args[@]}" \
+        "$RUNTIME_INIT_IMAGE" \
+        "$JAVA_TRON_UID:$JAVA_TRON_GID" \
+        "${initialize_directories[@]}"; then
+        echo "run: failed to initialize runtime-directory ownership" >&2
+        return 1
+      fi
     fi
   fi
 
@@ -728,6 +759,16 @@ prepare_runtime_directories() {
     return 0
   fi
 
+  if [ "$rootful_userns_remap" = true ]; then
+    echo "run: rootful Docker userns-remap cannot automatically initialize host-user-owned runtime directories." >&2
+    echo "Pre-create empty directories with the host UID:GID mapped from container $JAVA_TRON_UID:$JAVA_TRON_GID, then retry." >&2
+    printf 'Affected directories:' >&2
+    for host_directory in "${initialize_host_directories[@]}"; do
+      printf ' %q' "$host_directory" >&2
+    done
+    printf '\n' >&2
+    echo "See docker.md for a mapped-ID provisioning example." >&2
+  fi
   echo "run: runtime directories must be writable by java-tron UID:GID $JAVA_TRON_UID:$JAVA_TRON_GID." >&2
   echo "Stop the node and migrate existing data with the same Docker daemon and user namespace before retrying." >&2
   echo "For rootless Docker or userns-remap, use the host UID:GID mapped from container $JAVA_TRON_UID:$JAVA_TRON_GID by that daemon." >&2
@@ -1021,8 +1062,8 @@ validate_local_image_config() {
   local sensitive_setting
 
   # config.conf is copied verbatim into the image. Recognize the supported
-  # HOCON forms for the two settings that can directly contain signing keys or
-  # database credentials, while ignoring line comments outside quoted strings.
+  # HOCON forms for settings that can directly contain signing keys or
+  # service credentials, while ignoring line comments outside quoted strings.
   if ! sensitive_setting=$(awk '
     function uncomment(value, output, position, character, next_character, quoted, escaped) {
       output = ""
@@ -1060,7 +1101,7 @@ validate_local_image_config() {
       return compacted != ""
     }
 
-    function database_value_is_nonempty(value, remainder) {
+    function scalar_secret_value_is_nonempty(value, remainder) {
       sub(/^[[:space:]]*/, "", value)
       if (substr(value, 1, 2) != "\"\"") {
         return 1
@@ -1094,6 +1135,8 @@ validate_local_image_config() {
       }
 
       database_line = line
+      dns_private_line = line
+      dns_access_secret_line = line
       while (match(line, /(^|[[:space:]{,.])("localwitness"|localwitness)[[:space:]]*([+]?=|:)/)) {
         value = substr(line, RSTART + RLENGTH)
         sub(/^[[:space:]]*/, "", value)
@@ -1124,11 +1167,29 @@ validate_local_image_config() {
 
       while (match(database_line, /(^|[[:space:]{,.])("dbconfig"|dbconfig)[[:space:]]*([+]?=|:)/)) {
         value = substr(database_line, RSTART + RLENGTH)
-        if (database_value_is_nonempty(value)) {
+        if (scalar_secret_value_is_nonempty(value)) {
           sensitive_setting = "event.subscribe.dbconfig"
           exit
         }
         database_line = substr(value, 3)
+      }
+
+      while (match(dns_private_line, /(^|[[:space:]{,.])("dnsPrivate"|dnsPrivate)[[:space:]]*([+]?=|:)/)) {
+        value = substr(dns_private_line, RSTART + RLENGTH)
+        if (scalar_secret_value_is_nonempty(value)) {
+          sensitive_setting = "node.dns.dnsPrivate"
+          exit
+        }
+        dns_private_line = substr(value, 3)
+      }
+
+      while (match(dns_access_secret_line, /(^|[[:space:]{,.])("accessKeySecret"|accessKeySecret)[[:space:]]*([+]?=|:)/)) {
+        value = substr(dns_access_secret_line, RSTART + RLENGTH)
+        if (scalar_secret_value_is_nonempty(value)) {
+          sensitive_setting = "node.dns.accessKeySecret"
+          exit
+        }
+        dns_access_secret_line = substr(value, 3)
       }
     }
 
@@ -1144,7 +1205,7 @@ validate_local_image_config() {
 
   if [ -n "$sensitive_setting" ]; then
     echo "build: refusing to bake non-empty plaintext $sensitive_setting into the image: $config_path" >&2
-    echo "Clear the setting and provide sensitive signing or database configuration through a protected runtime mount." >&2
+    echo "Clear the setting and provide sensitive signing, database, or DNS credentials through a protected runtime mount." >&2
     return 1
   fi
 }
@@ -1264,6 +1325,8 @@ build_remote_image() (
   echo "Building remote java-tron source '$source_ref' from $source_repository."
   echo "Local working-tree changes are not included; use --source local to include them."
   DOCKER_BUILDKIT=1 docker build \
+    --pull \
+    --no-cache-filter remote-builder \
     --target remote \
     --file "$build_context/Dockerfile" \
     --build-arg "SOURCE_REPOSITORY=$source_repository" \

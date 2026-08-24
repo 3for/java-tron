@@ -16,6 +16,7 @@ DOCKER_CONTEXT_LOG="$TEST_TMP/docker-context"
 DOCKER_ENV_LOG="$TEST_TMP/docker-env"
 DOWNLOAD_LOG="$TEST_TMP/downloads"
 GRADLE_LOG="$TEST_TMP/gradle-args"
+RUNTIME_INIT_IMAGE="busybox:1.37.0-musl@sha256:fc6dddc4c44b1bfe37f41cae8e67d1693828e8f42a91862816d7953e2c9d3f23"
 
 cleanup() {
   rm -rf "$TEST_TMP"
@@ -33,6 +34,10 @@ localwitness = [
 ]
 event.subscribe = {
   dbconfig = ""
+}
+node.dns = {
+  dnsPrivate = ""
+  accessKeySecret = ""
 }
 # localwitness = ["commented-example-key"]
 # dbconfig = "commented|example|credentials"
@@ -54,6 +59,12 @@ if [ "${1:-}" = "--version" ]; then
 fi
 
 case "${1:-}" in
+  info)
+    if [ "${MOCK_DOCKER_INFO_STATUS:-0}" -ne 0 ]; then
+      exit "$MOCK_DOCKER_INFO_STATUS"
+    fi
+    printf '%s\n' "${MOCK_DOCKER_SECURITY_OPTIONS:-[\"name=seccomp,profile=builtin\"]}"
+    ;;
   build)
     printf '%s\n' "$@" > "$DOCKER_MOCK_LOG"
     printf '%s\n' "${DOCKER_BUILDKIT:-}" > "$DOCKER_MOCK_ENV_LOG"
@@ -347,6 +358,40 @@ assert_run_argument_count() {
   fi
 }
 
+assert_chown_uses_pinned_helper() {
+  local workload_image="$1"
+
+  if ! awk -v helper="$RUNTIME_INIT_IMAGE" -v workload="$workload_image" '
+    function check_invocation() {
+      if (!is_chown) {
+        return
+      }
+      chown_count++
+      if (!has_helper || has_workload) {
+        invalid = 1
+      }
+    }
+    $0 == "run" {
+      check_invocation()
+      is_chown = 0
+      has_helper = 0
+      has_workload = 0
+      next
+    }
+    $0 == "chown" { is_chown = 1 }
+    $0 == helper { has_helper = 1 }
+    $0 == workload { has_workload = 1 }
+    END {
+      check_invocation()
+      exit invalid || chown_count != 1
+    }
+  ' "$DOCKER_RUN_LOG"; then
+    echo "Runtime ownership was not initialized exclusively by the pinned helper image" >&2
+    sed 's/^/  /' "$DOCKER_RUN_LOG" >&2
+    exit 1
+  fi
+}
+
 file_mode() {
   local path="$1"
   local mode
@@ -507,6 +552,8 @@ run_node() {
       MOCK_RUNTIME_OWNER_PATH="${MOCK_RUNTIME_OWNER_PATH:-}" \
       MOCK_RUNTIME_HOST_OWNER_UID="${MOCK_RUNTIME_HOST_OWNER_UID:-10001}" \
       MOCK_RUNTIME_OWNER_MODE="${MOCK_RUNTIME_OWNER_MODE:-700}" \
+      MOCK_DOCKER_SECURITY_OPTIONS="${MOCK_DOCKER_SECURITY_OPTIONS:-[\"name=seccomp,profile=builtin\"]}" \
+      MOCK_DOCKER_INFO_STATUS="${MOCK_DOCKER_INFO_STATUS:-0}" \
       MOCK_CONTAINER_EXISTS="${MOCK_CONTAINER_EXISTS:-false}" \
       MOCK_CONTAINER_NAME="${MOCK_CONTAINER_NAME:-tronprotocol-java-tron}" \
       MOCK_CONTAINER_QUERY_STATUS="${MOCK_CONTAINER_QUERY_STATUS:-0}" \
@@ -607,6 +654,9 @@ if [ "$no_arg_status" -ne 1 ] || [[ "$no_arg_output" != *"Usage: docker.sh COMMA
 fi
 
 remote_output=$(run_build x86_64 "$REPOSITORY_ROOT")
+assert_argument "--pull"
+assert_argument "--no-cache-filter"
+assert_argument "remote-builder"
 assert_argument "--target"
 assert_argument "remote"
 assert_argument "tronprotocol/java-tron:local"
@@ -686,6 +736,8 @@ if [[ "$missing_dockerfile_output" != *"local Dockerfile does not exist"* ]]; th
 fi
 
 run_build x86_64 "$SOURCE_ROOT" --source local >/dev/null
+assert_no_argument "--pull"
+assert_no_argument "--no-cache-filter"
 assert_argument "--target"
 assert_argument "local"
 assert_no_argument "SOURCE_MODE=local"
@@ -741,6 +793,32 @@ event.subscribe.dbconfig = "events|db-user|db-password"
 DATABASE_CREDENTIAL_CONFIG
 expect_local_config_failure "event.subscribe.dbconfig"
 
+cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'DNS_PRIVATE_CONFIG'
+localwitness = []
+event.subscribe.dbconfig = ""
+node.dns = {
+  dnsPrivate = "0123456789abcdef"
+  accessKeySecret = ""
+}
+DNS_PRIVATE_CONFIG
+expect_local_config_failure "node.dns.dnsPrivate"
+
+cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'DNS_ACCESS_SECRET_CONFIG'
+localwitness = []
+event.subscribe.dbconfig = ""
+node.dns.dnsPrivate = ""
+node.dns.accessKeySecret = "cloud-dns-secret"
+DNS_ACCESS_SECRET_CONFIG
+expect_local_config_failure "node.dns.accessKeySecret"
+
+cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'SUBSTITUTED_DNS_SECRET_CONFIG'
+localwitness = []
+event.subscribe.dbconfig = ""
+node.dns.dnsPrivate = "" ${?DNS_PRIVATE_KEY}
+node.dns.accessKeySecret = ""
+SUBSTITUTED_DNS_SECRET_CONFIG
+expect_local_config_failure "node.dns.dnsPrivate"
+
 cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'APPENDED_WITNESS_CONFIG'
 localwitness = []
 localwitness += ["0123456789abcdef"]
@@ -765,8 +843,11 @@ localwitness = [
   ""
 ]
 event.subscribe = { dbconfig = "" }
+node.dns = { dnsPrivate = "", accessKeySecret = "" }
 # localwitness = ["commented-example-key"]
 # dbconfig = "commented|example|credentials"
+# dnsPrivate = "commented-private-key"
+# accessKeySecret = "commented-cloud-secret"
 SAFE_LOCAL_CONFIG
 run_build x86_64 "$SOURCE_ROOT" --source local >/dev/null
 assert_context_file "./java-tron/config.conf"
@@ -888,6 +969,10 @@ assert_run_argument_count "--cap-drop" 2
 assert_run_argument_count "ALL" 2
 assert_run_argument_count "--cap-add" 1
 assert_run_argument_count "CHOWN" 1
+assert_run_argument_count "--pull" 1
+assert_run_argument_count "missing" 1
+assert_run_argument_count "$RUNTIME_INIT_IMAGE" 1
+assert_chown_uses_pinned_helper "tronprotocol/java-tron:latest"
 if [ -s "$DOWNLOAD_LOG" ]; then
   echo "--update-config false unexpectedly downloaded an existing configuration" >&2
   exit 1
@@ -896,6 +981,47 @@ MOCK_IMAGE_ARCH=arm64 run_node >/dev/null
 assert_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0"
 assert_no_argument "JAVA_OPTS=-Xms2g -XX:MaxRAMPercentage=60.0 -XX:MaxDirectMemorySize=1g"
 MOCK_IMAGE_ARCH=amd64
+
+ROOTFUL_USERNS_DATA="$TEST_TMP/rootful-userns-data"
+MOCK_DOCKER_SECURITY_OPTIONS='["name=seccomp,profile=builtin","name=userns"]' \
+MOCK_PERMISSION_STATUS=53 \
+  expect_run_failure "rootful Docker userns-remap cannot automatically initialize" \
+    --data-dir "$ROOTFUL_USERNS_DATA" -c /java-tron/custom.conf
+assert_run_argument_count "CHOWN" 0
+assert_run_argument_count "$RUNTIME_INIT_IMAGE" 0
+if grep -Fqx -- "-d" "$DOCKER_RUN_LOG"; then
+  echo "A rootful userns-remap initialization reached the detached node run" >&2
+  sed 's/^/  /' "$DOCKER_RUN_LOG" >&2
+  exit 1
+fi
+
+ROOTFUL_USERNS_PREPROVISIONED_DATA="$TEST_TMP/rootful-userns-preprovisioned-data"
+MOCK_DOCKER_SECURITY_OPTIONS='["name=seccomp,profile=builtin","name=userns"]' \
+  run_node --data-dir "$ROOTFUL_USERNS_PREPROVISIONED_DATA" \
+    -c /java-tron/custom.conf >/dev/null
+assert_run_argument_count "CHOWN" 0
+assert_run_argument_count "$RUNTIME_INIT_IMAGE" 0
+assert_argument "-d"
+
+ROOTLESS_DATA="$TEST_TMP/rootless-data"
+MOCK_DOCKER_SECURITY_OPTIONS='["name=seccomp,profile=builtin","name=userns","name=rootless"]' \
+  run_node --data-dir "$ROOTLESS_DATA" -c /java-tron/custom.conf >/dev/null
+assert_run_argument_count "$RUNTIME_INIT_IMAGE" 1
+
+DOCKER_INFO_FAILURE_DATA="$TEST_TMP/docker-info-failure-data"
+MOCK_DOCKER_INFO_STATUS=52 \
+  expect_run_failure "failed to inspect Docker user-namespace configuration" \
+    --data-dir "$DOCKER_INFO_FAILURE_DATA" -c /java-tron/custom.conf
+if [ -s "$DOCKER_RUN_LOG" ]; then
+  echo "A failed namespace inspection reached docker run" >&2
+  sed 's/^/  /' "$DOCKER_RUN_LOG" >&2
+  exit 1
+fi
+
+CUSTOM_IMAGE_INIT_DATA="$TEST_TMP/custom-image-init-data"
+run_node --image example/untrusted-java-tron:ci \
+  --data-dir "$CUSTOM_IMAGE_INIT_DATA" -c /java-tron/custom.conf >/dev/null
+assert_chown_uses_pinned_helper "example/untrusted-java-tron:ci"
 
 MOCK_IMAGE_USER=root expect_run_failure \
   "must run as UID:GID 10001:10001" -c /java-tron/custom.conf

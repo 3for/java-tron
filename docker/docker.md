@@ -133,7 +133,9 @@ The private-network configuration mount is read-only because FullNode only needs
 
 The image runs FullNode as the non-root `tron` account with fixed UID and GID `10001:10001`. Application files under `/java-tron` (`bin/`, `lib/`, `java-tron.vmoptions`, and the baked-in `config.conf`) stay root-owned and are not writable by that user. Only `/java-tron/output-directory` and `/java-tron/logs` belong to `10001:10001`. The image enables heap dumps on out-of-memory errors and points JVM GC logs, heap dumps, and `hs_err` files at `/java-tron/logs`; the packaged `java-tron.vmoptions` used outside Docker is unchanged. An OOM heap dump can approach the configured maximum heap size, so provision and monitor the logs volume accordingly.
 
-For new, empty default `output-directory` and `logs` mounts, `docker.sh` initializes the mount-point ownership and verifies from inside a restricted container that the runtime identity `10001:10001` can write to them. With rootless Docker or `userns-remap`, ownership created by that initialization appears on the host as the subordinate UID and GID selected by the Docker daemon, not as the literal host IDs `10001:10001`; the preflight therefore relies on effective container access rather than a literal host-owner comparison. For non-empty mounts, this check covers the mount point and its direct children only; it does not traverse the complete database tree. It also starts FullNode with `no-new-privileges`. Custom writable mounts supplied with `-v` must already be accessible to container UID and GID `10001:10001` through the active Docker user-namespace mapping.
+For new, empty default `output-directory` and `logs` mounts, `docker.sh` initializes the mount-point ownership with a minimal Docker Official Image pinned by digest; it does not execute the selected java-tron workload image with root privileges. The helper runs without networking, with a read-only root filesystem, and with only `CAP_CHOWN`, then `docker.sh` verifies from inside a restricted container that runtime identity `10001:10001` can write to the mounts. The pinned helper is pulled on first use if it is not already available locally.
+
+Automatic initialization is supported by rootful Docker without user-namespace remapping and by rootless Docker. Rootless ownership appears on the host as the subordinate UID and GID selected by the Docker daemon. Rootful Docker with `userns-remap` is different: remapped container root generally cannot change ownership of a directory just created by the invoking host user. `docker.sh` detects that mode and refuses automatic initialization before running the ownership helper. Pre-create the directories with the mapped host UID and GID as described below. For non-empty mounts, the preflight check covers the mount point and its direct children only; it does not traverse the complete database tree. FullNode is started with `no-new-privileges`. Custom writable mounts supplied with `-v` must already be accessible to container UID and GID `10001:10001` through the active Docker user-namespace mapping.
 
 Data written by an older root-based image may require a one-time ownership migration. Stop the node before changing ownership. The following command applies only to rootful Docker without user-namespace remapping; adjust the paths for the selected data directory:
 
@@ -143,7 +145,21 @@ sudo chown -R 10001:10001 \
   /var/lib/java-tron/logs
 ```
 
-For rootless Docker or `userns-remap`, migrate the same paths to the host UID and GID that the active Docker daemon maps from container `10001:10001`; do not use literal host IDs `10001:10001` unless that is the daemon's actual mapping. The helper deliberately does not recursively inspect or change a non-empty directory because scanning a multi-terabyte database during every startup would be slow and unexpected. A partially migrated tree can therefore pass the shallow preflight check but fail later when FullNode reaches a deeper file. Run the appropriate one-time recursive ownership migration for data created by a root-based image. When the shallow check detects a problem, the helper prints guidance for both namespace cases. Direct `docker run` users must prepare writable mounts themselves and should also specify `--security-opt no-new-privileges`.
+For rootless Docker or `userns-remap`, migrate the same paths to the host UID and GID that the active Docker daemon maps from container `10001:10001`; do not use literal host IDs `10001:10001` unless that is the daemon's actual mapping. For a rootful daemon configured with the default `dockremap` user, the following example derives the mapped IDs from the first subordinate ranges and provisions new empty directories. Replace `dockremap` if `userns-remap` names a different account, and confirm the daemon's mapping before applying ownership changes:
+
+```shell
+remap_user=dockremap
+subuid_start=$(awk -F: -v user="$remap_user" '$1 == user { print $2; exit }' /etc/subuid)
+subgid_start=$(awk -F: -v user="$remap_user" '$1 == user { print $2; exit }' /etc/subgid)
+test -n "$subuid_start" && test -n "$subgid_start"
+mapped_uid=$((subuid_start + 10001))
+mapped_gid=$((subgid_start + 10001))
+sudo install -d -m 0700 -o "$mapped_uid" -g "$mapped_gid" \
+  /var/lib/java-tron/output-directory \
+  /var/lib/java-tron/logs
+```
+
+The helper deliberately does not recursively inspect or change a non-empty directory because scanning a multi-terabyte database during every startup would be slow and unexpected. A partially migrated tree can therefore pass the shallow preflight check but fail later when FullNode reaches a deeper file. Run the appropriate one-time recursive ownership migration for data created by a root-based image. When the shallow check detects a problem, the helper prints guidance for both namespace cases. Direct `docker run` users must prepare writable mounts themselves and should also specify `--security-opt no-new-privileges`.
 
 Use `--data-dir` to keep the default host runtime directories in an explicit location, preferably outside the source checkout. Relative values are resolved against the invocation directory:
 
@@ -237,6 +253,8 @@ bash docker.sh --build \
     --source-ref develop
 ```
 
+Each helper-driven remote build pulls refreshed base-image metadata and invalidates the `remote-builder` stage, so a moved branch such as `master` is cloned and rebuilt instead of being silently reused from a previous Docker layer. The selected ref is still a remote Git trust input rather than cryptographically pinned provenance; use a controlled repository and release ref for distributable images.
+
 From a java-tron checkout, use `--source local` to compile the current working tree, including uncommitted changes:
 
 ```shell
@@ -245,7 +263,7 @@ bash docker/docker.sh --build --source local
 
 In local mode, `docker.sh` runs the Gradle `:framework:distZip` task on the host, uses the architecture-specific Dockerfile and Mainnet configuration from the same checkout, and extracts the resulting distribution into a temporary directory. The build fails instead of downloading a Dockerfile or configuration when the checkout does not contain the expected file. Only the staged distribution, configuration, and local Dockerfile are sent to the Docker daemon. The rest of the source checkout, node database, environment files, and separate key or credential files stored outside the Gradle distribution are not part of the Docker build context.
 
-The checkout's `framework/src/main/resources/config.conf` is copied verbatim into the local image as the world-readable `/java-tron/config.conf`. Before building, `docker.sh` rejects a non-empty plaintext `localwitness` list or `event.subscribe.dbconfig` value so signing keys and database credentials are not accidentally baked into an image layer. Clear those settings before building and provide sensitive signing or database configuration through a protected runtime bind mount. This targeted check does not prove that every custom configuration field is free of sensitive data, so review `config.conf` before distributing the image.
+The checkout's `framework/src/main/resources/config.conf` is copied verbatim into the local image as the world-readable `/java-tron/config.conf`. Before building, `docker.sh` rejects a non-empty plaintext `localwitness` list, `event.subscribe.dbconfig`, `node.dns.dnsPrivate`, or `node.dns.accessKeySecret` value so signing keys and service credentials are not accidentally baked into an image layer. Clear those settings before building and provide sensitive signing, database, or DNS configuration through a protected runtime bind mount. This targeted check does not prove that every custom configuration field is free of sensitive data, so review `config.conf` before distributing the image.
 
 The two architecture-specific Dockerfiles each provide `local` and `remote` BuildKit targets. `docker.sh` selects the appropriate target and supplies its required minimal context. A plain Dockerfile build defaults to the historical `remote` target, but direct `local` target builds require callers to stage the distribution as `java-tron/` first.
 
