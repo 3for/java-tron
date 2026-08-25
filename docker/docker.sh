@@ -1231,7 +1231,7 @@ validate_local_image_config() {
   fi
 }
 
-# shellcheck disable=SC2329  # Called by functions that are invoked from EXIT traps.
+# shellcheck disable=SC2317,SC2329  # Called by functions invoked from EXIT traps.
 remove_local_build_tree() {
   local target_path="$1"
   local find_root="$target_path"
@@ -1366,7 +1366,7 @@ prepare_local_build_context() (
   local distribution_manifest=""
   local distribution_root
 
-  # shellcheck disable=SC2329  # Invoked indirectly by the EXIT trap.
+  # shellcheck disable=SC2317,SC2329  # Invoked indirectly by the EXIT trap.
   cleanup_local_distribution_staging() {
     local original_status=$?
     local cleanup_status=0
@@ -1447,7 +1447,7 @@ build_local_image() (
   local dockerfile_path="$2"
   local build_context
 
-  # shellcheck disable=SC2329  # Invoked indirectly by the EXIT trap.
+  # shellcheck disable=SC2317,SC2329  # Invoked indirectly by the EXIT trap.
   cleanup_temporary_build_context() {
     local original_status=$?
     local cleanup_status=0
@@ -1483,7 +1483,7 @@ export_local_build_context() (
   local build_context="$3"
   local context_created=false
 
-  # shellcheck disable=SC2329  # Invoked indirectly by the EXIT trap.
+  # shellcheck disable=SC2317,SC2329  # Invoked indirectly by the EXIT trap.
   cleanup_failed_export() {
     local status=$?
     local cleanup_status=0
