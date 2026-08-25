@@ -215,7 +215,10 @@ def createScript(project, mainClass, name) {
     project.tasks.create(name: name, type: CreateStartScripts) {
         unixStartScriptGenerator.template = resources.text.fromFile('../gradle/unixStartScript.txt')
         windowsStartScriptGenerator.template = resources.text.fromFile('../gradle/windowsStartScript.txt')
-        outputDir = new File(project.buildDir, 'scripts')
+        // Keep the custom launcher outside the Application plugin's default
+        // startScripts output directory. Otherwise that directory is copied
+        // once by the plugin and again by the custom distribution spec.
+        outputDir = new File(project.buildDir, 'fullnode-scripts')
         mainClassName = mainClass
         applicationName = name
         classpath = project.tasks[JavaPlugin.JAR_TASK_NAME].outputs.files + project.configurations.runtimeClasspath
