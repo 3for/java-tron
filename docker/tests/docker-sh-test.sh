@@ -16,6 +16,7 @@ DOCKER_CONTEXT_LOG="$TEST_TMP/docker-context"
 DOCKER_ENV_LOG="$TEST_TMP/docker-env"
 DOWNLOAD_LOG="$TEST_TMP/downloads"
 GRADLE_LOG="$TEST_TMP/gradle-args"
+UNZIP_LOG="$TEST_TMP/unzip-destinations"
 RUNTIME_INIT_IMAGE="busybox:1.37.0-musl@sha256:fc6dddc4c44b1bfe37f41cae8e67d1693828e8f42a91862816d7953e2c9d3f23"
 
 cleanup() {
@@ -231,11 +232,68 @@ while [ $# -gt 0 ]; do
   fi
 done
 test -n "$destination"
+if [ -n "${UNZIP_MOCK_LOG:-}" ]; then
+  printf '%s\n' "$destination" > "$UNZIP_MOCK_LOG"
+fi
 mkdir -p "$destination/java-tron-1.0.0/bin" "$destination/java-tron-1.0.0/lib"
 touch "$destination/java-tron-1.0.0/bin/FullNode"
+touch "$destination/java-tron-1.0.0/bin/FullNode.bat"
 touch "$destination/java-tron-1.0.0/bin/java-tron.vmoptions"
 touch "$destination/java-tron-1.0.0/lib/java-tron.jar"
 chmod +x "$destination/java-tron-1.0.0/bin/FullNode"
+
+case "${MOCK_UNZIP_FIXTURE:-safe}" in
+  safe)
+    ;;
+  witness-key)
+    printf 'private-key\n' > "$destination/java-tron-1.0.0/witness.key"
+    ;;
+  key-backup)
+    printf 'private-key\n' > "$destination/java-tron-1.0.0/witness.key.bak"
+    ;;
+  keystore)
+    printf 'keystore\n' > "$destination/java-tron-1.0.0/localwitness.jks"
+    ;;
+  wallet)
+    mkdir -p "$destination/java-tron-1.0.0/Wallet"
+    printf 'wallet\n' > "$destination/java-tron-1.0.0/Wallet/account.json"
+    ;;
+  lowercase-wallet)
+    mkdir -p "$destination/java-tron-1.0.0/wallet"
+    printf 'wallet\n' > "$destination/java-tron-1.0.0/wallet/account.json"
+    ;;
+  node-id)
+    printf 'node-id\n' > "$destination/java-tron-1.0.0/nodeId.properties"
+    ;;
+  database)
+    mkdir -p "$destination/java-tron-1.0.0/database"
+    printf 'database\n' > "$destination/java-tron-1.0.0/database/block.data"
+    ;;
+  logs)
+    mkdir -p "$destination/java-tron-1.0.0/logs"
+    printf 'log\n' > "$destination/java-tron-1.0.0/logs/tron.log"
+    ;;
+  symbolic-link)
+    ln -s /etc/passwd "$destination/java-tron-1.0.0/lib/linked.jar"
+    ;;
+  fifo)
+    mkfifo "$destination/java-tron-1.0.0/lib/stream.jar"
+    ;;
+  locked-directory-0500)
+    mkdir -p "$destination/java-tron-1.0.0/Wallet"
+    printf 'wallet\n' > "$destination/java-tron-1.0.0/Wallet/account.json"
+    chmod 0500 "$destination/java-tron-1.0.0/Wallet"
+    ;;
+  locked-directory-000)
+    mkdir -p "$destination/java-tron-1.0.0/Wallet"
+    printf 'wallet\n' > "$destination/java-tron-1.0.0/Wallet/account.json"
+    chmod 000 "$destination/java-tron-1.0.0/Wallet"
+    ;;
+  *)
+    echo "Unknown mock distribution fixture: $MOCK_UNZIP_FIXTURE" >&2
+    exit 1
+    ;;
+esac
 MOCK_UNZIP
 
 cat > "$MOCK_BIN/curl" <<'MOCK_CURL'
@@ -475,6 +533,7 @@ run_build() {
   : > "$DOCKER_CONTEXT_LOG"
   : > "$DOCKER_ENV_LOG"
   : > "$GRADLE_LOG"
+  : > "$UNZIP_LOG"
   (
     cd -- "$working_directory"
     PATH="$MOCK_BIN:$PATH" \
@@ -483,6 +542,8 @@ run_build() {
       DOCKER_MOCK_CONTEXT_LOG="$DOCKER_CONTEXT_LOG" \
       DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
       GRADLE_MOCK_LOG="$GRADLE_LOG" \
+      UNZIP_MOCK_LOG="$UNZIP_LOG" \
+      MOCK_UNZIP_FIXTURE="${MOCK_UNZIP_FIXTURE:-safe}" \
       bash "$DOCKER_SCRIPT" --build "$@"
   )
 }
@@ -496,6 +557,7 @@ run_export() {
   : > "$DOCKER_CONTEXT_LOG"
   : > "$DOCKER_ENV_LOG"
   : > "$GRADLE_LOG"
+  : > "$UNZIP_LOG"
   (
     cd -- "$working_directory"
     PATH="$MOCK_BIN:$PATH" \
@@ -504,6 +566,8 @@ run_export() {
       DOCKER_MOCK_CONTEXT_LOG="$DOCKER_CONTEXT_LOG" \
       DOCKER_MOCK_ENV_LOG="$DOCKER_ENV_LOG" \
       GRADLE_MOCK_LOG="$GRADLE_LOG" \
+      UNZIP_MOCK_LOG="$UNZIP_LOG" \
+      MOCK_UNZIP_FIXTURE="${MOCK_UNZIP_FIXTURE:-safe}" \
       bash "$DOCKER_SCRIPT" --build --source local \
         --export-context "$output_context" "$@"
   )
@@ -807,7 +871,9 @@ assert_argument "local"
 assert_no_argument "SOURCE_MODE=local"
 assert_temporary_context
 assert_context_file "./Dockerfile"
+assert_context_file "./.dockerignore"
 assert_context_file "./java-tron/bin/FullNode"
+assert_context_file "./java-tron/bin/FullNode.bat"
 assert_context_file "./java-tron/bin/java-tron.vmoptions"
 assert_context_file "./java-tron/config.conf"
 assert_context_file "./java-tron/lib/java-tron.jar"
@@ -816,6 +882,67 @@ if grep -Fqx -- "./.env" "$DOCKER_CONTEXT_LOG"; then
   exit 1
 fi
 assert_buildkit_enabled
+
+for unsafe_build_fixture in witness-key locked-directory-000; do
+  if unsafe_build_output=$(MOCK_UNZIP_FIXTURE="$unsafe_build_fixture" \
+    run_build x86_64 "$SOURCE_ROOT" --source local 2>&1); then
+    echo "An unsafe '$unsafe_build_fixture' local image build succeeded" >&2
+    exit 1
+  fi
+  if [[ "$unsafe_build_output" != *"build: refusing"* ]] \
+    && [[ "$unsafe_build_output" != *"failed to inspect the extracted local distribution"* ]]; then
+    echo "The '$unsafe_build_fixture' local distribution rejection was unclear:" >&2
+    echo "$unsafe_build_output" >&2
+    exit 1
+  fi
+  if [ ! -s "$GRADLE_LOG" ] || [ -s "$DOCKER_LOG" ]; then
+    echo "The '$unsafe_build_fixture' distribution was not rejected between Gradle and Docker" >&2
+    exit 1
+  fi
+  rejected_build_staging=$(tail -n 1 "$UNZIP_LOG")
+  rejected_build_context=$(dirname -- "$rejected_build_staging")
+  if [ -e "$rejected_build_staging" ] || [ -L "$rejected_build_staging" ] \
+    || [ -e "$rejected_build_context" ] || [ -L "$rejected_build_context" ]; then
+    echo "The '$unsafe_build_fixture' local build left its temporary context behind" >&2
+    exit 1
+  fi
+done
+
+for unsafe_fixture in \
+  witness-key \
+  key-backup \
+  keystore \
+  wallet \
+  lowercase-wallet \
+  node-id \
+  database \
+  logs \
+  symbolic-link \
+  fifo \
+  locked-directory-0500 \
+  locked-directory-000; do
+  rejected_distribution_context="$TEST_TMP/rejected-$unsafe_fixture-context"
+  if rejected_distribution_output=$(MOCK_UNZIP_FIXTURE="$unsafe_fixture" \
+    run_export x86_64 "$SOURCE_ROOT" "$rejected_distribution_context" 2>&1); then
+    echo "An unsafe '$unsafe_fixture' distribution export unexpectedly succeeded" >&2
+    exit 1
+  fi
+  if [[ "$rejected_distribution_output" != *"build: refusing"* ]] \
+    && [[ "$rejected_distribution_output" != *"failed to inspect the extracted local distribution"* ]]; then
+    echo "The '$unsafe_fixture' distribution rejection was unclear:" >&2
+    echo "$rejected_distribution_output" >&2
+    exit 1
+  fi
+  if [ -e "$rejected_distribution_context" ] \
+    || [ -L "$rejected_distribution_context" ]; then
+    echo "A rejected '$unsafe_fixture' export left its context behind" >&2
+    exit 1
+  fi
+  if [ ! -s "$GRADLE_LOG" ] || [ -s "$DOCKER_LOG" ]; then
+    echo "The '$unsafe_fixture' export was not rejected between Gradle and Docker" >&2
+    exit 1
+  fi
+done
 
 cat > "$SOURCE_ROOT/framework/src/main/resources/config.conf" <<'PLAINTEXT_WITNESS_CONFIG'
 localwitness = [
@@ -919,8 +1046,10 @@ assert_context_file "./java-tron/config.conf"
 exported_context="$TEST_TMP/exported-local-context"
 run_export x86_64 "$SOURCE_ROOT" "$exported_context" >/dev/null
 for exported_file in \
+  .dockerignore \
   Dockerfile \
   java-tron/bin/FullNode \
+  java-tron/bin/FullNode.bat \
   java-tron/bin/java-tron.vmoptions \
   java-tron/config.conf \
   java-tron/lib/java-tron.jar; do
@@ -929,6 +1058,12 @@ for exported_file in \
     exit 1
   fi
 done
+if ! cmp -s "$REPOSITORY_ROOT/.dockerignore" "$exported_context/.dockerignore"; then
+  echo "Exported local context does not use the repository Docker allowlist" >&2
+  diff -u "$REPOSITORY_ROOT/.dockerignore" \
+    "$exported_context/.dockerignore" >&2 || true
+  exit 1
+fi
 if [ "$(file_mode "$exported_context")" != 700 ]; then
   echo "Exported local context is not mode 700" >&2
   exit 1

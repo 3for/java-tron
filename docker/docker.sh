@@ -1231,12 +1231,166 @@ validate_local_image_config() {
   fi
 }
 
-prepare_local_build_context() {
+# shellcheck disable=SC2329  # Called by functions that are invoked from EXIT traps.
+remove_local_build_tree() {
+  local target_path="$1"
+  local find_root="$target_path"
+
+  if [ ! -e "$target_path" ] && [ ! -L "$target_path" ]; then
+    return 0
+  fi
+
+  # Prefix relative paths so find cannot interpret a leading dash as an
+  # expression. -P prevents an archive-created symlink from redirecting chmod.
+  case "$find_root" in
+    /*)
+      ;;
+    *)
+      find_root="./$find_root"
+      ;;
+  esac
+
+  # ZIP directory modes are preserved by unzip. Restore owner access one
+  # directory at a time, before descent, so mode 000/0500 entries can be
+  # removed without following symbolic links outside the private tree.
+  find -P "$find_root" -type d -exec chmod u+rwx {} \; || true
+
+  if ! rm -rf -- "$target_path"; then
+    echo "build: failed to remove private build tree: $target_path" >&2
+    return 1
+  fi
+  if [ -e "$target_path" ] || [ -L "$target_path" ]; then
+    echo "build: private build tree still exists after cleanup: $target_path" >&2
+    return 1
+  fi
+}
+
+write_local_build_dockerignore() {
+  local output_path="$1"
+
+  cat > "$output_path" <<'EOF'
+# Remote targets do not read from the build context. Local targets accept only
+# the runtime files emitted by the supported Gradle distribution plus the
+# Mainnet configuration staged by docker.sh. Everything else stays excluded.
+**
+!java-tron/
+java-tron/**
+!java-tron/bin/
+java-tron/bin/**
+!java-tron/bin/FullNode
+!java-tron/bin/FullNode.bat
+!java-tron/bin/java-tron.vmoptions
+!java-tron/lib/
+java-tron/lib/**
+!java-tron/lib/*.jar
+!java-tron/config.conf
+EOF
+}
+
+validate_local_distribution_tree() {
+  local staging_root="$1"
+  local manifest_path="$2"
+  local distribution_name="java-tron-1.0.0"
+  local distribution_root="$staging_root/$distribution_name"
+  local entry
+  local relative
+  local library_name
+
+  if [ ! -d "$distribution_root" ] || [ -L "$distribution_root" ]; then
+    echo "build: the distribution does not contain a regular $distribution_name directory" >&2
+    return 1
+  fi
+
+  if ! find -P "$staging_root" -mindepth 1 -print0 > "$manifest_path"; then
+    echo "build: failed to inspect the extracted local distribution" >&2
+    return 1
+  fi
+
+  while IFS= read -r -d '' entry; do
+    relative=${entry#"$staging_root"/}
+
+    if [ -L "$entry" ]; then
+      printf 'build: refusing symbolic link in local distribution: %q\n' \
+        "$relative" >&2
+      return 1
+    fi
+
+    if [ -d "$entry" ]; then
+      case "$relative" in
+        "$distribution_name"|"$distribution_name/bin"|"$distribution_name/lib")
+          ;;
+        *)
+          printf 'build: refusing unexpected directory in local distribution: %q\n' \
+            "$relative" >&2
+          return 1
+          ;;
+      esac
+      continue
+    fi
+
+    if [ ! -f "$entry" ]; then
+      printf 'build: refusing non-regular file in local distribution: %q\n' \
+        "$relative" >&2
+      return 1
+    fi
+
+    case "$relative" in
+      "$distribution_name/bin/FullNode"|\
+      "$distribution_name/bin/FullNode.bat"|\
+      "$distribution_name/bin/java-tron.vmoptions")
+        ;;
+      "$distribution_name/lib/"*.jar)
+        library_name=${relative#"$distribution_name/lib/"}
+        if [ -z "$library_name" ] || [[ "$library_name" = */* ]]; then
+          printf 'build: refusing unexpected library path in local distribution: %q\n' \
+            "$relative" >&2
+          return 1
+        fi
+        ;;
+      *)
+        printf 'build: refusing unexpected or sensitive file in local distribution: %q\n' \
+          "$relative" >&2
+        return 1
+        ;;
+    esac
+  done < "$manifest_path"
+}
+
+prepare_local_build_context() (
   local source_root="$1"
   local dockerfile_path="$2"
-  local build_context="$3"
+  local context_root="$3"
   local distribution="$source_root/framework/build/distributions/java-tron-1.0.0.zip"
   local config_path="$source_root/framework/src/main/resources/config.conf"
+  local distribution_staging=""
+  local distribution_manifest=""
+  local distribution_root
+
+  # shellcheck disable=SC2329  # Invoked indirectly by the EXIT trap.
+  cleanup_local_distribution_staging() {
+    local original_status=$?
+    local cleanup_status=0
+
+    trap - EXIT
+    if [ -n "$distribution_staging" ]; then
+      remove_local_build_tree "$distribution_staging" || cleanup_status=$?
+    fi
+    if [ -n "$distribution_manifest" ]; then
+      if ! rm -f -- "$distribution_manifest"; then
+        echo "build: failed to remove distribution manifest: $distribution_manifest" >&2
+        cleanup_status=1
+      fi
+    fi
+
+    if [ "$original_status" -ne 0 ]; then
+      exit "$original_status"
+    fi
+    if [ "$cleanup_status" -ne 0 ]; then
+      exit "$cleanup_status"
+    fi
+    exit 0
+  }
+  trap cleanup_local_distribution_staging EXIT
 
   if ! command -v unzip >/dev/null 2>&1; then
     echo "build: unzip is required for --source local" >&2
@@ -1261,33 +1415,56 @@ prepare_local_build_context() {
     return 1
   fi
 
-  if ! unzip -q -o "$distribution" -d "$build_context"; then
+  distribution_staging=$(mktemp -d "$context_root/.java-tron-dist.XXXXXX") \
+    || return 1
+  distribution_manifest=$(mktemp "$context_root/.java-tron-dist-manifest.XXXXXX") \
+    || return 1
+
+  if ! unzip -q -o "$distribution" -d "$distribution_staging"; then
     echo "build: failed to extract $distribution" >&2
     return 1
   fi
-  if [ ! -d "$build_context/java-tron-1.0.0" ]; then
-    echo "build: the distribution does not contain java-tron-1.0.0" >&2
+  if ! validate_local_distribution_tree \
+    "$distribution_staging" "$distribution_manifest"; then
     return 1
   fi
-  mv "$build_context/java-tron-1.0.0" "$build_context/java-tron" || return 1
+  distribution_root="$distribution_staging/java-tron-1.0.0"
+  mv "$distribution_root" "$context_root/java-tron" || return 1
 
-  if [ ! -x "$build_context/java-tron/bin/FullNode" ] \
-    || [ ! -f "$build_context/java-tron/bin/java-tron.vmoptions" ]; then
+  if [ ! -x "$context_root/java-tron/bin/FullNode" ] \
+    || [ ! -f "$context_root/java-tron/bin/java-tron.vmoptions" ]; then
     echo "build: the staged distribution is missing FullNode or java-tron.vmoptions" >&2
     return 1
   fi
 
-  cp "$config_path" "$build_context/java-tron/config.conf" || return 1
-  cp "$dockerfile_path" "$build_context/Dockerfile" || return 1
-}
+  cp "$config_path" "$context_root/java-tron/config.conf" || return 1
+  cp "$dockerfile_path" "$context_root/Dockerfile" || return 1
+  write_local_build_dockerignore "$context_root/.dockerignore" || return 1
+)
 
 build_local_image() (
   local source_root="$1"
   local dockerfile_path="$2"
   local build_context
 
+  # shellcheck disable=SC2329  # Invoked indirectly by the EXIT trap.
+  cleanup_temporary_build_context() {
+    local original_status=$?
+    local cleanup_status=0
+
+    trap - EXIT
+    remove_local_build_tree "$build_context" || cleanup_status=$?
+    if [ "$original_status" -ne 0 ]; then
+      exit "$original_status"
+    fi
+    if [ "$cleanup_status" -ne 0 ]; then
+      exit "$cleanup_status"
+    fi
+    exit 0
+  }
+
   build_context=$(mktemp -d) || return 1
-  trap 'rm -rf "$build_context"' EXIT
+  trap cleanup_temporary_build_context EXIT
 
   prepare_local_build_context "$source_root" "$dockerfile_path" "$build_context" \
     || return 1
@@ -1309,11 +1486,19 @@ export_local_build_context() (
   # shellcheck disable=SC2329  # Invoked indirectly by the EXIT trap.
   cleanup_failed_export() {
     local status=$?
+    local cleanup_status=0
+
     trap - EXIT
     if [ "$status" -ne 0 ] && [ "$context_created" = true ]; then
-      rm -rf -- "$build_context"
+      remove_local_build_tree "$build_context" || cleanup_status=$?
     fi
-    exit "$status"
+    if [ "$status" -ne 0 ]; then
+      exit "$status"
+    fi
+    if [ "$cleanup_status" -ne 0 ]; then
+      exit "$cleanup_status"
+    fi
+    exit 0
   }
   trap cleanup_failed_export EXIT
 

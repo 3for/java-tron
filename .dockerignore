@@ -1,39 +1,15 @@
-# The remote targets do not read from the build context. Direct local-target
-# builds only need a distribution staged as java-tron/.
-*
+# Remote targets do not read from the build context. Local targets accept only
+# the runtime files emitted by the supported Gradle distribution plus the
+# Mainnet configuration staged by docker.sh. Everything else stays excluded.
+**
 !java-tron/
-!java-tron/**
-
-# Never send credentials or private configuration, including files placed in
-# an otherwise allowed staged distribution.
-**/.env
-**/.env.*
-**/*.key
-**/*.pem
-**/*.p12
-**/*.pfx
-**/*.pkcs12
-**/*.jks
-**/*.keystore
-**/*keystore*.json
-**/private_net_config.conf
-**/credentials
-**/credentials.*
-**/secrets
-**/secrets.*
-
-# Runtime state may contain node identity, wallet, or transaction data and is
-# never part of a supported image build context.
-**/Wallet
-**/Wallet/**
-**/database*
-**/gc.log
-**/logs
-**/logs/**
-**/nodeId.properties
-**/output-directory
-**/output-directory/**
-**/tron-data
-**/tron-data/**
-**/vm_trace
-**/vm_trace/**
+java-tron/**
+!java-tron/bin/
+java-tron/bin/**
+!java-tron/bin/FullNode
+!java-tron/bin/FullNode.bat
+!java-tron/bin/java-tron.vmoptions
+!java-tron/lib/
+java-tron/lib/**
+!java-tron/lib/*.jar
+!java-tron/config.conf
