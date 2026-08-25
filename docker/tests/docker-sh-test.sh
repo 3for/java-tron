@@ -1274,6 +1274,55 @@ if [ -e "$CUSTOM_PRIVATE_CONFIG_DATA/config" ]; then
   exit 1
 fi
 
+DEFAULT_UMASK_DATA="$TEST_TMP/default-umask-runtime-data"
+(
+  umask 022
+  run_node --data-dir "$DEFAULT_UMASK_DATA" -c /java-tron/custom.conf >/dev/null
+)
+assert_mode 700 "$DEFAULT_UMASK_DATA/output-directory"
+assert_mode 700 "$DEFAULT_UMASK_DATA/logs"
+
+EMPTY_EXISTING_RUNTIME_DATA="$TEST_TMP/empty-existing-runtime-data"
+mkdir -p "$EMPTY_EXISTING_RUNTIME_DATA/output-directory" \
+  "$EMPTY_EXISTING_RUNTIME_DATA/logs"
+chmod 0755 "$EMPTY_EXISTING_RUNTIME_DATA/output-directory" \
+  "$EMPTY_EXISTING_RUNTIME_DATA/logs"
+run_node --data-dir "$EMPTY_EXISTING_RUNTIME_DATA" \
+  -c /java-tron/custom.conf >/dev/null
+assert_mode 700 "$EMPTY_EXISTING_RUNTIME_DATA/output-directory"
+assert_mode 700 "$EMPTY_EXISTING_RUNTIME_DATA/logs"
+
+NONEMPTY_EXISTING_RUNTIME_DATA="$TEST_TMP/nonempty-existing-runtime-data"
+mkdir -p "$NONEMPTY_EXISTING_RUNTIME_DATA/output-directory" \
+  "$NONEMPTY_EXISTING_RUNTIME_DATA/logs"
+touch "$NONEMPTY_EXISTING_RUNTIME_DATA/output-directory/existing-database-entry" \
+  "$NONEMPTY_EXISTING_RUNTIME_DATA/logs/existing-log-entry"
+chmod 0755 "$NONEMPTY_EXISTING_RUNTIME_DATA/output-directory" \
+  "$NONEMPTY_EXISTING_RUNTIME_DATA/logs"
+if ! permission_warning=$(run_node --data-dir "$NONEMPTY_EXISTING_RUNTIME_DATA" \
+  -c /java-tron/custom.conf 2>&1); then
+  echo "An existing group/other-accessible runtime directory was rejected" >&2
+  echo "$permission_warning" >&2
+  exit 1
+fi
+for existing_runtime_directory in output-directory logs; do
+  warning_path="$NONEMPTY_EXISTING_RUNTIME_DATA/$existing_runtime_directory"
+  if [[ "$permission_warning" != *"existing non-empty runtime directory is accessible by group or other users; preserving mode 755: $warning_path"* ]] \
+    || [[ "$permission_warning" != *"chmod 0700 $warning_path"* ]]; then
+    echo "Missing runtime-directory confidentiality warning for $warning_path" >&2
+    echo "$permission_warning" >&2
+    exit 1
+  fi
+  assert_mode 755 "$warning_path"
+done
+
+CUSTOM_RUNTIME_PERMISSIONS="$TEST_TMP/custom-runtime-permissions"
+mkdir -p "$CUSTOM_RUNTIME_PERMISSIONS"
+chmod 0755 "$CUSTOM_RUNTIME_PERMISSIONS"
+run_node -c /java-tron/custom.conf \
+  -v "$CUSTOM_RUNTIME_PERMISSIONS:/java-tron/logs" >/dev/null
+assert_mode 755 "$CUSTOM_RUNTIME_PERMISSIONS"
+
 STRICT_UMASK_DATA="$TEST_TMP/strict-umask-runtime-data"
 (
   umask 077
@@ -1331,14 +1380,14 @@ MOCK_EXECUTE_RUNTIME_CHECK=true \
     -c /java-tron/custom.conf \
     -v /host/logs:/java-tron/logs
 
-HOST_UNREADABLE_UNSAFE_MODE_DATA="$TEST_TMP/host-unreadable-unsafe-mode-data"
-mkdir -p "$HOST_UNREADABLE_UNSAFE_MODE_DATA/output-directory"
-touch "$HOST_UNREADABLE_UNSAFE_MODE_DATA/output-directory/existing-database-entry"
-MOCK_HOST_FIND_DENIED_PATH="$HOST_UNREADABLE_UNSAFE_MODE_DATA/output-directory" \
-MOCK_RUNTIME_OWNER_PATH="$HOST_UNREADABLE_UNSAFE_MODE_DATA/output-directory" \
-MOCK_RUNTIME_OWNER_MODE=733 \
-  expect_run_failure "failed to inspect runtime directory" \
-    --data-dir "$HOST_UNREADABLE_UNSAFE_MODE_DATA" \
+HOST_UNREADABLE_ACCESSIBLE_MODE_DATA="$TEST_TMP/host-unreadable-accessible-mode-data"
+mkdir -p "$HOST_UNREADABLE_ACCESSIBLE_MODE_DATA/output-directory"
+touch "$HOST_UNREADABLE_ACCESSIBLE_MODE_DATA/output-directory/existing-database-entry"
+MOCK_HOST_FIND_DENIED_PATH="$HOST_UNREADABLE_ACCESSIBLE_MODE_DATA/output-directory" \
+MOCK_RUNTIME_OWNER_PATH="$HOST_UNREADABLE_ACCESSIBLE_MODE_DATA/output-directory" \
+MOCK_RUNTIME_OWNER_MODE=711 \
+  expect_run_failure "host-unreadable runtime directory must use mode 0700" \
+    --data-dir "$HOST_UNREADABLE_ACCESSIBLE_MODE_DATA" \
     -c /java-tron/custom.conf \
     -v /host/logs:/java-tron/logs
 

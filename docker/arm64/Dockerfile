@@ -56,9 +56,11 @@ set -eu
 
 base=/java-tron
 config="$base/config.conf"
+launcher="$base/bin/FullNode"
 vm_options="$base/bin/java-tron.vmoptions"
 
-if [ ! -d "$base/bin" ] || [ ! -f "$vm_options" ] \
+if [ ! -d "$base/bin" ] || [ ! -f "$launcher" ] || [ -L "$launcher" ] \
+  || [ ! -x "$launcher" ] || [ ! -f "$vm_options" ] \
   || [ ! -f "$config" ] || [ -L "$config" ]; then
   echo "lockdown-java-tron: application files are missing under $base" >&2
   exit 1
@@ -69,7 +71,11 @@ chmod 755 "$base"
 chmod 0644 "$config"
 mkdir -p "$base/output-directory" "$base/logs"
 chown 10001:10001 "$base/output-directory" "$base/logs"
-chmod 755 "$base/output-directory" "$base/logs"
+chmod 700 "$base/output-directory" "$base/logs"
+
+# Keep Docker-created diagnostics private even when the caller's host umask is
+# permissive. This changes only the launcher copied into the container image.
+sed -i '2i umask 077' "$launcher"
 
 sed -i \
   -e 's|^-Xloggc:./gc.log|-Xloggc:/java-tron/logs/gc.log|' \

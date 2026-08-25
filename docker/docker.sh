@@ -394,7 +394,7 @@ secure_mkdir_p() (
     echo "run: could not determine a safe directory-creation mask" >&2
     return 1
   fi
-  secure_umask=$((8#$current_umask | 0022))
+  secure_umask=$((8#$current_umask | 0077))
   printf -v secure_umask '%04o' "$secure_umask"
   umask "$secure_umask"
   mkdir -p "$1"
@@ -657,6 +657,7 @@ prepare_runtime_directories() {
   local numeric_mode
   local namespace_mode
   local rootful_userns_remap=false
+  local directory_existed
   local -a mount_args=()
   local -a host_directories=()
   local -a container_directories=()
@@ -670,8 +671,13 @@ prepare_runtime_directories() {
     container_directory="$2"
     shift 2
 
+    directory_existed=false
+    if [ -d "$host_directory" ] && [ ! -L "$host_directory" ]; then
+      directory_existed=true
+    fi
     prepare_managed_directory "$host_directory" || return 1
     host_inspection_succeeded=false
+    first_entry=""
     if first_entry=$(find "$host_directory" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null); then
       host_inspection_succeeded=true
     else
@@ -686,8 +692,10 @@ prepare_runtime_directories() {
         return 1
       fi
       numeric_mode=$((8#$mode))
-      if ((numeric_mode & 0022)); then
-        echo "run: failed to inspect runtime directory: $host_directory" >&2
+      if ((numeric_mode & 0077)); then
+        echo "run: host-unreadable runtime directory must use mode 0700: $host_directory (mode $mode)" >&2
+        printf 'Stop the node and restrict it before retrying: chmod 0700 %q\n' \
+          "$host_directory" >&2
         return 1
       fi
 
@@ -696,6 +704,29 @@ prepare_runtime_directories() {
       # host cannot enumerate it, so validate effective access from inside the
       # restricted container below without widening its mode.
       assert_managed_directory "$host_directory" || return 1
+    fi
+
+    if [ "$host_inspection_succeeded" = true ] && [ -z "$first_entry" ]; then
+      if ! chmod 0700 "$host_directory"; then
+        echo "run: failed to set empty runtime-directory mode 0700: $host_directory" >&2
+        return 1
+      fi
+    elif [ "$host_inspection_succeeded" = true ] \
+      && [ "$directory_existed" = true ] && [ -n "$first_entry" ]; then
+      if ! metadata=$(directory_owner_and_mode "$host_directory"); then
+        echo "run: failed to inspect runtime-directory mode: $host_directory" >&2
+        return 1
+      fi
+      mode=${metadata#* }
+      if [[ ! "$mode" =~ ^[0-7]{3,4}$ ]]; then
+        echo "run: received invalid mode metadata for runtime directory: $host_directory" >&2
+        return 1
+      fi
+      numeric_mode=$((8#$mode))
+      if ((numeric_mode & 0077)); then
+        echo "run: warning: existing non-empty runtime directory is accessible by group or other users; preserving mode $mode: $host_directory" >&2
+        printf 'Restrict it while the node is stopped: chmod 0700 %q\n' "$host_directory" >&2
+      fi
     fi
 
     mount_args+=("-v" "$host_directory:$container_directory")

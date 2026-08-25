@@ -37,6 +37,9 @@ docker run --rm --entrypoint sh "$image" -ec '
   test "$(stat -c %u:%g "$lib_jar")" = "0:0"
   test "$(stat -c %u:%g /java-tron/output-directory)" = "10001:10001"
   test "$(stat -c %u:%g /java-tron/logs)" = "10001:10001"
+  test "$(stat -c %a /java-tron/output-directory)" = "700"
+  test "$(stat -c %a /java-tron/logs)" = "700"
+  test "$(sed -n "2p" /java-tron/bin/FullNode)" = "umask 077"
 
   test ! -w /java-tron
   test ! -w /java-tron/bin
@@ -122,7 +125,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$runtime_dir/output-directory" "$runtime_dir/logs"
+mock_java_home="$runtime_dir/mock-java-home"
+mkdir -p "$runtime_dir/output-directory" "$runtime_dir/logs" \
+  "$mock_java_home/bin"
+chmod 0700 "$runtime_dir/output-directory" "$runtime_dir/logs"
+printf '%s\n' \
+  '#!/bin/sh' \
+  'set -eu' \
+  'touch /java-tron/logs/.umask-file' \
+  'mkdir /java-tron/output-directory/.umask-directory' \
+  > "$mock_java_home/bin/java"
+chmod 0755 "$mock_java_home/bin/java"
 docker run --rm \
   --user 0:0 \
   --network none \
@@ -135,6 +148,28 @@ docker run --rm \
   -v "$runtime_dir/output-directory:/java-tron/output-directory" \
   -v "$runtime_dir/logs:/java-tron/logs" \
   "$image" 10001:10001 /java-tron/output-directory /java-tron/logs
+docker run --rm \
+  --network none \
+  --security-opt no-new-privileges \
+  --cap-drop ALL \
+  --env JAVA_HOME=/mock-java-home \
+  -v "$mock_java_home:/mock-java-home:ro" \
+  -v "$runtime_dir/output-directory:/java-tron/output-directory" \
+  -v "$runtime_dir/logs:/java-tron/logs" \
+  "$image"
+docker run --rm \
+  --user 10001:10001 \
+  --network none \
+  --read-only \
+  --security-opt no-new-privileges \
+  --cap-drop ALL \
+  --entrypoint sh \
+  -v "$runtime_dir/output-directory:/java-tron/output-directory:ro" \
+  -v "$runtime_dir/logs:/java-tron/logs:ro" \
+  "$image" -ec '
+    test "$(stat -c %a /java-tron/logs/.umask-file)" = 600
+    test "$(stat -c %a /java-tron/output-directory/.umask-directory)" = 700
+  '
 docker run --rm --security-opt no-new-privileges --entrypoint sh \
   -v "$runtime_dir/output-directory:/java-tron/output-directory" \
   -v "$runtime_dir/logs:/java-tron/logs" \
