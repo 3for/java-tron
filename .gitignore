@@ -10,6 +10,7 @@ build
 # log
 logs
 consensus-logs
+/gc.log
 
 # lombok
 out
@@ -45,6 +46,11 @@ src/main/resources/META-INF/
 
 # output directory
 /output-directory/
+/docker/output-directory/
+
+# Private-network configurations downloaded by start.sh or docker.sh
+/config/private_net_config.conf
+/docker/config/private_net_config.conf
 
 /output_manager/
 /output_witness/
