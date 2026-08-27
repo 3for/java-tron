@@ -233,19 +233,18 @@ public class JsonrpcServiceTest extends BaseTest {
         result);
 
     try {
-      tronJsonRpc.web3Sha3("1122334455667788");
+      Assert.assertEquals(result, tronJsonRpc.web3Sha3("1122334455667788"));
     } catch (Exception e) {
-      Assert.assertEquals("invalid input value", e.getMessage());
+      Assert.fail();
     }
   }
 
   @Test
   public void testGetBlockTransactionCountByHash() {
-    try {
-      tronJsonRpc.ethGetBlockTransactionCountByHash("0x111111");
-    } catch (Exception e) {
-      Assert.assertEquals("invalid hash value", e.getMessage());
-    }
+    JsonRpcInvalidParamsException invalidHash = Assert.assertThrows(
+        JsonRpcInvalidParamsException.class,
+        () -> tronJsonRpc.ethGetBlockTransactionCountByHash("0x111111"));
+    Assert.assertEquals("invalid hash value", invalidHash.getMessage());
 
     String result = "";
     try {

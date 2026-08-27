@@ -219,7 +219,6 @@ public class WitnessCreateActuatorTest extends BaseTest {
           dbManager.getWitnessStore().get(ByteArray.fromHexString(OWNER_ADDRESS_FIRST));
       Assert.assertNotNull(witnessCapsule);
       Assert.assertEquals(witnessCapsule.getInstance().getUrl(), "0");
-      Assert.assertTrue(true);
     } catch (ContractValidateException e) {
       Assert.assertFalse(e instanceof ContractValidateException);
     } catch (ContractExeException e) {
@@ -239,7 +238,6 @@ public class WitnessCreateActuatorTest extends BaseTest {
           dbManager.getWitnessStore().get(ByteArray.fromHexString(OWNER_ADDRESS_FIRST));
       Assert.assertNotNull(witnessCapsule);
       Assert.assertEquals(witnessCapsule.getInstance().getUrl(), url256Bytes);
-      Assert.assertTrue(true);
     } catch (ContractValidateException e) {
       Assert.assertFalse(e instanceof ContractValidateException);
     } catch (ContractExeException e) {

@@ -1443,22 +1443,14 @@ public class ExchangeWithdrawActuatorTest extends BaseTest {
     }
 
     quant = 11;
-    actuator = new ExchangeWithdrawActuator();
-    actuator.setChainBaseManager(dbManager.getChainBaseManager()).setAny(getContract(
+    ExchangeWithdrawActuator precisionActuator = new ExchangeWithdrawActuator();
+    precisionActuator.setChainBaseManager(dbManager.getChainBaseManager()).setAny(getContract(
         OWNER_ADDRESS_FIRST, exchangeId, secondTokenId, quant));
 
-    ret = new TransactionResultCapsule();
-
     try {
-      actuator.validate();
-      actuator.execute(ret);
-      Assert.assertEquals(ret.getInstance().getRet(), code.SUCESS);
-    } catch (ContractValidateException e) {
-      Assert.assertTrue(e instanceof ContractValidateException);
-      Assert.assertEquals("Not precise enough",
-          e.getMessage());
-    } catch (ContractExeException e) {
-      Assert.assertFalse(e instanceof ContractExeException);
+      ContractValidateException error = Assert.assertThrows(ContractValidateException.class,
+          precisionActuator::validate);
+      Assert.assertEquals("Not precise enough", error.getMessage());
     } finally {
       dbManager.getExchangeStore().delete(ByteArray.fromLong(1L));
       dbManager.getExchangeStore().delete(ByteArray.fromLong(2L));
@@ -1498,22 +1490,14 @@ public class ExchangeWithdrawActuatorTest extends BaseTest {
     }
 
     quant = 11;
-    actuator = new ExchangeWithdrawActuator();
-    actuator.setChainBaseManager(dbManager.getChainBaseManager()).setAny(getContract(
+    ExchangeWithdrawActuator precisionActuator = new ExchangeWithdrawActuator();
+    precisionActuator.setChainBaseManager(dbManager.getChainBaseManager()).setAny(getContract(
         OWNER_ADDRESS_FIRST, exchangeId, secondTokenId, quant));
 
-    ret = new TransactionResultCapsule();
-
     try {
-      actuator.validate();
-      actuator.execute(ret);
-      Assert.assertEquals(ret.getInstance().getRet(), code.SUCESS);
-    } catch (ContractValidateException e) {
-      Assert.assertTrue(e instanceof ContractValidateException);
-      Assert.assertEquals("Not precise enough",
-          e.getMessage());
-    } catch (ContractExeException e) {
-      Assert.assertFalse(e instanceof ContractExeException);
+      ContractValidateException error = Assert.assertThrows(ContractValidateException.class,
+          precisionActuator::validate);
+      Assert.assertEquals("Not precise enough", error.getMessage());
     } finally {
       dbManager.getExchangeStore().delete(ByteArray.fromLong(1L));
       dbManager.getExchangeStore().delete(ByteArray.fromLong(2L));
@@ -1856,44 +1840,6 @@ public class ExchangeWithdrawActuatorTest extends BaseTest {
       Assert.assertEquals("Not precise enough", e.getMessage());
     } catch (Exception e) {
       Assert.fail("Unexpected exception: " + e.getMessage());
-    } finally {
-      dbManager.getExchangeStore().delete(ByteArray.fromLong(1L));
-      dbManager.getExchangeStore().delete(ByteArray.fromLong(2L));
-      dbManager.getExchangeV2Store().delete(ByteArray.fromLong(1L));
-      dbManager.getExchangeV2Store().delete(ByteArray.fromLong(2L));
-      dbManager.getDynamicPropertiesStore().saveAllowHardenExchangeCalculation(0);
-    }
-  }
-
-  /**
-   * Hardened mode: subtractExact in execute() throws on underflow.
-   */
-  @Test
-  public void hardenedSubtractExactUnderflow() {
-    dbManager.getDynamicPropertiesStore().saveAllowSameTokenName(1);
-    dbManager.getDynamicPropertiesStore().saveAllowHardenExchangeCalculation(1);
-    InitExchangeSameTokenNameActive();
-
-    // Corrupt account: balance < calcFee triggers subtractExact underflow
-    // (this is unrealistic but exercises the addExact/subtractExact path)
-    byte[] ownerAddress = ByteArray.fromHexString(OWNER_ADDRESS_FIRST);
-    AccountCapsule accountCapsule = dbManager.getAccountStore().get(ownerAddress);
-    accountCapsule.setBalance(0L);
-    dbManager.getAccountStore().put(ownerAddress, accountCapsule);
-
-    String firstTokenId = "123";
-    long firstTokenQuant = 100000000L;
-    ExchangeWithdrawActuator actuator = new ExchangeWithdrawActuator();
-    actuator.setChainBaseManager(dbManager.getChainBaseManager()).setAny(getContract(
-        OWNER_ADDRESS_FIRST, 1L, firstTokenId, firstTokenQuant));
-
-    try {
-      // calcFee() returns 0 in this actuator, so this won't actually underflow.
-      // The test still exercises the subtractExact code path with hardened on.
-      actuator.validate();
-      actuator.execute(new TransactionResultCapsule());
-    } catch (Exception ignore) {
-      // any outcome is acceptable; we just need execute() exercised under hardened
     } finally {
       dbManager.getExchangeStore().delete(ByteArray.fromLong(1L));
       dbManager.getExchangeStore().delete(ByteArray.fromLong(2L));

@@ -101,6 +101,7 @@ public class CreateAccountActuatorTest extends BaseTest {
     try {
       actuator.validate();
       actuator.execute(ret);
+      Assert.fail("Expected existing account validation to fail");
     } catch (ContractValidateException e) {
       Assert.assertTrue(e instanceof ContractValidateException);
       Assert.assertEquals("Account has existed", e.getMessage());

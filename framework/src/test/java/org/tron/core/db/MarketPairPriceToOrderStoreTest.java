@@ -83,7 +83,7 @@ public class MarketPairPriceToOrderStoreTest extends BaseTest {
     MarketOrderIdListCapsule capsule3 = new MarketOrderIdListCapsule(ByteArray.fromLong(3),
         ByteArray.fromLong(3));
 
-    //Use out-of-order insertion，key in store should be 1,2,3
+    // Use out-of-order insertion; keys in the store should be 1, 2, 3.
     marketPairPriceToOrderStore.put(pairPriceKey2, capsule2);
     marketPairPriceToOrderStore.put(pairPriceKey1, capsule1);
     marketPairPriceToOrderStore.put(pairPriceKey3, capsule3);
@@ -141,7 +141,7 @@ public class MarketPairPriceToOrderStoreTest extends BaseTest {
     MarketOrderIdListCapsule capsule3 = new MarketOrderIdListCapsule(ByteArray.fromLong(3),
         ByteArray.fromLong(3));
 
-    //Use out-of-order insertion，key in store should be 1,2,3
+    // Use out-of-order insertion; keys in the store should be 1, 2, 3.
     marketPairPriceToOrderStore.put(pairPriceKey1, capsule1);
     marketPairPriceToOrderStore.put(pairPriceKey2, capsule2);
     marketPairPriceToOrderStore.put(pairPriceKey3, capsule3);
@@ -207,7 +207,7 @@ public class MarketPairPriceToOrderStoreTest extends BaseTest {
     MarketOrderIdListCapsule capsule3 = new MarketOrderIdListCapsule(ByteArray.fromLong(3),
         ByteArray.fromLong(3));
 
-    //Use out-of-order insertion，key in store should be 1,2,3
+    // Use out-of-order insertion; keys in the store should be 1, 2, 3.
     marketPairPriceToOrderStore.put(pairPriceKey2, capsule2);
     marketPairPriceToOrderStore.put(pairPriceKey1, capsule1);
     marketPairPriceToOrderStore.put(pairPriceKey3, capsule3);
@@ -277,7 +277,7 @@ public class MarketPairPriceToOrderStoreTest extends BaseTest {
     Assert.assertFalse(marketPairPriceToOrderStore.has(pairPriceKey2));
     Assert.assertFalse(marketPairPriceToOrderStore.has(pairPriceKey3));
 
-    //Use out-of-order insertion，key in store should be 1,2,3
+    // Use out-of-order insertion; keys in the store should be 1, 2, 3.
     marketPairPriceToOrderStore.put(pairPriceKey2, capsule2);
     try {
       Assert
@@ -359,7 +359,7 @@ public class MarketPairPriceToOrderStoreTest extends BaseTest {
     Assert.assertFalse(marketPairPriceToOrderStore.has(pairPriceKey2));
     Assert.assertFalse(marketPairPriceToOrderStore.has(pairPriceKey3));
 
-    //Use out-of-order insertion，key in store should be 1,2,3
+    // Use out-of-order insertion; keys in the store should be 1, 2, 3.
     marketPairPriceToOrderStore.put(pairPriceKey1, capsule1);
     try {
       Assert
@@ -454,7 +454,7 @@ public class MarketPairPriceToOrderStoreTest extends BaseTest {
 
     Assert.assertEquals(0, marketPairToPriceStore.getPriceNum(sellTokenID1, buyTokenID1));
 
-    //Use out-of-order insertion，key in store should be 1,2,3
+    // Use out-of-order insertion; keys in the store should be 1, 2, 3.
     marketPairPriceToOrderStore.put(pairPriceKey1, new MarketOrderIdListCapsule());
     marketPairToPriceStore.addNewPriceKey(sellTokenID1, buyTokenID1, marketPairPriceToOrderStore);
     Assert.assertEquals(1, marketPairToPriceStore.getPriceNum(sellTokenID1, buyTokenID1));

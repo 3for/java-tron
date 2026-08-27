@@ -74,7 +74,7 @@ public class DbTest {
             2003L
         );
 
-        //Use out-of-order insertion，key in store should be 1,2,3
+        // Use out-of-order insertion; keys in the store should be 1, 2, 3.
         db.put(pairPriceKey1, "1".getBytes(StandardCharsets.UTF_8));
         db.put(pairPriceKey2, "2".getBytes(StandardCharsets.UTF_8));
         db.put(pairPriceKey3, "3".getBytes(StandardCharsets.UTF_8));

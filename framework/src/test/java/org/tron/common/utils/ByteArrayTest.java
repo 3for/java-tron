@@ -41,8 +41,7 @@ public class ByteArrayTest {
   public void long2Bytes() {
     long a = 0x123456;
     byte[] bb = ByteArray.fromLong(a);
-    System.out.println(bb[6]);
-    System.out.println(bb[7]);
+    assertArrayEquals(new byte[] {0, 0, 0, 0, 0, 0x12, 0x34, 0x56}, bb);
   }
 
   @Test

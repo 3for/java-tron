@@ -1,6 +1,7 @@
 package org.tron.core.config.args;
 
 import java.io.File;
+import java.io.IOException;
 import org.junit.Assert;
 import org.junit.Test;
 import org.tron.common.BaseMethodTest;
@@ -19,7 +20,7 @@ public class DynamicArgsTest extends BaseMethodTest {
   }
 
   @Test
-  public void start() {
+  public void start() throws IOException {
     CommonParameter parameter = Args.getInstance();
     Assert.assertEquals(TestConstants.TEST_CONF, Args.getConfigFilePath());
     Assert.assertTrue(parameter.isDynamicConfigEnable());
@@ -34,25 +35,25 @@ public class DynamicArgsTest extends BaseMethodTest {
     TronNetService tronNetService = context.getBean(TronNetService.class);
     ReflectUtils.setFieldValue(tronNetService, "p2pConfig", new P2pConfig());
     File config = new File(Args.getConfigFilePath());
-    if (!config.exists()) {
-      try {
-        config.createNewFile();
-      } catch (Exception e) {
-        return;
-      }
-      dynamicArgs.run();
-      try {
-        config.delete();
-      } catch (Exception e) {
-        return;
-      }
-    }
+    boolean created = false;
     try {
+      if (!config.exists()) {
+        created = config.createNewFile();
+        Assert.assertTrue("Test configuration file was not created", created);
+        dynamicArgs.run();
+        Assert.assertTrue("Temporary test configuration file was not deleted", config.delete());
+        created = false;
+      }
       dynamicArgs.reload();
-    } catch (Exception e) {
-      // no need to deal with
+    } finally {
+      try {
+        dynamicArgs.close();
+      } finally {
+        if (created && config.exists()) {
+          Assert.assertTrue("Temporary test configuration file was not deleted",
+              config.delete() || !config.exists());
+        }
+      }
     }
-
-    dynamicArgs.close();
   }
 }

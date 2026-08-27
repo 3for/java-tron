@@ -2256,9 +2256,7 @@ public class ShieldedTRC20BuilderTest extends BaseTest {
     GrpcAPI.DecryptNotesTRC20 scannedNotes = wallet.scanShieldedTRC20NotesByIvk(
         statNum, endNum, SHIELDED_CONTRACT_ADDRESS, ivk, fvk.getAk(), fvk.getNk());
 
-    for (GrpcAPI.DecryptNotesTRC20.NoteTx noteTx : scannedNotes.getNoteTxsList()) {
-      logger.info(noteTx.toString());
-    }
+    Assert.assertEquals(0, scannedNotes.getNoteTxsCount());
   }
 
   @Test
@@ -2271,13 +2269,11 @@ public class ShieldedTRC20BuilderTest extends BaseTest {
     GrpcAPI.DecryptNotesTRC20 scannedNotes = wallet.scanShieldedTRC20NotesByOvk(
         statNum, endNum, fvk.getOvk(), SHIELDED_CONTRACT_ADDRESS);
 
-    for (GrpcAPI.DecryptNotesTRC20.NoteTx noteTx : scannedNotes.getNoteTxsList()) {
-      logger.info(noteTx.toString());
-    }
+    Assert.assertEquals(0, scannedNotes.getNoteTxsCount());
   }
 
-  @Test(expected = ZksnarkException.class)
-  public void isShieldedTRC20ContractNoteSpent() throws Exception {
+  @Test
+  public void isShieldedTRC20ContractNoteSpentRejectsMissingNote() throws Exception {
     int statNum = 9200;
     int endNum = 9240;
     SpendingKey sk = SpendingKey.decode(priKey);
@@ -2286,24 +2282,18 @@ public class ShieldedTRC20BuilderTest extends BaseTest {
 
     GrpcAPI.DecryptNotesTRC20 scannedNotes = wallet.scanShieldedTRC20NotesByIvk(
         statNum, endNum, SHIELDED_CONTRACT_ADDRESS, ivk, fvk.getAk(), fvk.getNk());
+    Assert.assertEquals(0, scannedNotes.getNoteTxsCount());
 
-    for (GrpcAPI.DecryptNotesTRC20.NoteTx noteTx : scannedNotes.getNoteTxsList()) {
-      logger.info(noteTx.toString());
-    }
+    GrpcAPI.NfTRC20Parameters request = GrpcAPI.NfTRC20Parameters.newBuilder()
+        .setAk(ByteString.copyFrom(fvk.getAk()))
+        .setNk(ByteString.copyFrom(fvk.getNk()))
+        .setPosition(271)
+        .setShieldedTRC20ContractAddress(ByteString.copyFrom(SHIELDED_CONTRACT_ADDRESS))
+        .build();
 
-    GrpcAPI.NfTRC20Parameters.Builder NfBuilfer;
-    NfBuilfer = GrpcAPI.NfTRC20Parameters.newBuilder();
-    NfBuilfer.setAk(ByteString.copyFrom(fvk.getAk()));
-    NfBuilfer.setNk(ByteString.copyFrom(fvk.getNk()));
-    NfBuilfer.setPosition(271);
-    NfBuilfer.setShieldedTRC20ContractAddress(ByteString.copyFrom(SHIELDED_CONTRACT_ADDRESS));
-    if (scannedNotes.getNoteTxsList().size() > 0) {
-      NfBuilfer.setNote(scannedNotes.getNoteTxs(0).getNote());
-    }
-
-    GrpcAPI.NullifierResult result = wallet
-        .isShieldedTRC20ContractNoteSpent(NfBuilfer.build());
-    Assert.assertTrue(result.getIsSpent());
+    ZksnarkException exception = Assert.assertThrows(ZksnarkException.class,
+        () -> wallet.isShieldedTRC20ContractNoteSpent(request));
+    Assert.assertEquals("paymentAddress format is wrong", exception.getMessage());
   }
 
 

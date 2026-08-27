@@ -1,6 +1,7 @@
 package org.tron.common.utils;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -35,7 +36,7 @@ public class JsonUtilTest {
 
     A a2 = JsonUtil.json2Obj(jsonString, A.class);
 
-    assert a2 != null;
+    assertNotNull(a2);
     assertEquals("abc", a2.getKey());
     assertEquals(100, a2.getValue());
     assertNull(obj2Json(null));

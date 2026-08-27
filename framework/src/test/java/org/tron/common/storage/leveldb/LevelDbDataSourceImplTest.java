@@ -93,25 +93,25 @@ public class LevelDbDataSourceImplTest {
 
   @Test
   public void testCheckOrInitEngine() {
-    String dir =
-        Args.getInstance().getOutputDirectory() + Args.getInstance().getStorage().getDbDirectory();
-    String enginePath = dir + File.separator + "test_engine" + File.separator + "engine.properties";
-    FileUtil.createDirIfNotExists(dir + File.separator + "test_engine");
+    String parentDir = Args.getInstance().getOutputDirectory();
+    String databaseDir = java.nio.file.Paths.get(parentDir,
+        Args.getInstance().getStorage().getDbDirectory(), "test_engine").toString();
+    String enginePath = java.nio.file.Paths.get(databaseDir, "engine.properties").toString();
+    FileUtil.createDirIfNotExists(databaseDir);
     FileUtil.createFileIfNotExists(enginePath);
     PropUtil.writeProperty(enginePath, "ENGINE", "LEVELDB");
     Assert.assertEquals("LEVELDB", PropUtil.readProperty(enginePath, "ENGINE"));
 
     LevelDbDataSourceImpl dataSource;
-    dataSource = new LevelDbDataSourceImpl(dir, "test_engine");
+    dataSource = new LevelDbDataSourceImpl(parentDir, "test_engine");
     dataSource.closeDB();
 
     PropUtil.writeProperty(enginePath, "ENGINE", "ROCKSDB");
     Assert.assertEquals("ROCKSDB", PropUtil.readProperty(enginePath, "ENGINE"));
-    try {
-      new LevelDbDataSourceImpl(dir, "test_engine");
-    } catch (TronError e) {
-      Assert.assertEquals("Cannot open ROCKSDB database with LEVELDB engine.", e.getMessage());
-    }
+    TronError mismatch = assertThrows(TronError.class,
+        () -> new LevelDbDataSourceImpl(parentDir, "test_engine"));
+    assertEquals(TronError.ErrCode.LEVELDB_INIT, mismatch.getErrCode());
+    assertEquals("Cannot open ROCKSDB database with LEVELDB engine.", mismatch.getMessage());
   }
 
   @Test

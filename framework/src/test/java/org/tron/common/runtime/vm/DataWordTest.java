@@ -19,6 +19,7 @@
 package org.tron.common.runtime.vm;
 
 import static org.apache.commons.lang3.ArrayUtils.isNotEmpty;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -38,59 +39,6 @@ import org.tron.core.db.ByteArrayWrapper;
 @Slf4j
 public class DataWordTest {
 
-  private static BigInteger pow(BigInteger x, BigInteger y) {
-    if (y.compareTo(BigInteger.ZERO) < 0) {
-      throw new IllegalArgumentException();
-    }
-    BigInteger z = x; // z will successively become x^2, x^4, x^8, x^16,
-    // x^32...
-    BigInteger result = BigInteger.ONE;
-    byte[] bytes = y.toByteArray();
-    for (int i = bytes.length - 1; i >= 0; i--) {
-      byte bits = bytes[i];
-      for (int j = 0; j < 8; j++) {
-        if ((bits & 1) != 0) {
-          result = result.multiply(z);
-        }
-        // short cut out if there are no more bits to handle:
-        if ((bits >>= 1) == 0 && i == 0) {
-          return result;
-        }
-        z = z.multiply(z);
-      }
-    }
-    return result;
-  }
-
-  @Test
-  public void testAddPerformance() {
-    boolean enabled = false;
-
-    if (enabled) {
-      byte[] one = new byte[]{0x01, 0x31, 0x54, 0x41, 0x01, 0x31, 0x54, 0x41, 0x01, 0x31, 0x54,
-          0x41, 0x01, 0x31, 0x54, 0x41, 0x01, 0x31, 0x54, 0x41, 0x01, 0x31, 0x54, 0x41, 0x01, 0x31,
-          0x54, 0x41, 0x01, 0x31, 0x54, 0x41}; // Random value
-
-      int ITERATIONS = 10000000;
-
-      long now1 = System.currentTimeMillis();
-      for (int i = 0; i < ITERATIONS; i++) {
-        DataWord x = new DataWord(one);
-        x.add(x);
-      }
-      logger.info("Add1: " + (System.currentTimeMillis() - now1) + "ms");
-
-      long now2 = System.currentTimeMillis();
-      for (int i = 0; i < ITERATIONS; i++) {
-        DataWord x = new DataWord(one);
-        x.add2(x);
-      }
-      logger.info("Add2: " + (System.currentTimeMillis() - now2) + "ms");
-    } else {
-      logger.info("ADD performance test is disabled.");
-    }
-  }
-
   @Test
   public void testAdd2() {
     byte[] two = new byte[32];
@@ -102,7 +50,7 @@ public class DataWordTest {
 
     DataWord y = new DataWord(two);
     y.add2(new DataWord(two));
-    logger.info(Hex.toHexString(y.getData()));
+    assertArrayEquals(x.getData(), y.getData());
   }
 
   @Test
@@ -228,14 +176,13 @@ public class DataWordTest {
 
   @Test
   public void testPow() {
+    BigInteger base = BigInteger.valueOf(Integer.MAX_VALUE);
+    BigInteger exponent = BigInteger.valueOf(1000);
+    DataWord result = new DataWord(base.toByteArray());
 
-    BigInteger x = BigInteger.valueOf(Integer.MAX_VALUE);
-    BigInteger y = BigInteger.valueOf(1000);
+    result.exp(new DataWord(exponent.toByteArray()));
 
-    BigInteger result1 = x.modPow(x, y);
-    BigInteger result2 = pow(x, y);
-    logger.info(result1.toString());
-    logger.info(result2.toString());
+    assertEquals(base.modPow(exponent, DataWord._2_256), result.value());
   }
 
   @Test

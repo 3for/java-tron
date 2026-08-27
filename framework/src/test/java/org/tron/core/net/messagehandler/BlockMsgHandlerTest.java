@@ -12,7 +12,6 @@ import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 import javax.annotation.Resource;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -36,7 +35,6 @@ import org.tron.p2p.connection.Channel;
 import org.tron.protos.Protocol.Inventory.InventoryType;
 import org.tron.protos.Protocol.Transaction;
 
-@Slf4j
 public class BlockMsgHandlerTest extends BaseTest {
 
   @Resource
@@ -64,71 +62,56 @@ public class BlockMsgHandlerTest extends BaseTest {
   }
 
   @Test
-  public void testProcessMessage() {
-    BlockCapsule blockCapsule;
-    BlockMessage msg;
-    try {
-      blockCapsule = new BlockCapsule(1, Sha256Hash.ZERO_HASH,
-          System.currentTimeMillis(), Sha256Hash.ZERO_HASH.getByteString());
-      msg = new BlockMessage(blockCapsule);
-      handler.processMessage(peer, msg);
-    } catch (P2pException e) {
-      assertEquals("no request", e.getMessage());
-    }
+  public void testProcessMessage() throws P2pException {
+    BlockCapsule unrequestedBlock = new BlockCapsule(1, Sha256Hash.ZERO_HASH,
+        System.currentTimeMillis(), Sha256Hash.ZERO_HASH.getByteString());
+    BlockMessage unrequestedMessage = new BlockMessage(unrequestedBlock);
+    P2pException noRequest = Assert.assertThrows(P2pException.class,
+        () -> handler.processMessage(peer, unrequestedMessage));
+    assertEquals(P2pException.TypeEnum.BAD_MESSAGE, noRequest.getType());
+    assertEquals("no request", noRequest.getMessage());
 
-    try {
-      List<Transaction> transactionList = ImmutableList.of(
-          Transaction.newBuilder()
-              .setRawData(Transaction.raw.newBuilder()
-                  .setData(
-                      ByteString.copyFrom(
-                          new byte[Parameter.ChainConstant.BLOCK_SIZE + Constant.ONE_THOUSAND])))
-              .build());
-      blockCapsule = new BlockCapsule(1, Sha256Hash.ZERO_HASH.getByteString(),
-          System.currentTimeMillis() + 10000, transactionList);
-      msg = new BlockMessage(blockCapsule);
-      System.out.println("len = " + blockCapsule.getInstance().getSerializedSize());
-      peer.getAdvInvRequest()
-          .put(new Item(msg.getBlockId(), InventoryType.BLOCK), System.currentTimeMillis());
-      handler.processMessage(peer, msg);
-    } catch (P2pException e) {
-      //System.out.println(e);
-      assertEquals("block size over limit", e.getMessage());
-    }
+    List<Transaction> transactionList = ImmutableList.of(
+        Transaction.newBuilder()
+            .setRawData(Transaction.raw.newBuilder()
+                .setData(
+                    ByteString.copyFrom(
+                        new byte[Parameter.ChainConstant.BLOCK_SIZE + Constant.ONE_THOUSAND])))
+            .build());
+    BlockCapsule oversizedBlock = new BlockCapsule(1, Sha256Hash.ZERO_HASH.getByteString(),
+        System.currentTimeMillis() + 10000, transactionList);
+    BlockMessage oversizedMessage = new BlockMessage(oversizedBlock);
+    peer.getAdvInvRequest()
+        .put(new Item(oversizedMessage.getBlockId(), InventoryType.BLOCK),
+            System.currentTimeMillis());
+    P2pException oversized = Assert.assertThrows(P2pException.class,
+        () -> handler.processMessage(peer, oversizedMessage));
+    assertEquals(P2pException.TypeEnum.BAD_MESSAGE, oversized.getType());
+    assertEquals("block size over limit", oversized.getMessage());
 
-    try {
-      blockCapsule = new BlockCapsule(1, Sha256Hash.ZERO_HASH,
-          System.currentTimeMillis() + 10000, Sha256Hash.ZERO_HASH.getByteString());
-      msg = new BlockMessage(blockCapsule);
-      peer.getAdvInvRequest()
-          .put(new Item(msg.getBlockId(), InventoryType.BLOCK), System.currentTimeMillis());
-      handler.processMessage(peer, msg);
-    } catch (P2pException e) {
-      //System.out.println(e);
-      assertEquals("block time error", e.getMessage());
-    }
+    BlockCapsule futureBlock = new BlockCapsule(1, Sha256Hash.ZERO_HASH,
+        System.currentTimeMillis() + 10000, Sha256Hash.ZERO_HASH.getByteString());
+    BlockMessage futureMessage = new BlockMessage(futureBlock);
+    peer.getAdvInvRequest()
+        .put(new Item(futureMessage.getBlockId(), InventoryType.BLOCK), System.currentTimeMillis());
+    P2pException future = Assert.assertThrows(P2pException.class,
+        () -> handler.processMessage(peer, futureMessage));
+    assertEquals(P2pException.TypeEnum.BAD_MESSAGE, future.getType());
+    assertEquals("block time error", future.getMessage());
 
-    try {
-      blockCapsule = new BlockCapsule(1, Sha256Hash.ZERO_HASH,
-          System.currentTimeMillis() + 1000, Sha256Hash.ZERO_HASH.getByteString());
-      msg = new BlockMessage(blockCapsule);
-      peer.getSyncBlockRequested()
-          .put(msg.getBlockId(), System.currentTimeMillis());
-      handler.processMessage(peer, msg);
-    } catch (P2pException e) {
-      //System.out.println(e);
-    }
+    BlockCapsule syncBlock = new BlockCapsule(1, Sha256Hash.ZERO_HASH,
+        System.currentTimeMillis() + 1000, Sha256Hash.ZERO_HASH.getByteString());
+    BlockMessage syncMessage = new BlockMessage(syncBlock);
+    peer.getSyncBlockRequested().put(syncMessage.getBlockId(), System.currentTimeMillis());
+    handler.processMessage(peer, syncMessage);
 
-    try {
-      blockCapsule = new BlockCapsule(1, Sha256Hash.ZERO_HASH,
-          System.currentTimeMillis() + 1000, Sha256Hash.ZERO_HASH.getByteString());
-      msg = new BlockMessage(blockCapsule);
-      peer.getAdvInvRequest()
-          .put(new Item(msg.getBlockId(), InventoryType.BLOCK), System.currentTimeMillis());
-      handler.processMessage(peer, msg);
-    } catch (NullPointerException | P2pException e) {
-      logger.error("error", e);
-    }
+    BlockCapsule requestedBlock = new BlockCapsule(1, Sha256Hash.ZERO_HASH,
+        System.currentTimeMillis() + 1000, Sha256Hash.ZERO_HASH.getByteString());
+    BlockMessage requestedMessage = new BlockMessage(requestedBlock);
+    peer.getAdvInvRequest()
+        .put(new Item(requestedMessage.getBlockId(), InventoryType.BLOCK),
+            System.currentTimeMillis());
+    handler.processMessage(peer, requestedMessage);
   }
 
   @Test

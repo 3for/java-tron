@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -131,33 +132,12 @@ public class BlockCapsuleTest {
     }
   }
 
-  /* @Test
-  public void testAddTransaction() {
-    TransactionCapsule transactionCapsule = new TransactionCapsule("123", 1L);
-    blockCapsule0.addTransaction(transactionCapsule);
-    Assert.assertArrayEquals(blockCapsule0.getTransactions().get(0).getHash().getBytes(),
-        transactionCapsule.getHash().getBytes());
-    Assert.assertEquals(transactionCapsule.getInstance().getRawData().getVout(0).getValue(),
-        blockCapsule0.getTransactions().get(0).getInstance().getRawData().getVout(0).getValue());
-  } */
-
   @Test
-  public void testGetData() {
-    blockCapsule0.getData();
+  public void testGetData() throws BadItemException {
     byte[] b = blockCapsule0.getData();
-    BlockCapsule blockCapsule1 = null;
-    try {
-      blockCapsule1 = new BlockCapsule(b);
-      Assert.assertEquals(blockCapsule0.getBlockId(), blockCapsule1.getBlockId());
-    } catch (BadItemException e) {
-      e.printStackTrace();
-    }
-
-  }
-
-  @Test
-  public void testValidate() {
-
+    BlockCapsule blockCapsule1 = new BlockCapsule(b);
+    Assert.assertEquals(blockCapsule0.getBlockId(), blockCapsule1.getBlockId());
+    Assert.assertArrayEquals(b, blockCapsule1.getData());
   }
 
   @Test
@@ -280,9 +260,16 @@ public class BlockCapsuleTest {
   @Test
   public void testConcurrentToString() throws InterruptedException {
     List<Thread> threadList = new ArrayList<>();
+    AtomicReference<Throwable> workerFailure = new AtomicReference<>();
     int n = 10;
     for (int i = 0; i < n; i++) {
-      threadList.add(new Thread(() -> blockCapsule0.toString()));
+      threadList.add(new Thread(() -> {
+        try {
+          blockCapsule0.toString();
+        } catch (Throwable t) {
+          workerFailure.compareAndSet(null, t);
+        }
+      }));
     }
     for (int i = 0; i < n; i++) {
       threadList.get(i).start();
@@ -290,7 +277,9 @@ public class BlockCapsuleTest {
     for (int i = 0; i < n; i++) {
       threadList.get(i).join();
     }
-    Assert.assertTrue(true);
+    if (workerFailure.get() != null) {
+      throw new AssertionError("Concurrent BlockCapsule.toString() failed", workerFailure.get());
+    }
   }
 
 }

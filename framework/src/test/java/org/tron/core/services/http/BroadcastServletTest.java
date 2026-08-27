@@ -1,162 +1,75 @@
 package org.tron.core.services.http;
 
-import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.PrintStream;
-import java.io.PrintWriter;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLStreamHandlerFactory;
-import java.nio.charset.StandardCharsets;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import lombok.extern.slf4j.Slf4j;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
-import org.tron.common.utils.FileUtil;
-import org.tron.common.utils.PublicMethod;
-import org.tron.core.services.http.solidity.mockito.HttpUrlStreamHandler;
+import org.mockito.ArgumentCaptor;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.tron.api.GrpcAPI;
+import org.tron.common.utils.ByteArray;
+import org.tron.core.capsule.TransactionCapsule;
+import org.tron.json.JSONObject;
+import org.tron.protos.Protocol.Transaction;
 
-@Slf4j
-public class BroadcastServletTest {
+public class BroadcastServletTest extends BaseHttpTest {
 
-  private static HttpUrlStreamHandler httpUrlStreamHandler;
-  private BroadcastServlet broadcastServlet;
-  private HttpServletRequest request;
-  private HttpServletResponse response;
-  private HttpURLConnection httpUrlConnection;
-  private OutputStreamWriter outputStreamWriter;
-  private URL url;
+  private static final String TRANSACTION_JSON =
+      "{\"signature\":[\"97c825b41c77de2a8bd65b3df55cd4c0df59c307c0187e42321dcc1cc4"
+          + "55ddba583dd9502e17cfec5945b34cad0511985a6165999092a6dec84c2bdd97e649fc01\"],"
+          + "\"raw_data\":{\"contract\":[{\"parameter\":{\"value\":{\"amount\":1000,"
+          + "\"owner_address\":\"41e552f6487585c2b58bc2c9bb4492bc1f17132cd0\","
+          + "\"to_address\":\"41d1e7a6bc354106cb410e65ff8b181c600ff14292\"},"
+          + "\"type_url\":\"type.googleapis.com/protocol.TransferContract\"},"
+          + "\"type\":\"TransferContract\"}],\"ref_block_bytes\":\"267e\","
+          + "\"ref_block_hash\":\"9a447d222e8de9f2\",\"expiration\":1530893064000,"
+          + "\"timestamp\":1530893006233}}";
 
-  /**
-   * init before class.
-   */
-  @BeforeClass
-  public static void init() {
-    // Allows for mocking URL connections
-    URLStreamHandlerFactory urlStreamHandlerFactory = mock(URLStreamHandlerFactory.class);
-    try {
-      URL.setURLStreamHandlerFactory(urlStreamHandlerFactory);
-    } catch (Error e) {
-      logger.info("Ignore error: {}", e.getMessage());
-    }
+  private BroadcastServlet servlet;
 
-
-    httpUrlStreamHandler = new HttpUrlStreamHandler();
-    given(urlStreamHandlerFactory.createURLStreamHandler("http")).willReturn(httpUrlStreamHandler);
-
-  }
-
-  /**
-   * set up.
-   *
-   */
-  @Before
-  public void setUp() {
-    broadcastServlet = new BroadcastServlet();
-    this.request = mock(HttpServletRequest.class);
-    this.response = mock(HttpServletResponse.class);
-    this.httpUrlConnection = mock(HttpURLConnection.class);
-    this.outputStreamWriter = mock(OutputStreamWriter.class);
-    httpUrlStreamHandler.resetConnections();
-  }
-
-  /**
-   * after test.
-   */
-  @After
-  public void tearDown() {
-    if (FileUtil.deleteDir(new File("temp.txt"))) {
-      logger.info("Release resources successful.");
-    } else {
-      logger.info("Release resources failure.");
-    }
+  @Override
+  protected void setUpMocks() throws Exception {
+    servlet = new BroadcastServlet();
+    injectWallet(servlet);
+    when(wallet.broadcastTransaction(any())).thenReturn(GrpcAPI.Return.newBuilder()
+        .setResult(true)
+        .setCode(GrpcAPI.Return.response_code.SUCCESS)
+        .build());
   }
 
   @Test
-  public void doPostTest() throws IOException {
-    URLStreamHandlerFactory urlStreamHandlerFactory = mock(URLStreamHandlerFactory.class);
-    httpUrlStreamHandler = new HttpUrlStreamHandler();
-    given(urlStreamHandlerFactory.createURLStreamHandler("http")).willReturn(httpUrlStreamHandler);
+  public void testPostBroadcastsParsedTransactionAndReturnsItsId() throws Exception {
+    MockHttpServletResponse response = newResponse();
 
-    broadcastServlet = new BroadcastServlet();
-    this.request = mock(HttpServletRequest.class);
-    this.response = mock(HttpServletResponse.class);
-    this.httpUrlConnection = mock(HttpURLConnection.class);
-    this.outputStreamWriter = mock(OutputStreamWriter.class);
-    httpUrlStreamHandler.resetConnections();
+    servlet.doPost(postRequest(TRANSACTION_JSON), response);
 
-    final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
-    System.setOut(new PrintStream(outContent));
-    String href = "http://127.0.0.1:"
-        + PublicMethod.chooseRandomPort() + "/wallet/broadcasttransaction";
-    httpUrlStreamHandler.addConnection(new URL(href), httpUrlConnection);
-    httpUrlConnection.setRequestMethod("POST");
-    httpUrlConnection.setRequestProperty("Content-Type", "application/json");
-    httpUrlConnection.setRequestProperty("Connection", "Keep-Alive");
-    httpUrlConnection.setUseCaches(false);
-    httpUrlConnection.setDoOutput(true);
-    String postData = "{\"signature\":[\"97c825b41c77de2a8bd65b3df55cd4c0df59c307c0187e"
-        + "42321dcc1cc455ddba583dd9502e17cfec5945b34cad0511985a6165999092a6dec84c2bdd9"
-        + "7e649fc01\"],\"txID\":\"454f156bf1256587ff6ccdbc56e64ad0c51e4f8efea5490dcbc7"
-        + "20ee606bc7b8\",\"raw_data\":{\"contract\":[{\"parame"
-        + "ter\":{\"value\":{\"amount\":1000,\"owner_address\":\"41e552f6"
-        + "487585c2b58bc2c9bb4492bc1f17132cd0\",\"to_address\":\"41d1e7a6bc354106cb410e"
-        + "65ff8b181c600ff14292\"},\"type_url\":\"type.googl"
-        + "eapis.com/protocol.TransferContract\"},\"type\":\"TransferCon"
-        + "tract\"}],\"ref_block_bytes\":\"267e\",\"ref_block_hash\":\"9a447d222e8"
-        + "de9f2\",\"expiration\":1530893064000,\"timestamp\":1530893006233}}";
-    httpUrlConnection.setRequestProperty("Content-Length", String.valueOf(postData.length()));
+    assertEquals(200, response.getStatus());
+    ArgumentCaptor<Transaction> transactionCaptor = ArgumentCaptor.forClass(Transaction.class);
+    verify(wallet).broadcastTransaction(transactionCaptor.capture());
+    Transaction transaction = transactionCaptor.getValue();
+    assertEquals(1, transaction.getRawData().getContractCount());
+    assertEquals(Transaction.Contract.ContractType.TransferContract,
+        transaction.getRawData().getContract(0).getType());
 
-    when(httpUrlConnection.getOutputStream()).thenReturn(outContent);
-    OutputStreamWriter out = new OutputStreamWriter(httpUrlConnection.getOutputStream(),
-        StandardCharsets.UTF_8);
-    out.write(postData);
-    out.flush();
-    out.close();
-    PrintWriter writer = new PrintWriter("temp.txt");
-    when(response.getWriter()).thenReturn(writer);
+    JSONObject result = JSONObject.parseObject(response.getContentAsString());
+    assertEquals(Boolean.TRUE, result.get("result"));
+    assertFalse(result.containsKey("Error"));
+    assertEquals(ByteArray.toHexString(new TransactionCapsule(transaction)
+        .getTransactionId().getBytes()), result.getString("txid"));
+  }
 
-    broadcastServlet.doPost(request, response);
-    //    Get Response Body
-    String line;
-    StringBuilder result = new StringBuilder();
+  @Test
+  public void testMalformedTransactionReturnsBusinessError() throws Exception {
+    MockHttpServletResponse response = newResponse();
 
-    byte[] buffer = new byte[1024];
-    ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(buffer);
-    when(httpUrlConnection.getInputStream()).thenReturn(byteArrayInputStream);
-    BufferedReader in = new BufferedReader(new InputStreamReader(httpUrlConnection.getInputStream(),
-        StandardCharsets.UTF_8));
+    servlet.doPost(postRequest("{}"), response);
 
-    while ((line = in.readLine()) != null) {
-      result.append(line).append("\n");
-    }
-    Assert.assertNotNull(result);
-    in.close();
-    writer.flush();
-    FileInputStream fileInputStream = new FileInputStream("temp.txt");
-    InputStreamReader inputStreamReader = new InputStreamReader(fileInputStream);
-    BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
-
-    StringBuilder sb = new StringBuilder();
-    String text;
-    while ((text = bufferedReader.readLine()) != null) {
-      sb.append(text);
-    }
-    Assert.assertTrue(sb.toString().contains("null"));
-    httpUrlConnection.disconnect();
+    assertEquals(200, response.getStatus());
+    JSONObject result = JSONObject.parseObject(response.getContentAsString());
+    assertTrue(result.containsKey("Error"));
   }
 }

@@ -4,14 +4,12 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.Descriptors;
 import java.security.InvalidParameterException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.commons.lang3.StringUtils;
-import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
-import org.mockito.Mockito;
 import org.tron.api.GrpcAPI;
 import org.tron.common.utils.Sha256Hash;
 import org.tron.core.capsule.BlockCapsule;
@@ -23,23 +21,21 @@ import org.tron.protos.Protocol;
 import org.tron.protos.contract.BalanceContract;
 import org.tron.protos.contract.SmartContractOuterClass;
 
-public class UtilMockTest  {
-  @After
-  public void  clearMocks() {
-    Mockito.framework().clearInlineMocks();
-  }
-
-
+public class UtilMockTest {
   @Test
   public void testPrintTransactionFee() {
     Protocol.ResourceReceipt resourceReceipt = Protocol.ResourceReceipt.newBuilder()
+        .setEnergyUsage(7L)
         .build();
     Protocol.TransactionInfo result  = Protocol.TransactionInfo.newBuilder()
         .setReceipt(resourceReceipt)
         .build();
     String transactionFee = JsonFormat.printToString(result, true);
     String out = Util.printTransactionFee(transactionFee);
-    Assert.assertNotNull(out);
+    JSONObject json = JSONObject.parseObject(out);
+    Assert.assertTrue(json.containsKey("Receipt"));
+    Assert.assertEquals(7L,
+        ((Number) json.getJSONObject("Receipt").get("energy_usage")).longValue());
   }
 
   @Test
@@ -205,7 +201,10 @@ public class UtilMockTest  {
         .addTransaction(transactionCapsule.getInstance())
         .build();
     String out = Util.printTransactionList(list, true);
-    Assert.assertNotNull(out);
+    JSONArray transactions = JSONObject.parseObject(out).getJSONArray("transaction");
+    Assert.assertEquals(1, transactions.size());
+    Assert.assertTrue(transactions.getJSONObject(0).containsKey("txID"));
+    Assert.assertTrue(transactions.getJSONObject(0).containsKey("raw_data"));
   }
 
   private TransactionCapsule getTransactionCapsuleExample() {
@@ -234,7 +233,10 @@ public class UtilMockTest  {
             .build();
 
     String out = Util.printTransactionSignWeight(txSignWeight, true);
-    Assert.assertNotNull(out);
+    JSONObject transaction = JSONObject.parseObject(out)
+        .getJSONObject("transaction").getJSONObject("transaction");
+    Assert.assertTrue(transaction.containsKey("txID"));
+    Assert.assertTrue(transaction.containsKey("raw_data"));
   }
 
   @Test
@@ -250,7 +252,10 @@ public class UtilMockTest  {
             .build();
     String out = Util.printTransactionApprovedList(
         transactionApprovedList, true);
-    Assert.assertNotNull(out);
+    JSONObject transaction = JSONObject.parseObject(out)
+        .getJSONObject("transaction").getJSONObject("transaction");
+    Assert.assertTrue(transaction.containsKey("txID"));
+    Assert.assertTrue(transaction.containsKey("raw_data"));
   }
 
   @Test
@@ -258,8 +263,11 @@ public class UtilMockTest  {
     final String OWNER_ADDRESS = "41548794500882809695a8a687866e76d4271a1abc";
     TransactionCapsule transactionCapsule = getTransactionCapsuleExample();
     byte[] out = Util.generateContractAddress(
-        transactionCapsule.getInstance(), OWNER_ADDRESS.getBytes());
-    Assert.assertNotNull(out);
+        transactionCapsule.getInstance(), ByteArray.fromHexString(OWNER_ADDRESS));
+    Assert.assertEquals(21, out.length);
+    Assert.assertEquals(0x41, out[0] & 0xff);
+    Assert.assertArrayEquals(out, Util.generateContractAddress(
+        transactionCapsule.getInstance(), ByteArray.fromHexString(OWNER_ADDRESS)));
   }
 
   @Test
@@ -274,7 +282,11 @@ public class UtilMockTest  {
 
     JSONObject out = Util.printTransactionToJSON(
         transactionCapsule.getInstance(), true);
-    Assert.assertNotNull(out);
+    Assert.assertTrue(out.containsKey("txID"));
+    Assert.assertTrue(out.containsKey("raw_data"));
+    String contractAddress = out.getString("contract_address");
+    Assert.assertEquals(42, contractAddress.length());
+    Assert.assertTrue(contractAddress.startsWith("41"));
   }
 
   @Test
@@ -286,7 +298,8 @@ public class UtilMockTest  {
   @Test
   public void testGetHexAddress() {
     String out = Util.getHexAddress("TBxSocpujP6UGKV5ydXNVTDQz7fAgdmoaB");
-    Assert.assertNotNull(out);
+    Assert.assertEquals(42, out.length());
+    Assert.assertTrue(out.startsWith("41"));
 
     Assert.assertNull(Util.getHexAddress(null));
   }
@@ -296,7 +309,7 @@ public class UtilMockTest  {
     TransactionCapsule transactionCapsule = getTransactionCapsuleExample();
     Protocol.Transaction out = Util.setTransactionPermissionId(
         123, transactionCapsule.getInstance());
-    Assert.assertNotNull(out);
+    Assert.assertEquals(123, out.getRawData().getContract(0).getPermissionId());
   }
 
   @Test
@@ -305,20 +318,21 @@ public class UtilMockTest  {
     JSONObject jsonObject = JSONObject.parseObject("{\"extra_data\":\"test\"}");
     Protocol.Transaction out = Util.setTransactionExtraData(jsonObject,
         transactionCapsule.getInstance(), true);
-    Assert.assertNotNull(out);
+    Assert.assertEquals(ByteString.copyFromUtf8("test"), out.getRawData().getData());
   }
 
   @Test
   public void testConvertOutput() {
     Protocol.Account account = Protocol.Account.newBuilder().build();
     String out = Util.convertOutput(account);
-    Assert.assertNotNull(out);
+    Assert.assertEquals("{}", out);
 
     account = Protocol.Account.newBuilder()
-        .setAssetIssuedID(ByteString.copyFrom("asset_issued_ID".getBytes()))
+        .setAssetIssuedID(ByteString.copyFromUtf8("asset_issued_ID"))
         .build();
     out = Util.convertOutput(account);
-    Assert.assertNotNull(out);
+    Assert.assertEquals("asset_issued_ID",
+        JSONObject.parseObject(out).getString("asset_issued_ID"));
   }
 
   @Test
@@ -334,47 +348,53 @@ public class UtilMockTest  {
         .addAllLog(logs);
     List<Protocol.TransactionInfo.Log>  logList =
         Util.convertLogAddressToTronAddress(builder.build());
-    Assert.assertNotNull(logList.size() > 0);
+    Assert.assertEquals(1, logList.size());
+    Protocol.TransactionInfo.Log converted = logList.get(0);
+    Assert.assertEquals(ByteString.copyFromUtf8("data"), converted.getData());
+    Assert.assertEquals(ByteString.copyFromUtf8("topic"), converted.getTopics(0));
+    byte[] convertedAddress = converted.getAddress().toByteArray();
+    Assert.assertEquals(21, convertedAddress.length);
+    Assert.assertEquals(0x41, convertedAddress[0] & 0xff);
+    Assert.assertArrayEquals("address".getBytes(),
+        Arrays.copyOfRange(convertedAddress, convertedAddress.length - "address".length(),
+            convertedAddress.length));
   }
 
   @Test
   public void testValidateParameter() {
     String contract = "{\"address\":\"owner_address\"}";
-    Assert.assertThrows(
+    InvalidParameterException missingOwner = Assert.assertThrows(
         InvalidParameterException.class,
-        () -> {
-          Util.validateParameter(contract);
-        }
-    );
+        () -> Util.validateParameter(contract));
+    Assert.assertEquals("owner_address isn't set.", missingOwner.getMessage());
     String contract1 =
         "{\"owner_address\":\"owner_address\","
             + " \"contract_address1\":\"contract_address\", \"data1\":\"data\"}";
-    Assert.assertThrows(
+    InvalidParameterException missingTarget = Assert.assertThrows(
         InvalidParameterException.class,
-        () -> {
-          Util.validateParameter(contract1);
-        }
-    );
+        () -> Util.validateParameter(contract1));
+    Assert.assertEquals(
+        "At least one of contract_address and data must be set.", missingTarget.getMessage());
     String contract2 =
         "{\"owner_address\":\"owner_address\", "
             + "\"function_selector\":\"function_selector\", \"data\":\"data\"}";
-    Assert.assertThrows(
+    InvalidParameterException conflictingDeployInput = Assert.assertThrows(
         InvalidParameterException.class,
-        () -> {
-          Util.validateParameter(contract2);
-        }
-    );
+        () -> Util.validateParameter(contract2));
+    Assert.assertEquals(
+        "While trying to deploy, function_selector and data can not be both set.",
+        conflictingDeployInput.getMessage());
   }
 
   @Test
   public void testGetJsonString() {
     String str = "";
     String ret = Util.getJsonString(str);
-    Assert.assertTrue(StringUtils.isEmpty(ret));
+    Assert.assertEquals("", ret);
 
     String str1 = "{\"owner_address\":\"owner_address\"}";
     String ret1 = Util.getJsonString(str1);
-    Assert.assertTrue(str1.equals(ret1));
+    Assert.assertEquals(str1, ret1);
 
     String str2 = "owner_address=owner_address&contract_address=contract_address";
     String ret2 = Util.getJsonString(str2);

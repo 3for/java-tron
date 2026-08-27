@@ -1,6 +1,9 @@
 package org.tron.core.witness;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.google.protobuf.ByteString;
 import java.util.ArrayList;
@@ -10,6 +13,7 @@ import org.junit.Test;
 import org.tron.common.BaseTest;
 import org.tron.common.TestConstants;
 import org.tron.common.utils.ByteArray;
+import org.tron.consensus.dpos.DposService;
 import org.tron.consensus.dpos.DposSlot;
 import org.tron.core.config.args.Args;
 
@@ -24,48 +28,36 @@ public class WitnessControllerTest extends BaseTest {
   }
 
   @Test
-  public void testSlot() {
-
-    chainBaseManager.getDynamicPropertiesStore().saveLatestBlockHeaderTimestamp(19000);
-    chainBaseManager.getDynamicPropertiesStore().saveLatestBlockHeaderNumber(1);
-
-  }
-
-  //  @Test
   public void testWitnessSchedule() {
+    DposService dposService = mock(DposService.class);
+    when(dposService.getGenesisBlockTime())
+        .thenReturn(chainBaseManager.getGenesisBlock().getTimeStamp());
+    dposSlot.setDposService(dposService);
+    List<ByteString> activeWitnesses = new ArrayList<>();
+    chainBaseManager.getWitnessStore().getAllWitnesses()
+        .forEach(witness -> activeWitnesses.add(witness.getAddress()));
+    chainBaseManager.getWitnessStore().sortWitness(activeWitnesses,
+        chainBaseManager.getDynamicPropertiesStore().allowWitnessSortOptimization());
+    chainBaseManager.getWitnessScheduleStore().saveActiveWitnesses(activeWitnesses);
 
     // no witness produce block
     assertEquals(0, chainBaseManager.getHeadBlockNum());
 
-    // test witnesses in genesis block
-    assertEquals(
-        "41904fe896536f4bebc64c95326b5054a2c3d27df6", // first(current witness)
-        ByteArray.toHexString(
-            (dposSlot.getScheduledWitness(0).toByteArray())));
-    assertEquals(
-        "41904fe896536f4bebc64c95326b5054a2c3d27df6",
-        ByteArray.toHexString(
-            (dposSlot.getScheduledWitness(5).toByteArray())));
-    assertEquals(
-        "41807337f180b62a77576377c1d0c9c24df5c0dd62", // second(next witness)
-        ByteArray.toHexString(
-            (dposSlot.getScheduledWitness(6).toByteArray())));
-    assertEquals(
-        "41807337f180b62a77576377c1d0c9c24df5c0dd62",
-        ByteArray.toHexString(
-            (dposSlot.getScheduledWitness(11).toByteArray())));
-    assertEquals(
-        "415430a3f089154e9e182ddd6fe136a62321af22a7", // third
-        ByteArray.toHexString(
-            (dposSlot.getScheduledWitness(12).toByteArray())));
+    // DposService initializes the active schedule from the sorted witness store.
+    assertTrue(activeWitnesses.size() > 6);
+    assertEquals(activeWitnesses.get(0), dposSlot.getScheduledWitness(0));
+    assertEquals(activeWitnesses.get(5), dposSlot.getScheduledWitness(5));
+    assertEquals(activeWitnesses.get(6), dposSlot.getScheduledWitness(6));
+    assertEquals(activeWitnesses.get(0),
+        dposSlot.getScheduledWitness(activeWitnesses.size()));
+    assertEquals(activeWitnesses.get(1),
+        dposSlot.getScheduledWitness(activeWitnesses.size() + 1L));
 
     // test maintenance
     ByteString a =
         ByteString.copyFrom(ByteArray.fromHexString("41ec6525979a351a54fa09fea64beb4cce33ffbb7a"));
     ByteString b =
         ByteString.copyFrom(ByteArray.fromHexString("41fab5fbf6afb681e4e37e9d33bddb7e923d6132e5"));
-    // system.out.print("a address:" + ByteArray.toHexString(a.toByteArray()) + "\n");
-    // System.out.print("b address:" + ByteArray.toHexString(b.toByteArray()));
     List<ByteString> w = new ArrayList<>();
     w.add(a);
     w.add(b);
@@ -75,12 +67,9 @@ public class WitnessControllerTest extends BaseTest {
     // now 2 active witnesses
     assertEquals(2, chainBaseManager.getWitnessScheduleStore().getActiveWitnesses().size());
 
-    // update shuffled witness
-    chainBaseManager.getWitnessScheduleStore().saveCurrentShuffledWitnesses(w);
-
-    assertEquals(a, dposSlot.getScheduledWitness(1));
-    assertEquals(b, dposSlot.getScheduledWitness(2));
-    assertEquals(a, dposSlot.getScheduledWitness(3));
-    assertEquals(b, dposSlot.getScheduledWitness(4));
+    assertEquals(a, dposSlot.getScheduledWitness(0));
+    assertEquals(b, dposSlot.getScheduledWitness(1));
+    assertEquals(a, dposSlot.getScheduledWitness(2));
+    assertEquals(b, dposSlot.getScheduledWitness(3));
   }
 }

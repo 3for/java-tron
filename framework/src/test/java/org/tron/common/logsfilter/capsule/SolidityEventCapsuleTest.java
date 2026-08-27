@@ -1,11 +1,11 @@
 package org.tron.common.logsfilter.capsule;
 
-import static org.junit.Assert.assertTrue;
-
+import java.lang.reflect.Field;
 import lombok.extern.slf4j.Slf4j;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mockito;
+import org.tron.common.logsfilter.EventPluginLoader;
 import org.tron.common.logsfilter.trigger.ContractEventTrigger;
 
 @Slf4j
@@ -20,12 +20,19 @@ public class SolidityEventCapsuleTest {
   }
 
   @Test
-  public void testSetAndGetSolidityEventCapsule() {
+  public void testSetAndGetSolidityEventCapsule() throws Exception {
     capsule.setSolidityEventTrigger(capsule.getSolidityEventTrigger());
+
+    EventPluginLoader loader = Mockito.mock(EventPluginLoader.class);
+    Field instanceField = EventPluginLoader.class.getDeclaredField("instance");
+    instanceField.setAccessible(true);
+    EventPluginLoader originalInstance = (EventPluginLoader) instanceField.get(null);
+    instanceField.set(null, loader);
     try {
       capsule.processTrigger();
-    } catch (Exception e) {
-      assertTrue(e instanceof NullPointerException);
+      Mockito.verify(loader).postSolidityEventTrigger(capsule.getSolidityEventTrigger());
+    } finally {
+      instanceField.set(null, originalInstance);
     }
   }
 

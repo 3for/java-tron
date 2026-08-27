@@ -2,6 +2,7 @@ package org.tron.common.crypto;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.tron.common.utils.client.utils.AbiUtil.generateOccupationConstantPrivateKey;
 
 import java.math.BigInteger;
@@ -9,7 +10,6 @@ import java.security.SignatureException;
 import java.util.Arrays;
 import org.bouncycastle.crypto.digests.SM3Digest;
 import org.bouncycastle.util.encoders.Hex;
-import org.junit.Assert;
 import org.junit.Test;
 import org.tron.common.crypto.sm2.SM2;
 import org.tron.common.utils.Sha256Hash;
@@ -135,19 +135,18 @@ public class BouncyCastleTest {
   }
 
   @Test
-  public void testSignToAddress() {
+  public void testSignToAddressWrapsInvalidSignature() {
     String messageHash = "818e0e76976123b9b78b6076cc2b5d53e61b49ff9cf78304de688a860ce7cb95";
-    String base64Sign = "G1y76mVO6TRpFwp3qOiLVzHA8uFsrDiOL7hbC2uN9qTHHiLypaW4vnQkfkoUygjo5qBd"
-        + "+NlYQ/mAPVWKu6K00co=";
-    try {
-      SignUtils.signatureToAddress(Hex.decode(messageHash), base64Sign, Boolean.TRUE);
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof SignatureException);
-    }
-    try {
-      SignUtils.signatureToAddress(Hex.decode(messageHash), base64Sign, Boolean.FALSE);
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof SignatureException);
-    }
+    String truncatedBase64Signature = "AA==";
+
+    SignatureException ecException = assertThrows(SignatureException.class,
+        () -> SignUtils.signatureToAddress(
+            Hex.decode(messageHash), truncatedBase64Signature, true));
+    assertEquals(SignatureException.class, ecException.getCause().getClass());
+
+    SignatureException sm2Exception = assertThrows(SignatureException.class,
+        () -> SignUtils.signatureToAddress(
+            Hex.decode(messageHash), truncatedBase64Signature, false));
+    assertEquals(SignatureException.class, sm2Exception.getCause().getClass());
   }
 }

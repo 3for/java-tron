@@ -16,6 +16,31 @@ import org.tron.protos.Protocol.Transaction;
 
 public class IstanbulTest extends VMTestBase {
 
+  private boolean savedAllowTvmTransferTrc10;
+  private boolean savedAllowTvmConstantinople;
+  private boolean savedAllowTvmSolidity059;
+  private boolean savedAllowTvmIstanbul;
+
+  @Override
+  protected void afterInit() {
+    super.afterInit();
+    VMConfig.clearLocalSnapshot();
+    savedAllowTvmTransferTrc10 = VMConfig.allowTvmTransferTrc10();
+    savedAllowTvmConstantinople = VMConfig.allowTvmConstantinople();
+    savedAllowTvmSolidity059 = VMConfig.allowTvmSolidity059();
+    savedAllowTvmIstanbul = VMConfig.allowTvmIstanbul();
+  }
+
+  @Override
+  protected void beforeDestroy() {
+    VMConfig.clearLocalSnapshot();
+    VMConfig.initAllowTvmTransferTrc10(savedAllowTvmTransferTrc10 ? 1 : 0);
+    VMConfig.initAllowTvmConstantinople(savedAllowTvmConstantinople ? 1 : 0);
+    VMConfig.initAllowTvmSolidity059(savedAllowTvmSolidity059 ? 1 : 0);
+    VMConfig.initAllowTvmIstanbul(savedAllowTvmIstanbul ? 1 : 0);
+    ConfigLoader.disable = false;
+  }
+
 
   /*
        pragma solidity ^0.5.12;

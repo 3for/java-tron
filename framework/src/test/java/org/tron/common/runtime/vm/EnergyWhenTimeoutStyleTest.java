@@ -80,13 +80,8 @@ public class EnergyWhenTimeoutStyleTest extends BaseTest {
     TVMTestResult result = deployEndlessLoopContract(value, feeLimit,
         consumeUserResourcePercent);
 
-    if (null != result.getRuntime().getResult().getException()) {
-      long expectEnergyUsageTotal = feeLimit / 100;
-      Assert.assertEquals(result.getReceipt().getEnergyUsageTotal(), expectEnergyUsageTotal);
-      Assert.assertEquals(dbManager.getAccountStore().get(address).getBalance(),
-          totalBalance - expectEnergyUsageTotal * 100);
-      return;
-    }
+    Assert.assertNull("contract deployment must succeed before testing the endless-loop call",
+        result.getRuntime().getResult().getException());
     long expectEnergyUsageTotal = 55107;
     Assert.assertEquals(result.getReceipt().getEnergyUsageTotal(), expectEnergyUsageTotal);
     Assert.assertEquals(dbManager.getAccountStore().get(address).getBalance(),

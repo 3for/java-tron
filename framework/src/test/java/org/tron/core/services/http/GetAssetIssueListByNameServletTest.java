@@ -10,6 +10,7 @@ import com.google.protobuf.ByteString;
 import org.junit.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.tron.api.GrpcAPI.AssetIssueList;
 import org.tron.common.utils.ByteArray;
 
 public class GetAssetIssueListByNameServletTest extends BaseHttpTest {
@@ -21,7 +22,8 @@ public class GetAssetIssueListByNameServletTest extends BaseHttpTest {
   protected void setUpMocks() throws Exception {
     servlet = new GetAssetIssueListByNameServlet();
     injectWallet(servlet);
-    when(wallet.getAssetIssueListByName(any())).thenReturn(null);
+    // Wallet returns an empty protobuf list for a valid name with no matching assets.
+    when(wallet.getAssetIssueListByName(any())).thenReturn(AssetIssueList.getDefaultInstance());
   }
 
   @Test

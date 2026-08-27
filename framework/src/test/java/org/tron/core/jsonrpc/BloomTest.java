@@ -1,6 +1,5 @@
 package org.tron.core.jsonrpc;
 
-import static org.tron.common.bloom.Bloom.BLOOM_BYTE_SIZE;
 import static org.tron.common.bloom.Bloom.getLowBits;
 
 import java.util.ArrayList;
@@ -71,40 +70,6 @@ public class BloomTest {
     Assert.assertEquals(Hex.toHexString(Hash.sha3(b2.getData())), exp);
   }
 
-  @Test
-  public void benchmarkNewBloom() {
-    int times = 100000;
-    byte[] data = new byte[BLOOM_BYTE_SIZE];
-    byte[] test = "testestestest".getBytes();
-    System.arraycopy(test, 0, data, 0, test.length);
-
-    long start = System.currentTimeMillis();
-
-    for (int i = 0; i < times; i++) {
-      Bloom bloom = new Bloom(data);
-    }
-
-    long end = System.currentTimeMillis();
-    System.out
-        .println(String.format("benchmarkNewBloom total %d times cost %d ms", times, end - start));
-  }
-
-  @Test
-  public void benchmarkMatches() {
-    int times = 100000;
-    byte[] test = "testtest".getBytes();
-
-    long start = System.currentTimeMillis();
-    Bloom bloom = new Bloom();
-    for (int i = 0; i < times; i++) {
-      bloom.matches(Bloom.create(Hash.sha3(test)));
-    }
-
-    long end = System.currentTimeMillis();
-    System.out.println(
-        String.format("benchmarkMatches total %d times cost %d ms", times, end - start));
-  }
-
   private byte[] bytesToAddress(byte[] address) {
     byte[] data = new byte[20];
     System.arraycopy(address, 0, data, 20 - address.length, address.length);
@@ -130,9 +95,7 @@ public class BloomTest {
   }
 
   @Test
-  public void benchmarkCreateByTransaction() {
-    int times = 1000;
-
+  public void testCreateByTransaction() {
     // small
     TransactionRetCapsule smallCapsule = new TransactionRetCapsule();
     smallCapsule.addTransactionInfo(createTransactionInfo(new byte[] {0x11},
@@ -140,16 +103,7 @@ public class BloomTest {
     smallCapsule.addTransactionInfo(createTransactionInfo(new byte[] {0x22},
         new byte[] {0x02, 0x22}));
 
-    long start = System.currentTimeMillis();
-
-    Bloom sBloom = new Bloom();
-    for (int i = 0; i < times; i++) {
-      sBloom = Bloom.createBloom(smallCapsule);
-    }
-
-    long end = System.currentTimeMillis();
-    System.out.println(
-        String.format("benchmarkCreateByTransaction %d times cost %d ms", times, end - start));
+    Bloom sBloom = Bloom.createBloom(smallCapsule);
 
     String exp = "c384c56ece49458a427c67b90fefe979ebf7104795be65dc398b280f24104949";
     String got = Hex.toHexString(Hash.sha3(sBloom.getData()));
@@ -164,16 +118,7 @@ public class BloomTest {
           new byte[] {0x02, 0x22}));
     }
 
-    start = System.currentTimeMillis();
-
-    Bloom lBloom = new Bloom();
-    for (int i = 0; i < times; i++) {
-      lBloom = Bloom.createBloom(largeCapsule);
-    }
-
-    end = System.currentTimeMillis();
-    System.out.println(
-        String.format("benchmarkCreateByTransaction %d times cost %d ms", times, end - start));
+    Bloom lBloom = Bloom.createBloom(largeCapsule);
 
     got = Hex.toHexString(Hash.sha3(lBloom.getData()));
     Assert.assertEquals(got, exp);

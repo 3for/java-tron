@@ -31,7 +31,6 @@ import com.google.protobuf.Any;
 import com.google.protobuf.ByteString;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import javax.annotation.Resource;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -77,9 +76,7 @@ import org.tron.core.exception.ContractExeException;
 import org.tron.core.exception.ContractValidateException;
 import org.tron.core.exception.MaintenanceUnavailableException;
 import org.tron.core.exception.NonUniqueObjectException;
-import org.tron.core.store.DynamicPropertiesStore;
 import org.tron.core.utils.ProposalUtil.ProposalType;
-import org.tron.core.utils.TransactionUtil;
 import org.tron.core.vm.config.ConfigLoader;
 import org.tron.core.vm.config.VMConfig;
 import org.tron.core.vm.program.Program;
@@ -385,19 +382,6 @@ public class WalletTest extends BaseTest {
   }
 
   @Test
-  public void ss() {
-    for (int i = 0; i < 4; i++) {
-      ECKey ecKey = new ECKey(Utils.getRandom());
-      assertNotNull(ecKey);
-      System.out.println(i + 1);
-      System.out.println("privateKey:" + ByteArray.toHexString(ecKey.getPrivKeyBytes()));
-      System.out.println("publicKey:" + ByteArray.toHexString(ecKey.getPubKey()));
-      System.out.println("address:" + ByteArray.toHexString(ecKey.getAddress()));
-      System.out.println();
-    }
-  }
-
-  @Test
   public void getBlockById() {
     Block blockById = wallet
         .getBlockById(ByteString.copyFrom(new BlockCapsule(block1).getBlockId().getBytes()));
@@ -507,19 +491,11 @@ public class WalletTest extends BaseTest {
   public void getPaginatedAssetIssueList() {
     buildAssetIssue();
     AssetIssueList assetList1 = wallet.getAssetIssueList(0, 100);
+    assertEquals("AssetIssueList1 size", 1, assetList1.getAssetIssueCount());
     assertEquals("get Asset1", assetList1.getAssetIssue(0).getName(), Asset1.getName());
-    try {
-      assertNotNull(assetList1.getAssetIssue(1));
-    } catch (Exception e) {
-      Assert.assertTrue("AssetIssueList1 size should be 1", true);
-    }
 
     AssetIssueList assetList2 = wallet.getAssetIssueList(0, 0);
-    try {
-      assertNotNull(assetList2.getAssetIssue(0));
-    } catch (Exception e) {
-      Assert.assertTrue("AssetIssueList2 size should be 0", true);
-    }
+    Assert.assertNull("An empty page is represented by null", assetList2);
   }
 
   @Test
@@ -644,18 +620,10 @@ public class WalletTest extends BaseTest {
     GrpcAPI.BlockReq req = GrpcAPI.BlockReq.getDefaultInstance();
     Block block = wallet.getBlock(req);
     assertNotNull(block);
-    try {
-      req = req.toBuilder().setIdOrNum("-1").build();
-      wallet.getBlock(req);
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof IllegalArgumentException);
-    }
-    try {
-      req = req.toBuilder().setIdOrNum("hash000001").build();
-      wallet.getBlock(req);
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof IllegalArgumentException);
-    }
+    Assert.assertThrows(IllegalArgumentException.class,
+        () -> wallet.getBlock(GrpcAPI.BlockReq.newBuilder().setIdOrNum("-1").build()));
+    Assert.assertThrows(IllegalArgumentException.class,
+        () -> wallet.getBlock(GrpcAPI.BlockReq.newBuilder().setIdOrNum("hash000001").build()));
     req = GrpcAPI.BlockReq.newBuilder().setIdOrNum("0").build();
     block = wallet.getBlock(req);
     req = req.toBuilder().setDetail(true).build();
@@ -669,28 +637,6 @@ public class WalletTest extends BaseTest {
   public void testGetNextMaintenanceTime() {
     NumberMessage numberMessage = wallet.getNextMaintenanceTime();
     Assert.assertEquals(0, numberMessage.getNum());
-  }
-
-  //@Test
-  public void testChainParameters() {
-
-    Protocol.ChainParameters.Builder builder = Protocol.ChainParameters.newBuilder();
-
-    Arrays.stream(ProposalType.values()).forEach(parameters -> {
-      String methodName = TransactionUtil.makeUpperCamelMethod(parameters.name());
-      try {
-        builder.addChainParameter(Protocol.ChainParameters.ChainParameter.newBuilder()
-            .setKey(methodName)
-            .setValue((long) DynamicPropertiesStore.class.getDeclaredMethod(methodName)
-                .invoke(chainBaseManager.getDynamicPropertiesStore()))
-            .build());
-      } catch (Exception ex) {
-        Assert.fail("get chainParameter : " + methodName + ", error : " + ex.getMessage());
-      }
-
-    });
-
-    System.out.print(builder.build());
   }
 
   @Test
@@ -859,28 +805,28 @@ public class WalletTest extends BaseTest {
   }
 
   @Test
-  public void testGetPaginatedNowWitnessList_Error() {
+  public void testGetPaginatedNowWitnessList_Error() throws MaintenanceUnavailableException {
     // To avoid throw MaintenanceClearingException
     dbManager.getChainBaseManager().getDynamicPropertiesStore().saveStateFlag(1);
-    Exception maintenanceEx = Assert.assertThrows(Exception.class,
+    MaintenanceUnavailableException maintenanceEx = Assert.assertThrows(
+        MaintenanceUnavailableException.class,
         () -> wallet.getPaginatedNowWitnessList(0, 10));
-    Assert.assertTrue("Should throw MaintenanceClearingException",
-        maintenanceEx instanceof MaintenanceUnavailableException);
+    Assert.assertEquals(
+        "Service temporarily unavailable during maintenance period. Please try again later.",
+        maintenanceEx.getMessage());
 
     try {
       Args.getInstance().setSolidityNode(true);
-      wallet.getPaginatedNowWitnessList(0, 10);
+      Assert.assertNotNull(wallet.getPaginatedNowWitnessList(0, 10));
       Args.getInstance().setSolidityNode(false);
 
       dbManager.setCursor(Chainbase.Cursor.SOLIDITY);
-      wallet.getPaginatedNowWitnessList(0, 10);
+      Assert.assertNotNull(wallet.getPaginatedNowWitnessList(0, 10));
+    } finally {
       dbManager.setCursor(Chainbase.Cursor.HEAD);
-    } catch (Exception e) {
-      Assert.assertFalse("Should not throw MaintenanceClearingException",
-          e instanceof MaintenanceUnavailableException);
+      Args.getInstance().setSolidityNode(false);
+      dbManager.getChainBaseManager().getDynamicPropertiesStore().saveStateFlag(0);
     }
-
-    dbManager.getChainBaseManager().getDynamicPropertiesStore().saveStateFlag(0);
   }
 
   @Test
@@ -1380,11 +1326,6 @@ public class WalletTest extends BaseTest {
 
   @Test
   public void testListNodes() {
-    try {
-      wallet.listNodes();
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof NullPointerException);
-    }
     Args.getInstance().setP2pDisable(true);
     GrpcAPI.NodeList nodeList = wallet.listNodes();
     assertEquals(0, nodeList.getNodesList().size());
@@ -1569,4 +1510,3 @@ public class WalletTest extends BaseTest {
     assertEquals(0, rejected.getApprovedListCount());
   }
 }
-

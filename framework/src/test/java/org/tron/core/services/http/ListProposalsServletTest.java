@@ -1,82 +1,54 @@
 package org.tron.core.services.http;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-import java.io.UnsupportedEncodingException;
-import javax.annotation.Resource;
 import org.junit.Test;
-import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.tron.common.BaseTest;
-import org.tron.common.TestConstants;
-import org.tron.core.config.args.Args;
+import org.tron.api.GrpcAPI.ProposalList;
+import org.tron.json.JSONArray;
 import org.tron.json.JSONObject;
+import org.tron.protos.Protocol.Proposal;
 
-public class ListProposalsServletTest extends BaseTest {
+public class ListProposalsServletTest extends BaseHttpTest {
 
-  @Resource
-  private ListProposalsServlet listProposalsServlet;
+  private ListProposalsServlet servlet;
 
-  static {
-    Args.setParam(
-        new String[]{
-            "--output-directory", dbPath(),
-        }, TestConstants.TEST_CONF
-    );
-  }
-
-  public MockHttpServletRequest createRequest(String contentType) {
-    MockHttpServletRequest request = new MockHttpServletRequest();
-    request.setMethod("POST");
-    request.setContentType(contentType);
-    request.setCharacterEncoding("UTF-8");
-    return request;
+  @Override
+  protected void setUpMocks() throws Exception {
+    servlet = new ListProposalsServlet();
+    injectWallet(servlet);
+    when(wallet.getProposalList()).thenReturn(ProposalList.newBuilder()
+        .addProposals(Proposal.newBuilder().setProposalId(7L))
+        .build());
   }
 
   @Test
-  public void testListProposalsByJson() {
-    String jsonParam = "{\"visible\": true}";
-    MockHttpServletRequest request = createRequest("application/json");
-    request.setContent(jsonParam.getBytes());
-    MockHttpServletResponse response = new MockHttpServletResponse();
-    listProposalsServlet.doPost(request, response);
-    try {
-      String contentAsString = response.getContentAsString();
-      JSONObject.parseObject(contentAsString);
-    } catch (UnsupportedEncodingException e) {
-      fail(e.getMessage());
-    }
+  public void testPostReturnsProposalList() throws Exception {
+    MockHttpServletResponse response = newResponse();
+
+    servlet.doPost(postRequest("{}"), response);
+
+    assertEquals(200, response.getStatus());
+    verify(wallet).getProposalList();
+    JSONObject json = JSONObject.parseObject(response.getContentAsString());
+    assertFalse(json.containsKey("Error"));
+    JSONArray proposals = json.getJSONArray("proposals");
+    assertEquals(1, proposals.size());
+    assertEquals(7L, ((Number) proposals.getJSONObject(0).get("proposal_id")).longValue());
   }
 
   @Test
-  public void testListProposalsValue() {
-    MockHttpServletRequest request = createRequest("application/x-www-form-urlencoded");
-    try {
-      String params = "visible=true";
-      request.setContent(params.getBytes(UTF_8));
-      MockHttpServletResponse response = new MockHttpServletResponse();
-      listProposalsServlet.doPost(request, response);
-      String contentAsString = response.getContentAsString();
-      JSONObject.parseObject(contentAsString);
-    } catch (UnsupportedEncodingException e) {
-      fail(e.getMessage());
-    }
-  }
+  public void testGetReturnsEmptyObjectWhenWalletReturnsNull() throws Exception {
+    when(wallet.getProposalList()).thenReturn(null);
+    MockHttpServletResponse response = newResponse();
 
-  @Test
-  public void testListProposalsEmptyParam() {
-    MockHttpServletRequest request = createRequest("application/x-www-form-urlencoded");
-    String params = "visible=";
-    request.setContent(params.getBytes(UTF_8));
-    MockHttpServletResponse response = new MockHttpServletResponse();
-    listProposalsServlet.doPost(request, response);
-    try {
-      String contentAsString = response.getContentAsString();
-      JSONObject.parseObject(contentAsString);
-    } catch (UnsupportedEncodingException e) {
-      fail(e.getMessage());
-    }
-  }
+    servlet.doGet(getRequest("visible", "true"), response);
 
+    assertEquals(200, response.getStatus());
+    verify(wallet).getProposalList();
+    assertEquals("{}", response.getContentAsString().trim());
+  }
 }

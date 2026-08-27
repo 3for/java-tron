@@ -13,6 +13,7 @@ import org.tron.core.Wallet;
 import org.tron.core.capsule.AccountCapsule;
 import org.tron.core.capsule.ContractCapsule;
 import org.tron.core.config.args.Args;
+import org.tron.core.exception.jsonrpc.JsonRpcInvalidRequestException;
 import org.tron.core.services.jsonrpc.types.BuildArguments;
 import org.tron.protos.Protocol;
 import org.tron.protos.Protocol.Transaction.Contract.ContractType;
@@ -165,16 +166,13 @@ public class BuildTransactionTest extends BaseTest {
   }
 
   @Test
-  public void testNoToNoData() {
+  public void testMissingToAndDataThrowsInvalidRequest() {
     BuildArguments buildArguments = new BuildArguments();
     buildArguments.setFrom("0xabd4b9367799eaa3197fecb144eb71de1e049abc");
-    buildArguments.setTo("0x548794500882809695a8a687866e76d4271a1abc");
 
-    try {
-      ContractType contractType = buildArguments.getContractType(wallet);
-      Assert.assertEquals(ContractType.TriggerSmartContract, contractType);
-    } catch (Exception e) {
-      Assert.assertEquals("invalid json request", e.getMessage());
-    }
+    JsonRpcInvalidRequestException exception = Assert.assertThrows(
+        JsonRpcInvalidRequestException.class,
+        () -> buildArguments.getContractType(wallet));
+    Assert.assertEquals("invalid json request", exception.getMessage());
   }
 }

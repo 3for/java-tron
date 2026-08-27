@@ -192,15 +192,16 @@ public class ProgramTraceListenerTest {
     programTrace.setResult("result");
     programTrace.setContractAddress("contractAddress");
     programTrace.setError("error");
-    programTrace.result(new byte[] {});
-    programTrace.error(new Exception());
-    programTrace.getOps();
-    programTrace.getContractAddress();
-    programTrace.getError();
-    programTrace.getResult();
-    programTrace.toString();
+    Assert.assertSame(programTrace, programTrace.result(new byte[] {}));
+    Assert.assertSame(programTrace, programTrace.error(new Exception("failure")));
 
-    Assert.assertTrue(true);
+    Assert.assertSame(ops, programTrace.getOps());
+    Assert.assertEquals("contractAddress", programTrace.getContractAddress());
+    Assert.assertEquals("class java.lang.Exception: failure", programTrace.getError());
+    Assert.assertEquals("", programTrace.getResult());
+    String json = programTrace.toString();
+    Assert.assertTrue(json.contains("contractAddress"));
+    Assert.assertTrue(json.contains("failure"));
   }
 
 }

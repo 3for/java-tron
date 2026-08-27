@@ -2,9 +2,9 @@ package org.tron.core.pbft;
 
 import com.google.protobuf.ByteString;
 import java.io.IOException;
-import java.util.Objects;
 import javax.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -63,21 +63,21 @@ public class PbftApiTest extends BaseTest {
     Assert.assertTrue(dynamicPropertiesStore.getLatestBlockHeaderNumber() >= 10);
     commonDataBase.saveLatestPbftBlockNum(6);
     httpApiOnPBFTService.start();
-    CloseableHttpResponse response;
     try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
       HttpGet httpGet = new HttpGet("http://127.0.0.1:"
           + CommonParameter.getInstance().getPBFTHttpPort() + "/walletpbft/getnowblock");
-      response = httpClient.execute(httpGet);
-      String responseString = EntityUtils.toString(response.getEntity());
-      JSONObject jsonObject = JSON.parseObject(responseString);
-      if (Objects.nonNull(jsonObject)) {
+      try (CloseableHttpResponse response = httpClient.execute(httpGet)) {
+        Assert.assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+        String responseString = EntityUtils.toString(response.getEntity());
+        JSONObject jsonObject = JSON.parseObject(responseString);
+        Assert.assertNotNull(jsonObject);
         long num = jsonObject.getJSONObject("block_header").getJSONObject("raw_data")
             .getLongValue("number");
         Assert.assertEquals(commonDataBase.getLatestPbftBlockNum(), num);
       }
-      response.close();
+    } finally {
+      httpApiOnPBFTService.stop();
     }
-    httpApiOnPBFTService.stop();
   }
 
   private BlockCapsule createTestBlockCapsule(long time, long number, Sha256Hash hash) {

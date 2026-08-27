@@ -1,82 +1,57 @@
 package org.tron.core.services.http;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-import java.io.UnsupportedEncodingException;
-import javax.annotation.Resource;
+import com.google.protobuf.ByteString;
 import org.junit.Test;
-import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.tron.common.BaseTest;
-import org.tron.common.TestConstants;
-import org.tron.core.config.args.Args;
+import org.tron.api.GrpcAPI.AssetIssueList;
+import org.tron.json.JSONArray;
 import org.tron.json.JSONObject;
+import org.tron.protos.contract.AssetIssueContractOuterClass.AssetIssueContract;
 
-public class GetAssetIssueListServletTest extends BaseTest {
+public class GetAssetIssueListServletTest extends BaseHttpTest {
 
-  @Resource
-  private GetAssetIssueListServlet getAssetIssueListServlet;
+  private GetAssetIssueListServlet servlet;
 
-  static {
-    Args.setParam(
-        new String[]{
-            "--output-directory", dbPath(),
-        }, TestConstants.TEST_CONF
-    );
-  }
-
-  public MockHttpServletRequest createRequest(String contentType) {
-    MockHttpServletRequest request = new MockHttpServletRequest();
-    request.setMethod("POST");
-    request.setContentType(contentType);
-    request.setCharacterEncoding("UTF-8");
-    return request;
+  @Override
+  protected void setUpMocks() throws Exception {
+    servlet = new GetAssetIssueListServlet();
+    injectWallet(servlet);
+    when(wallet.getAssetIssueList()).thenReturn(AssetIssueList.newBuilder()
+        .addAssetIssue(AssetIssueContract.newBuilder()
+            .setName(ByteString.copyFromUtf8("asset"))
+            .setTotalSupply(5000L))
+        .build());
   }
 
   @Test
-  public void testGetAssetIssueListByJson() {
-    String jsonParam = "{\"visible\": true}";
-    MockHttpServletRequest request = createRequest("application/json");
-    request.setContent(jsonParam.getBytes());
-    MockHttpServletResponse response = new MockHttpServletResponse();
-    getAssetIssueListServlet.doPost(request, response);
-    try {
-      String contentAsString = response.getContentAsString();
-      JSONObject.parseObject(contentAsString);
-    } catch (UnsupportedEncodingException e) {
-      fail(e.getMessage());
-    }
+  public void testPostReturnsAssetList() throws Exception {
+    MockHttpServletResponse response = newResponse();
+
+    servlet.doPost(postRequest("{}"), response);
+
+    assertEquals(200, response.getStatus());
+    verify(wallet).getAssetIssueList();
+    JSONObject json = JSONObject.parseObject(response.getContentAsString());
+    assertFalse(json.containsKey("Error"));
+    JSONArray assets = json.getJSONArray("assetIssue");
+    assertEquals(1, assets.size());
+    assertEquals(5000L, ((Number) assets.getJSONObject(0).get("total_supply")).longValue());
   }
 
   @Test
-  public void testGetAssetIssueListValue() {
-    MockHttpServletRequest request = createRequest("application/x-www-form-urlencoded");
-    try {
-      String params = "visible=true";
-      request.setContent(params.getBytes(UTF_8));
-      MockHttpServletResponse response = new MockHttpServletResponse();
-      getAssetIssueListServlet.doPost(request, response);
-      String contentAsString = response.getContentAsString();
-      JSONObject.parseObject(contentAsString);
-    } catch (UnsupportedEncodingException e) {
-      fail(e.getMessage());
-    }
-  }
+  public void testGetReturnsEmptyObjectWhenWalletReturnsNull() throws Exception {
+    when(wallet.getAssetIssueList()).thenReturn(null);
+    MockHttpServletResponse response = newResponse();
 
-  @Test
-  public void testGetAssetIssueListEmptyParam() {
-    MockHttpServletRequest request = createRequest("application/x-www-form-urlencoded");
-    String params = "visible=";
-    request.setContent(params.getBytes(UTF_8));
-    MockHttpServletResponse response = new MockHttpServletResponse();
-    getAssetIssueListServlet.doPost(request, response);
-    try {
-      String contentAsString = response.getContentAsString();
-      JSONObject.parseObject(contentAsString);
-    } catch (UnsupportedEncodingException e) {
-      fail(e.getMessage());
-    }
-  }
+    servlet.doGet(getRequest("visible", "true"), response);
 
+    assertEquals(200, response.getStatus());
+    verify(wallet).getAssetIssueList();
+    assertEquals("{}", response.getContentAsString().trim());
+  }
 }

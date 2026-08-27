@@ -14,7 +14,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import javax.annotation.Resource;
-import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.After;
 import org.junit.Assert;
@@ -49,7 +48,6 @@ import org.tron.p2p.discover.Node;
 import org.tron.p2p.utils.NetUtil;
 import org.tron.protos.Protocol;
 
-@Slf4j(topic = "net")
 public class RelayServiceTest extends BaseTest {
 
   @Resource
@@ -122,43 +120,38 @@ public class RelayServiceTest extends BaseTest {
     assertContains(s3, "41299F3DB80A24B20A254B89CE639D59132F157F13");
   }
 
-  private void testBroadcast() {
-    try {
-      PeerConnection peer = new PeerConnection();
-      InetSocketAddress a1 = new InetSocketAddress("127.0.0.2", 10001);
-      Channel c1 = mock(Channel.class);
-      Mockito.when(c1.getInetSocketAddress()).thenReturn(a1);
-      Mockito.when(c1.getInetAddress()).thenReturn(a1.getAddress());
-      doNothing().when(c1).send((byte[]) any());
+  private void testBroadcast() throws Exception {
+    PeerConnection peer = new PeerConnection();
+    InetSocketAddress a1 = new InetSocketAddress("127.0.0.2", 10001);
+    Channel c1 = mock(Channel.class);
+    Mockito.when(c1.getInetSocketAddress()).thenReturn(a1);
+    Mockito.when(c1.getInetAddress()).thenReturn(a1.getAddress());
+    doNothing().when(c1).send((byte[]) any());
 
-      peer.setChannel(c1);
-      peer.setAddress(getFromHexString("41299F3DB80A24B20A254B89CE639D59132F157F13"));
-      peer.setNeedSyncFromPeer(false);
-      peer.setNeedSyncFromUs(false);
+    peer.setChannel(c1);
+    peer.setAddress(getFromHexString("41299F3DB80A24B20A254B89CE639D59132F157F13"));
+    peer.setNeedSyncFromPeer(false);
+    peer.setNeedSyncFromUs(false);
 
-      List<PeerConnection> peers = new ArrayList<>();
-      peers.add(peer);
+    List<PeerConnection> peers = new ArrayList<>();
+    peers.add(peer);
 
-      TronNetDelegate tronNetDelegate = Mockito.mock(TronNetDelegate.class);
-      Mockito.doReturn(peers).when(tronNetDelegate).getActivePeer();
+    TronNetDelegate tronNetDelegate = Mockito.mock(TronNetDelegate.class);
+    Mockito.doReturn(peers).when(tronNetDelegate).getActivePeer();
 
-      Field field = service.getClass().getDeclaredField("tronNetDelegate");
-      field.setAccessible(true);
-      field.set(service, tronNetDelegate);
+    Field field = service.getClass().getDeclaredField("tronNetDelegate");
+    field.setAccessible(true);
+    field.set(service, tronNetDelegate);
 
-      BlockCapsule blockCapsule = new BlockCapsule(chainBaseManager.getHeadBlockNum() + 1,
-              chainBaseManager.getHeadBlockId(),
-              0, getFromHexString("418A8D690BF36806C36A7DAE3AF796643C1AA9CC01"));
-      BlockMessage msg = new BlockMessage(blockCapsule);
-      service.broadcast(msg);
-      Item item = new Item(blockCapsule.getBlockId(), Protocol.Inventory.InventoryType.BLOCK);
-      Assert.assertEquals(1, peer.getAdvInvSpread().size());
-      Assert.assertNotNull(peer.getAdvInvSpread().getIfPresent(item));
-      peer.getChannel().close();
-    } catch (Exception e) {
-      logger.info("", e);
-      assert false;
-    }
+    BlockCapsule blockCapsule = new BlockCapsule(chainBaseManager.getHeadBlockNum() + 1,
+            chainBaseManager.getHeadBlockId(),
+            0, getFromHexString("418A8D690BF36806C36A7DAE3AF796643C1AA9CC01"));
+    BlockMessage msg = new BlockMessage(blockCapsule);
+    service.broadcast(msg);
+    Item item = new Item(blockCapsule.getBlockId(), Protocol.Inventory.InventoryType.BLOCK);
+    Assert.assertEquals(1, peer.getAdvInvSpread().size());
+    Assert.assertNotNull(peer.getAdvInvSpread().getIfPresent(item));
+    peer.getChannel().close();
   }
 
   private void assertContains(Set<ByteString> set, String string) {
@@ -170,7 +163,7 @@ public class RelayServiceTest extends BaseTest {
     return ByteString.copyFrom(Hex.decode(s));
   }
 
-  private void testCheckHelloMessage() {
+  private void testCheckHelloMessage() throws Exception {
     String key = "0154435f065a57fec6af1e12eaa2fa600030639448d7809f4c65bdcf8baed7e5";
     ByteString address = getFromHexString("418A8D690BF36806C36A7DAE3AF796643C1AA9CC01");
     InetSocketAddress a1 = new InetSocketAddress("127.0.0.1", 10001);
@@ -201,53 +194,48 @@ public class RelayServiceTest extends BaseTest {
     ApplicationContext ctx = (ApplicationContext) ReflectUtils.getFieldObject(p2pEventHandler,
         "ctx");
     PeerConnection peer1 = PeerManager.add(ctx, c1);
-    assert peer1 != null;
+    Assert.assertNotNull(peer1);
     peer1.setAddress(address);
     PeerConnection peer2 = PeerManager.add(ctx, c2);
-    assert peer2 != null;
+    Assert.assertNotNull(peer2);
     peer2.setAddress(address);
 
     ReflectUtils.setFieldValue(tronNetService, "p2pConfig", new P2pConfig());
 
-    try {
-      Field field = service.getClass().getDeclaredField("witnessScheduleStore");
-      field.setAccessible(true);
-      field.set(service, chainBaseManager.getWitnessScheduleStore());
+    Field field = service.getClass().getDeclaredField("witnessScheduleStore");
+    field.setAccessible(true);
+    field.set(service, chainBaseManager.getWitnessScheduleStore());
 
-      Field field2 = service.getClass().getDeclaredField("manager");
-      field2.setAccessible(true);
-      field2.set(service, dbManager);
+    Field field2 = service.getClass().getDeclaredField("manager");
+    field2.setAccessible(true);
+    field2.set(service, dbManager);
 
-      boolean res = service.checkHelloMessage(helloMessage, c1);
-      Assert.assertTrue(res);
+    boolean res = service.checkHelloMessage(helloMessage, c1);
+    Assert.assertTrue(res);
 
-      HelloMessage shortSigMsg = new HelloMessage(node, System.currentTimeMillis(),
-          ChainBaseManager.getChainBaseManager());
-      shortSigMsg.setHelloMessage(shortSigMsg.getHelloMessage().toBuilder()
-          .setAddress(address)
-          .setSignature(ByteString.copyFrom(new byte[64]))
-          .build());
-      Assert.assertFalse(service.checkHelloMessage(shortSigMsg, c1));
+    HelloMessage shortSigMsg = new HelloMessage(node, System.currentTimeMillis(),
+        ChainBaseManager.getChainBaseManager());
+    shortSigMsg.setHelloMessage(shortSigMsg.getHelloMessage().toBuilder()
+        .setAddress(address)
+        .setSignature(ByteString.copyFrom(new byte[64]))
+        .build());
+    Assert.assertFalse(service.checkHelloMessage(shortSigMsg, c1));
 
-      HelloMessage longSigMsg = new HelloMessage(node, System.currentTimeMillis(),
-          ChainBaseManager.getChainBaseManager());
-      longSigMsg.setHelloMessage(longSigMsg.getHelloMessage().toBuilder()
-          .setAddress(address)
-          .setSignature(ByteString.copyFrom(new byte[69]))
-          .build());
-      Assert.assertFalse(service.checkHelloMessage(longSigMsg, c1));
+    HelloMessage longSigMsg = new HelloMessage(node, System.currentTimeMillis(),
+        ChainBaseManager.getChainBaseManager());
+    longSigMsg.setHelloMessage(longSigMsg.getHelloMessage().toBuilder()
+        .setAddress(address)
+        .setSignature(ByteString.copyFrom(new byte[69]))
+        .build());
+    Assert.assertFalse(service.checkHelloMessage(longSigMsg, c1));
 
-      HelloMessage emptySigMsg = new HelloMessage(node, System.currentTimeMillis(),
-          ChainBaseManager.getChainBaseManager());
-      emptySigMsg.setHelloMessage(emptySigMsg.getHelloMessage().toBuilder()
-          .setAddress(address)
-          .setSignature(ByteString.EMPTY)
-          .build());
-      Assert.assertFalse(service.checkHelloMessage(emptySigMsg, c1));
-    } catch (Exception e) {
-      logger.info("", e);
-      assert false;
-    }
+    HelloMessage emptySigMsg = new HelloMessage(node, System.currentTimeMillis(),
+        ChainBaseManager.getChainBaseManager());
+    emptySigMsg.setHelloMessage(emptySigMsg.getHelloMessage().toBuilder()
+        .setAddress(address)
+        .setSignature(ByteString.EMPTY)
+        .build());
+    Assert.assertFalse(service.checkHelloMessage(emptySigMsg, c1));
   }
 
   @Test

@@ -5,14 +5,18 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import javax.annotation.Resource;
-import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 import org.tron.common.BaseTest;
@@ -26,6 +30,18 @@ import org.tron.core.services.interfaceOnSolidity.http.solidity.HttpApiOnSolidit
 
 public class HttpApiAccessFilterTest extends BaseTest {
 
+  private static final Set<String> UNREGISTERED_PATHS = new HashSet<>(Arrays.asList(
+      "/wallet/getmerkletreevoucherinfo",
+      "/wallet/isspend",
+      "/wallet/scanandmarknotebyivk",
+      "/wallet/scannotebyivk",
+      "/wallet/scannotebyovk",
+      "/walletsolidity/getmerkletreevoucherinfo",
+      "/walletsolidity/isspend",
+      "/walletsolidity/scanandmarknotebyivk",
+      "/walletsolidity/scannotebyivk",
+      "/walletsolidity/scannotebyovk"));
+
   @Resource
   private FullNodeHttpApiService httpApiService;
   @Resource
@@ -34,7 +50,7 @@ public class HttpApiAccessFilterTest extends BaseTest {
   private HttpApiOnPBFTService httpApiOnPBFTService;
   @Resource
   private HttpApiAccessFilter httpApiAccessFilter;
-  private static final CloseableHttpClient httpClient = HttpClients.createDefault();
+  private final CloseableHttpClient httpClient = HttpClients.createDefault();
 
   static {
     Args.setParam(new String[]{"-d", dbPath()}, TestConstants.TEST_CONF);
@@ -46,6 +62,11 @@ public class HttpApiAccessFilterTest extends BaseTest {
     Args.getInstance().setSolidityNodeHttpEnable(true);
     Args.getInstance().setSolidityHttpPort(PublicMethod.chooseRandomPort());
     Args.getInstance().setP2pDisable(true);
+  }
+
+  @After
+  public void closeHttpClient() throws IOException {
+    httpClient.close();
   }
 
   @Test
@@ -87,14 +108,32 @@ public class HttpApiAccessFilterTest extends BaseTest {
         Assert.assertEquals(HttpStatus.SC_OK, statusCode);
       }
     }
+
+    Args.getInstance().setOpenHistoryQueryWhenLiteFN(true);
+
+    for (String path : LiteFnQueryHttpFilter.getFilterPaths()) {
+      if (UNREGISTERED_PATHS.contains(path)) {
+        continue;
+      }
+      String url = String.format("http://127.0.0.1:%d%s", portFor(path), path);
+      Assert.assertEquals("path=" + path, HttpStatus.SC_OK, getRequestCode(url));
+    }
+  }
+
+  private static int portFor(String path) {
+    if (path.startsWith("/walletsolidity/")) {
+      return Args.getInstance().getSolidityHttpPort();
+    }
+    if (path.startsWith("/walletpbft/")) {
+      return Args.getInstance().getPBFTHttpPort();
+    }
+    return Args.getInstance().getFullNodeHttpPort();
   }
 
   private String sendGetRequest(String url) {
     HttpGet request = new HttpGet(url);
     request.setHeader("User-Agent", "Java client");
-    HttpResponse response;
-    try {
-      response = httpClient.execute(request);
+    try (CloseableHttpResponse response = httpClient.execute(request)) {
       BufferedReader rd = new BufferedReader(
               new InputStreamReader(response.getEntity().getContent()));
       StringBuilder result = new StringBuilder();
@@ -112,10 +151,7 @@ public class HttpApiAccessFilterTest extends BaseTest {
   private int getRequestCode(String url) {
     HttpGet request = new HttpGet(url);
     request.setHeader("User-Agent", "Java client");
-    HttpResponse response;
-
-    try {
-      response = httpClient.execute(request);
+    try (CloseableHttpResponse response = httpClient.execute(request)) {
       return response.getStatusLine().getStatusCode();
     } catch (IOException e) {
       e.printStackTrace();

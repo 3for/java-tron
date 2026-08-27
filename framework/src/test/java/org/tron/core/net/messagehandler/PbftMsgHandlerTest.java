@@ -103,20 +103,16 @@ public class PbftMsgHandlerTest {
     pbftMessage.setSwitch(blockCapsule.isSwitch());
     Param.getInstance().setPbftInterface(context.getBean(PbftBaseImpl.class));
     peer.setNeedSyncFromPeer(false);
-    //Mockito.doNothing().when(pbftMessage).analyzeSignature();
-    try {
-      context.getBean(PbftMsgHandler.class).processMessage(peer, pbftMessage);
-    } catch (P2pException e) {
-      Assert.assertEquals(P2pException.TypeEnum.BAD_MESSAGE, e.getType());
-    }
-
     DynamicPropertiesStore dynamicPropertiesStore = context.getBean(DynamicPropertiesStore.class);
+    PbftMsgHandler handler = context.getBean(PbftMsgHandler.class);
+
+    dynamicPropertiesStore.saveAllowPBFT(0);
+    handler.processMessage(peer, pbftMessage);
+
     dynamicPropertiesStore.saveAllowPBFT(1);
-    try {
-      context.getBean(PbftMsgHandler.class).processMessage(peer, pbftMessage);
-    } catch (P2pException e) {
-      Assert.assertEquals(P2pException.TypeEnum.BAD_MESSAGE, e.getType());
-    }
+    P2pException exception = Assert.assertThrows(
+        P2pException.class, () -> handler.processMessage(peer, pbftMessage));
+    Assert.assertEquals(P2pException.TypeEnum.BAD_MESSAGE, exception.getType());
 
     Assert.assertEquals(1, PeerManager.getPeers().size());
   }

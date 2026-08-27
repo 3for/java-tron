@@ -18,6 +18,7 @@ import com.google.protobuf.ByteString;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Assert;
@@ -450,9 +451,16 @@ public class TransactionUtilTest extends BaseTest {
     Transaction.Builder builder = Transaction.newBuilder();
     TransactionCapsule trx = new TransactionCapsule(builder.build());
     List<Thread> threadList = new ArrayList<>();
+    AtomicReference<Throwable> workerFailure = new AtomicReference<>();
     int n = 10;
     for (int i = 0; i < n; i++) {
-      threadList.add(new Thread(() -> trx.toString()));
+      threadList.add(new Thread(() -> {
+        try {
+          trx.toString();
+        } catch (Throwable t) {
+          workerFailure.compareAndSet(null, t);
+        }
+      }));
     }
     for (int i = 0; i < n; i++) {
       threadList.get(i).start();
@@ -460,7 +468,10 @@ public class TransactionUtilTest extends BaseTest {
     for (int i = 0; i < n; i++) {
       threadList.get(i).join();
     }
-    Assert.assertTrue(true);
+    if (workerFailure.get() != null) {
+      throw new AssertionError("Concurrent TransactionCapsule.toString() failed",
+          workerFailure.get());
+    }
   }
 
   @Test

@@ -65,30 +65,28 @@ public class SyncServiceTest extends BaseMethodTest {
       peer = context.getBean(PeerConnection.class);
       Assert.assertNull(peer.getSyncChainRequested());
 
-      Channel c1 = new Channel();
-      ReflectUtils.setFieldValue(c1, "inetSocketAddress", inetSocketAddress);
-      ReflectUtils.setFieldValue(c1, "inetAddress", inetSocketAddress.getAddress());
+      Channel c1 = mock(Channel.class);
+      Mockito.when(c1.getInetSocketAddress()).thenReturn(inetSocketAddress);
+      Mockito.when(c1.getInetAddress()).thenReturn(inetSocketAddress.getAddress());
 
       peer.setChannel(c1);
 
       ReflectUtils.setFieldValue(peer, "tronState", TronState.SYNCING);
 
       service.startSync(peer);
+      Mockito.verify(c1, Mockito.never()).send(Mockito.any(byte[].class));
 
       ReflectUtils.setFieldValue(peer, "tronState", TronState.INIT);
-
-      try {
-        peer.setBlockBothHave(new BlockCapsule.BlockId(Sha256Hash.ZERO_HASH, -1));
-        service.syncNext(peer);
-      } catch (Exception e) {
-        // no need to deal with
-      }
-
       service.startSync(peer);
-    } catch (Exception e) {
-      // no need to deal with
+
+      Assert.assertEquals(TronState.SYNCING, peer.getTronState());
+      Assert.assertTrue(peer.isNeedSyncFromPeer());
+      Assert.assertNotNull(peer.getSyncChainRequested());
+      Assert.assertFalse(peer.getSyncChainRequested().getKey().isEmpty());
+      Mockito.verify(c1).send(Mockito.any(byte[].class));
+    } finally {
+      service.close();
     }
-    service.close();
   }
 
   @Test

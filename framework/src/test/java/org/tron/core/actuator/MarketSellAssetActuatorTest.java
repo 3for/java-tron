@@ -526,7 +526,7 @@ public class MarketSellAssetActuatorTest extends BaseTest {
     actuator.setChainBaseManager(dbManager.getChainBaseManager()).setAny(getContract(
         OWNER_ADDRESS_FIRST, sellTokenId, sellTokenQuant, buyTokenId, buyTokenQuant));
 
-    String errorMessage = "Maximum number of orders exceeded，100";
+    String errorMessage = "Maximum number of orders exceeded, 100";
     try {
       actuator.validate();
       fail(errorMessage);
@@ -601,26 +601,26 @@ public class MarketSellAssetActuatorTest extends BaseTest {
   }
 
   // execute: combination
-  // Trading object：
+  // Trading object:
   //    abc to def
   //    abc to trx
   //    trx to abc
-  // Scenes：
+  // Scenes:
   //    no buy orders before,add first sell order
-  //    no buy orders before，add multiple sell orders, need to maintain the correct sequence
-  //    no buy orders before，add multiple sell orders, need to maintain the correct sequence,
+  //    no buy orders before, add multiple sell orders, need to maintain the correct sequence
+  //    no buy orders before, add multiple sell orders, need to maintain the correct sequence,
   //      same price
-  //    has buy orders before，add first sell order，not match
-  //    has buy orders and sell orders before，add sell order，not match,
+  //    has buy orders before, add first sell order, not match
+  //    has buy orders and sell orders before, add sell order, not match,
   //      need to maintain the correct sequence
 
   //    all match with 2 existing same price buy orders and complete all 3 orders
   //    part match with 2 existing buy orders and complete the makers,
   //        left enough
-  //        left not enough and return left（Accuracy problem）
+  //        left not enough and return left (accuracy problem)
   //    part match with 2 existing buy orders and complete the taker,
   //        left enough
-  //        left not enough and return left（Accuracy problem）（not exist)
+  //        left not enough and return left (accuracy problem) (not exist)
 
   /**
    * no buy orders before,add first sell order,selling TRX and buying token
@@ -864,7 +864,7 @@ public class MarketSellAssetActuatorTest extends BaseTest {
 
 
   /**
-   * no buy orders before，add multiple sell orders,need to maintain the correct sequence
+   * no buy orders before, add multiple sell orders, need to maintain the correct sequence
    */
   @Test
   public void noBuyAddMultiSellOrder1() throws Exception {
@@ -950,7 +950,8 @@ public class MarketSellAssetActuatorTest extends BaseTest {
 
 
   /**
-   * no buy orders before，add multiple sell orders,need to maintain the correct sequence,same price
+   * No buy orders before; add multiple sell orders while maintaining the correct sequence at the
+   * same price.
    */
   @Test
   public void noBuyAddMultiSellOrderSamePrice1() throws Exception {
@@ -1038,7 +1039,7 @@ public class MarketSellAssetActuatorTest extends BaseTest {
 
 
   /**
-   * has buy orders before，add first sell order，not match
+   * has buy orders before, add first sell order, not match
    */
   @Test
   public void hasBuyAddFirstSellOrderNotMatch1() throws Exception {
@@ -1131,7 +1132,7 @@ public class MarketSellAssetActuatorTest extends BaseTest {
 
 
   /**
-   * has buy orders and sell orders before，add sell order ，not match,need to maintain the sequence
+   * has buy orders and sell orders before, add sell order, not match, need to maintain the sequence
    * order
    */
   @Test
@@ -1234,61 +1235,6 @@ public class MarketSellAssetActuatorTest extends BaseTest {
         .assertArrayEquals(orderIdListCapsule.getOrderByIndex(0, orderStore).getID().toByteArray(),
             orderId.toByteArray());
   }
-
-  // @Test
-  public void matchTimeTest() throws Exception {
-    InitAsset();
-    int num = 10;
-    int numMatch = 20;
-    int k = 0;
-    long sum = 0;
-    while (k < num) {
-      sum += doMatchTimeTest(numMatch);
-      k++;
-      System.out.println("sum:" + sum);
-    }
-    System.out.println("time:" + sum / num);
-  }
-
-  public long doMatchTimeTest(int num) throws Exception {
-
-    MarketSellAssetActuator.setMAX_ACTIVE_ORDER_NUM(10000);
-    //(sell id_1  and buy id_2)
-    String sellTokenId = TOKEN_ID_ONE;
-    long sellTokenQuant = 2000L * num;
-    String buyTokenId = TOKEN_ID_TWO;
-    long buyTokenQuant = 1000L * num;
-
-    byte[] ownerAddress = ByteArray.fromHexString(OWNER_ADDRESS_FIRST);
-    AccountCapsule accountCapsule = dbManager.getAccountStore().get(ownerAddress);
-    accountCapsule.addAssetAmountV2(sellTokenId.getBytes(), sellTokenQuant,
-        dbManager.getDynamicPropertiesStore(), dbManager.getAssetIssueStore());
-    dbManager.getAccountStore().put(ownerAddress, accountCapsule);
-    Assert.assertEquals(sellTokenQuant,
-            (long) accountCapsule.getAssetV2MapForTest().get(sellTokenId));
-
-    // Initialize the order book
-
-    //add three order(sell id_2 and buy id_1) with different price by the same account
-    //TOKEN_ID_TWO is twice as expensive as TOKEN_ID_ONE
-    for (int i = 0; i < num; i++) {
-      addOrder(TOKEN_ID_TWO, 1000L + i / 10, TOKEN_ID_ONE,
-          2000L, OWNER_ADDRESS_SECOND);
-    }
-
-    // do process
-    MarketSellAssetActuator actuator = new MarketSellAssetActuator();
-    actuator.setChainBaseManager(dbManager.getChainBaseManager()).setAny(getContract(
-        OWNER_ADDRESS_FIRST, sellTokenId, sellTokenQuant, buyTokenId, buyTokenQuant));
-
-    TransactionResultCapsule ret = new TransactionResultCapsule();
-    long l = System.nanoTime();
-    actuator.validate();
-    actuator.execute(ret);
-    // System.out.println("time:"+(System.currentTimeMillis() - l));
-    return (System.nanoTime() - l);
-  }
-
 
   /**
    * all match with 2 existing same price buy orders and complete this order
@@ -1713,7 +1659,7 @@ public class MarketSellAssetActuatorTest extends BaseTest {
 
   /**
    * match with 2 existing buy orders and complete the maker, taker left not enough and return
-   * left（Accuracy problem）
+   * left (accuracy problem)
    */
   @Test
   public void partMatchMakerLeftNotEnoughBuyOrders1() throws Exception {

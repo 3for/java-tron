@@ -79,11 +79,10 @@ public class RocksDbDataSourceImplTest {
     PropUtil.writeProperty(enginePath, "ENGINE", "LEVELDB");
     Assert.assertEquals("LEVELDB", PropUtil.readProperty(enginePath, "ENGINE"));
 
-    try {
-      new RocksDbDataSourceImpl(dir, "test_engine");
-    } catch (TronError e) {
-      Assert.assertEquals("Cannot open LEVELDB database with ROCKSDB engine.", e.getMessage());
-    }
+    TronError mismatch = assertThrows(TronError.class,
+        () -> new RocksDbDataSourceImpl(dir, "test_engine"));
+    assertEquals(TronError.ErrCode.ROCKSDB_INIT, mismatch.getErrCode());
+    assertEquals("Cannot open LEVELDB database with ROCKSDB engine.", mismatch.getMessage());
     PropUtil.writeProperty(enginePath, "ENGINE", "ROCKSDB");
   }
 

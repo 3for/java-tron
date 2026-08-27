@@ -1,10 +1,11 @@
 package org.tron.core.services.http;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.tron.common.utils.client.utils.HttpMethed.createRequest;
 
-import java.io.UnsupportedEncodingException;
 import javax.annotation.Resource;
+import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.junit.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -28,40 +29,30 @@ public class GetBlockByNumServletTest extends BaseTest {
   }
 
   @Test
-  public void testGetBlockByNum() {
-    String jsonParam = "{\"number\": 1}";
+  public void testGetBlockByNum() throws Exception {
+    String jsonParam = "{\"num\": 0}";
     MockHttpServletRequest request = createRequest(HttpPost.METHOD_NAME);
     request.setContentType("application/json");
     request.setContent(jsonParam.getBytes());
     MockHttpServletResponse response = new MockHttpServletResponse();
 
-    try {
-      getBlockByNumServlet.doPost(request, response);
-      String contentAsString = response.getContentAsString();
-      JSONObject result = JSONObject.parseObject(contentAsString);
-      assertTrue(result.containsKey("blockID"));
-      assertTrue(result.containsKey("transactions"));
-    } catch (UnsupportedEncodingException e) {
-      e.printStackTrace();
-    }
+    getBlockByNumServlet.doPost(request, response);
+    String contentAsString = response.getContentAsString();
+    JSONObject result = JSONObject.parseObject(contentAsString);
+    assertTrue(result.containsKey("blockID"));
+    assertTrue(result.containsKey("transactions"));
   }
 
   @Test
-  public void testGet() {
-    String jsonParam = "{\"number\": 1}";
-    MockHttpServletRequest request = createRequest("application/json");
-    request.setContent(jsonParam.getBytes());
+  public void testGetMissingBlockReturnsEmptyObject() throws Exception {
+    MockHttpServletRequest request = createRequest(HttpGet.METHOD_NAME);
+    request.addParameter("num", "1");
     MockHttpServletResponse response = new MockHttpServletResponse();
 
-    try {
-      getBlockByNumServlet.doPost(request, response);
-      String contentAsString = response.getContentAsString();
-      JSONObject result = JSONObject.parseObject(contentAsString);
-      assertTrue(result.containsKey("blockID"));
-      assertTrue(result.containsKey("transactions"));
-    } catch (UnsupportedEncodingException e) {
-      e.printStackTrace();
-    }
+    getBlockByNumServlet.doGet(request, response);
+    String contentAsString = response.getContentAsString();
+    JSONObject result = JSONObject.parseObject(contentAsString);
+    assertEquals(0, result.size());
   }
 
 }

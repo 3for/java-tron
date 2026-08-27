@@ -767,6 +767,7 @@ public class OperationsTest extends BaseTest {
   @Test
   public void testCallOperations() throws ContractValidateException {
     invoke = new ProgramInvokeMockImpl();
+    invoke.setEnergyLimit(10000);
     Protocol.Transaction trx = Protocol.Transaction.getDefaultInstance();
     InternalTransaction interTrx =
         new InternalTransaction(trx, InternalTransaction.TrxType.TRX_UNKNOWN_TYPE);
@@ -774,18 +775,26 @@ public class OperationsTest extends BaseTest {
     byte prePrefixByte = DecodeUtil.addressPreFixByte;
     DecodeUtil.addressPreFixByte = Constant.ADD_PRE_FIX_BYTE_MAINNET;
     VMConfig.initAllowTvmSelfdestructRestriction(1);
+    try {
+      program = new Program(new byte[0], new byte[0], invoke, interTrx);
+      MessageCall messageCall = new MessageCall(
+          Op.CALL, new DataWord(10000),
+          DataWord.ZERO(), DataWord.ZERO(),
+          DataWord.ZERO(), DataWord.ZERO(),
+          DataWord.ZERO(), DataWord.ZERO(),
+          DataWord.ZERO(), false);
+      // CALL precharges the forwarded energy before invoking a precompile.
+      program.spendEnergy(10000, "precompiled call");
+      program.callToPrecompiledAddress(messageCall, new PrecompiledContracts.ECRecover());
 
-    program = new Program(new byte[0], new byte[0], invoke, interTrx);
-    MessageCall messageCall = new MessageCall(
-        Op.CALL, new DataWord(10000),
-        DataWord.ZERO(), DataWord.ZERO(),
-        DataWord.ZERO(), DataWord.ZERO(),
-        DataWord.ZERO(), DataWord.ZERO(),
-        DataWord.ZERO(), false);
-    program.callToPrecompiledAddress(messageCall, new PrecompiledContracts.ECRecover());
-
-    DecodeUtil.addressPreFixByte = prePrefixByte;
-    VMConfig.initAllowTvmSelfdestructRestriction(0);
+      Assert.assertEquals(DataWord.ONE(), program.getStack().pop());
+      Assert.assertEquals(3000, program.getResult().getEnergyUsed());
+      Assert.assertEquals(DataWord.ZERO(), program.getReturnDataBufferSize());
+      Assert.assertNull(program.getResult().getException());
+    } finally {
+      DecodeUtil.addressPreFixByte = prePrefixByte;
+      VMConfig.initAllowTvmSelfdestructRestriction(0);
+    }
   }
 
   @Test
@@ -1166,10 +1175,11 @@ public class OperationsTest extends BaseTest {
 
   @Test
   public void testSuicideAction() throws ContractValidateException {
+    byte[] contractAddress = Hex.decode("41471fd3ad3e9eeadeec4608b92d16ce6b500704cc");
     invoke = new ProgramInvokeMockImpl(
         StoreFactory.getInstance(),
         new byte[0],
-        Hex.decode("41471fd3ad3e9eeadeec4608b92d16ce6b500704cc"));
+        contractAddress);
 
     program = new Program(null, null, invoke,
         new InternalTransaction(
@@ -1179,12 +1189,25 @@ public class OperationsTest extends BaseTest {
     VMConfig.initAllowEnergyAdjustment(1);
     byte prePrefixByte = DecodeUtil.addressPreFixByte;
     DecodeUtil.addressPreFixByte = Constant.ADD_PRE_FIX_BYTE_MAINNET;
+    try {
+      byte[] blackHoleAddress = dbManager.getAccountStore().getBlackhole()
+          .getAddress().toByteArray();
+      program.suicide(new DataWord(blackHoleAddress));
 
-    program.suicide(new DataWord(
-        dbManager.getAccountStore().getBlackhole().getAddress().toByteArray()));
-
-    DecodeUtil.addressPreFixByte = prePrefixByte;
-    VMConfig.initAllowEnergyAdjustment(0);
+      Assert.assertTrue(program.getResult().getDeleteAccounts()
+          .contains(new DataWord(contractAddress)));
+      Assert.assertEquals(1, program.getResult().getInternalTransactions().size());
+      InternalTransaction suicideTransaction =
+          program.getResult().getInternalTransactions().get(0);
+      Assert.assertEquals("suicide", suicideTransaction.getNote());
+      Assert.assertArrayEquals(contractAddress, suicideTransaction.getSender());
+      Assert.assertArrayEquals(blackHoleAddress, suicideTransaction.getTransferToAddress());
+      Assert.assertEquals(0, suicideTransaction.getValue());
+      Assert.assertFalse(suicideTransaction.isRejected());
+    } finally {
+      DecodeUtil.addressPreFixByte = prePrefixByte;
+      VMConfig.initAllowEnergyAdjustment(0);
+    }
   }
 
   @Test

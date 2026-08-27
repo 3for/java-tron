@@ -8,6 +8,7 @@ import static org.tron.protos.Protocol.Transaction.Contract.ContractType.Transfe
 
 import com.google.protobuf.Any;
 import com.google.protobuf.ByteString;
+import com.google.protobuf.Message;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Status;
@@ -36,6 +37,7 @@ import org.tron.api.GrpcAPI.CanWithdrawUnfreezeAmountRequestMessage;
 import org.tron.api.GrpcAPI.DelegatedResourceMessage;
 import org.tron.api.GrpcAPI.DiversifierMessage;
 import org.tron.api.GrpcAPI.EmptyMessage;
+import org.tron.api.GrpcAPI.EstimateEnergyMessage;
 import org.tron.api.GrpcAPI.ExpandedSpendingKeyMessage;
 import org.tron.api.GrpcAPI.GetAvailableUnfreezeCountRequestMessage;
 import org.tron.api.GrpcAPI.IncomingViewingKeyDiversifierMessage;
@@ -47,8 +49,13 @@ import org.tron.api.GrpcAPI.NumberMessage;
 import org.tron.api.GrpcAPI.OvkDecryptParameters;
 import org.tron.api.GrpcAPI.OvkDecryptTRC20Parameters;
 import org.tron.api.GrpcAPI.PaginatedMessage;
+import org.tron.api.GrpcAPI.PaymentAddressMessage;
 import org.tron.api.GrpcAPI.PrivateParameters;
 import org.tron.api.GrpcAPI.PrivateParametersWithoutAsk;
+import org.tron.api.GrpcAPI.Return;
+import org.tron.api.GrpcAPI.Return.response_code;
+import org.tron.api.GrpcAPI.ShieldedAddressInfo;
+import org.tron.api.GrpcAPI.TransactionExtention;
 import org.tron.api.GrpcAPI.ViewingKeyMessage;
 import org.tron.api.WalletGrpc;
 import org.tron.api.WalletGrpc.WalletBlockingStub;
@@ -108,6 +115,7 @@ import org.tron.protos.contract.ProposalContract.ProposalCreateContract;
 import org.tron.protos.contract.ProposalContract.ProposalDeleteContract;
 import org.tron.protos.contract.SmartContractOuterClass.ClearABIContract;
 import org.tron.protos.contract.SmartContractOuterClass.CreateSmartContract;
+import org.tron.protos.contract.SmartContractOuterClass.SmartContract;
 import org.tron.protos.contract.SmartContractOuterClass.TriggerSmartContract;
 import org.tron.protos.contract.SmartContractOuterClass.UpdateEnergyLimitContract;
 import org.tron.protos.contract.SmartContractOuterClass.UpdateSettingContract;
@@ -258,9 +266,9 @@ public class RpcApiServicesTest {
   @Test
   public void testGetAccountById() {
     Account account = Account.newBuilder().setAccountId(ownerAddress).build();
-    assertNotNull(blockingStubFull.getAccountById(account));
-    assertNotNull(blockingStubSolidity.getAccountById(account));
-    assertNotNull(blockingStubPBFT.getAccountById(account));
+    assertDefaultResponse(blockingStubFull.getAccountById(account));
+    assertDefaultResponse(blockingStubSolidity.getAccountById(account));
+    assertDefaultResponse(blockingStubPBFT.getAccountById(account));
   }
 
   @Test
@@ -299,25 +307,25 @@ public class RpcApiServicesTest {
   @Test
   public void testGetAssetIssueByName() {
     BytesMessage message = BytesMessage.newBuilder().setValue(ownerAddress).build();
-    assertNotNull(blockingStubFull.getAssetIssueByName(message));
-    assertNotNull(blockingStubSolidity.getAssetIssueByName(message));
-    assertNotNull(blockingStubPBFT.getAssetIssueByName(message));
+    assertDefaultResponse(blockingStubFull.getAssetIssueByName(message));
+    assertDefaultResponse(blockingStubSolidity.getAssetIssueByName(message));
+    assertDefaultResponse(blockingStubPBFT.getAssetIssueByName(message));
   }
 
   @Test
   public void testGetAssetIssueListByName() {
     BytesMessage message = BytesMessage.newBuilder().setValue(ownerAddress).build();
-    assertNotNull(blockingStubFull.getAssetIssueListByName(message));
-    assertNotNull(blockingStubSolidity.getAssetIssueListByName(message));
-    assertNotNull(blockingStubPBFT.getAssetIssueListByName(message));
+    assertDefaultResponse(blockingStubFull.getAssetIssueListByName(message));
+    assertDefaultResponse(blockingStubSolidity.getAssetIssueListByName(message));
+    assertDefaultResponse(blockingStubPBFT.getAssetIssueListByName(message));
   }
 
   @Test
   public void testGetAssetIssueById() {
     BytesMessage message = BytesMessage.newBuilder().setValue(ownerAddress).build();
-    assertNotNull(blockingStubFull.getAssetIssueById(message));
-    assertNotNull(blockingStubSolidity.getAssetIssueById(message));
-    assertNotNull(blockingStubPBFT.getAssetIssueById(message));
+    assertDefaultResponse(blockingStubFull.getAssetIssueById(message));
+    assertDefaultResponse(blockingStubSolidity.getAssetIssueById(message));
+    assertDefaultResponse(blockingStubPBFT.getAssetIssueById(message));
   }
 
   @Test
@@ -399,9 +407,9 @@ public class RpcApiServicesTest {
   @Test
   public void testGetExchangeById() {
     BytesMessage message = BytesMessage.newBuilder().setValue(ownerAddress).build();
-    assertNotNull(blockingStubFull.getExchangeById(message));
-    assertNotNull(blockingStubSolidity.getExchangeById(message));
-    assertNotNull(blockingStubPBFT.getExchangeById(message));
+    assertDefaultResponse(blockingStubFull.getExchangeById(message));
+    assertDefaultResponse(blockingStubSolidity.getExchangeById(message));
+    assertDefaultResponse(blockingStubPBFT.getExchangeById(message));
   }
 
   @Test
@@ -429,17 +437,17 @@ public class RpcApiServicesTest {
   @Test
   public void testGetTransactionById() {
     BytesMessage message = BytesMessage.newBuilder().setValue(ownerAddress).build();
-    assertNotNull(blockingStubFull.getTransactionById(message));
-    assertNotNull(blockingStubSolidity.getTransactionById(message));
-    assertNotNull(blockingStubPBFT.getTransactionById(message));
+    assertDefaultResponse(blockingStubFull.getTransactionById(message));
+    assertDefaultResponse(blockingStubSolidity.getTransactionById(message));
+    assertDefaultResponse(blockingStubPBFT.getTransactionById(message));
   }
 
   @Test
   public void testGetTransactionInfoById() {
     BytesMessage message = BytesMessage.newBuilder().setValue(ownerAddress).build();
-    assertNotNull(blockingStubFull.getTransactionInfoById(message));
-    assertNotNull(blockingStubSolidity.getTransactionInfoById(message));
-    assertNotNull(blockingStubPBFT.getTransactionInfoById(message));
+    assertDefaultResponse(blockingStubFull.getTransactionInfoById(message));
+    assertDefaultResponse(blockingStubSolidity.getTransactionInfoById(message));
+    assertDefaultResponse(blockingStubPBFT.getTransactionInfoById(message));
   }
 
   @Test
@@ -465,16 +473,6 @@ public class RpcApiServicesTest {
     assertNotNull(blockingStubSolidity.getBurnTrx(message));
     assertNotNull(blockingStubPBFT.getBurnTrx(message));
   }
-
-  //  @Test
-  //  public void testGetMerkleTreeVoucherInfo() {
-  //    OutputPoint outputPoint = OutputPoint.newBuilder().build();
-  //    OutputPointInfo message = OutputPointInfo.newBuilder()
-  //        .addOutPoints(outputPoint).setBlockNum(0).build();
-  //  assertNotNull(blockingStubFull.getMerkleTreeVoucherInfo(message));
-  //  assertNotNull(blockingStubSolidity.getMerkleTreeVoucherInfo(message));
-  //  assertNotNull(blockingStubPBFT.getMerkleTreeVoucherInfo(message));
-  //  }
 
   @Test
   public void testScanNoteByIvk() {
@@ -509,15 +507,6 @@ public class RpcApiServicesTest {
     assertNotNull(blockingStubSolidity.scanNoteByOvk(message));
     assertNotNull(blockingStubPBFT.scanNoteByOvk(message));
   }
-
-  //  @Test
-  //  public void testIsSpend() {
-  //    NoteParameters message = NoteParameters.newBuilder()
-  //        .build();
-  //  assertNotNull(blockingStubFull.isSpend(message));
-  //  assertNotNull(blockingStubSolidity.isSpend(message));
-  //  assertNotNull(blockingStubPBFT.isSpend(message));
-  //  }
 
   @Test
   public void testScanShieldedTRC20NotesByIvk() {
@@ -627,28 +616,11 @@ public class RpcApiServicesTest {
     }
   }
 
-  //  @Test
-  //  public void testIsShieldedTRC20ContractNoteSpent() {
-  //    NfTRC20Parameters message = NfTRC20Parameters.newBuilder().build();
-  //  assertNotNull(blockingStubFull.isShieldedTRC20ContractNoteSpent(message));
-  //  assertNotNull(blockingStubSolidity.isShieldedTRC20ContractNoteSpent(message));
-  //  assertNotNull(blockingStubPBFT.isShieldedTRC20ContractNoteSpent(message));
-  //  }
-
-  //  @Test
-  //  public void testGetTriggerInputForShieldedTRC20Contract() {
-  //    ShieldedTRC20TriggerContractParameters message =
-  //        ShieldedTRC20TriggerContractParameters.newBuilder()
-  //        .setAmount("1000")
-  //        .build();
-  //  assertNotNull(blockingStubFull.getTriggerInputForShieldedTRC20Contract(message));
-  //  }
-
   @Test
   public void testUpdateBrokerage() {
     UpdateBrokerageContract message = UpdateBrokerageContract.newBuilder()
         .setOwnerAddress(ownerAddress).setBrokerage(1).build();
-    assertNotNull(blockingStubFull.updateBrokerage(message));
+    assertContractValidationFailure(blockingStubFull.updateBrokerage(message));
   }
 
   @Test
@@ -665,7 +637,7 @@ public class RpcApiServicesTest {
         .setParameter(Any.pack(updateBrokerageContract.build()));
     raw.addContract(contract.build());
     transaction.setRawData(raw.build());
-    assertNotNull(blockingStubFull.createCommonTransaction(transaction.build()));
+    assertContractValidationFailure(blockingStubFull.createCommonTransaction(transaction.build()));
   }
 
   @Test
@@ -688,7 +660,7 @@ public class RpcApiServicesTest {
         .setSellTokenQuantity(sellTokenQuant)
         .setSellTokenId(ByteString.copyFrom(sellTokenId.getBytes()))
         .build();
-    assertNotNull(blockingStubFull.marketSellAsset(message));
+    assertContractValidationFailure(blockingStubFull.marketSellAsset(message));
   }
 
   @Test
@@ -697,7 +669,7 @@ public class RpcApiServicesTest {
         .setOwnerAddress(ownerAddress)
         .setOrderId(ByteString.copyFromUtf8("123"))
         .build();
-    assertNotNull(blockingStubFull.marketCancelOrder(message));
+    assertContractValidationFailure(blockingStubFull.marketCancelOrder(message));
   }
 
   @Test
@@ -707,14 +679,6 @@ public class RpcApiServicesTest {
     assertNotNull(blockingStubSolidity.getMarketOrderByAccount(message));
     assertNotNull(blockingStubPBFT.getMarketOrderByAccount(message));
   }
-
-  //    @Test
-  //    public void testGetMarketOrderById() {
-  //      BytesMessage message = BytesMessage.newBuilder().setValue(ownerAddress).build();
-  //    assertNotNull(blockingStubFull.getMarketOrderById(message));
-  //    assertNotNull(blockingStubSolidity.getMarketOrderById(message));
-  //    assertNotNull(blockingStubPBFT.getMarketOrderById(message));
-  //    }
 
   @Test
   public void testGetMarketPriceByPair() {
@@ -823,8 +787,8 @@ public class RpcApiServicesTest {
         .setToAddress(ownerAddress)
         .setAmount(1000)
         .build();
-    assertNotNull(blockingStubFull.createTransaction(transferContract));
-    assertNotNull(blockingStubFull.createTransaction2(transferContract));
+    assertDefaultResponse(blockingStubFull.createTransaction(transferContract));
+    assertContractValidationFailure(blockingStubFull.createTransaction2(transferContract));
   }
 
   @Test
@@ -865,244 +829,253 @@ public class RpcApiServicesTest {
   public void testCreateAssetIssue() {
     AssetIssueContract assetIssueContract = AssetIssueContract.newBuilder()
         .build();
-    assertNotNull(blockingStubFull.createAssetIssue(assetIssueContract));
-    assertNotNull(blockingStubFull.createAssetIssue2(assetIssueContract));
+    assertDefaultResponse(blockingStubFull.createAssetIssue(assetIssueContract));
+    assertContractValidationFailure(blockingStubFull.createAssetIssue2(assetIssueContract));
   }
 
   @Test
   public void testUnfreezeAsset() {
     UnfreezeAssetContract message = UnfreezeAssetContract.newBuilder().build();
-    assertNotNull(blockingStubFull.unfreezeAsset(message));
-    assertNotNull(blockingStubFull.unfreezeAsset2(message));
+    assertDefaultResponse(blockingStubFull.unfreezeAsset(message));
+    assertContractValidationFailure(blockingStubFull.unfreezeAsset2(message));
   }
 
   @Test
   public void testVoteWitnessAccount() {
     VoteWitnessContract message = VoteWitnessContract.newBuilder().build();
-    assertNotNull(blockingStubFull.voteWitnessAccount(message));
-    assertNotNull(blockingStubFull.voteWitnessAccount2(message));
+    assertDefaultResponse(blockingStubFull.voteWitnessAccount(message));
+    assertContractValidationFailure(blockingStubFull.voteWitnessAccount2(message));
   }
 
   @Test
   public void testUpdateSetting() {
     UpdateSettingContract message = UpdateSettingContract.newBuilder().build();
-    assertNotNull(blockingStubFull.updateSetting(message));
+    assertContractValidationFailure(blockingStubFull.updateSetting(message));
   }
 
   @Test
   public void testUpdateEnergyLimit() {
     UpdateEnergyLimitContract message = UpdateEnergyLimitContract.newBuilder().build();
-    assertNotNull(blockingStubFull.updateEnergyLimit(message));
+    assertContractValidationFailure(blockingStubFull.updateEnergyLimit(message));
   }
 
   @Test
   public void testClearContractABI() {
     ClearABIContract message = ClearABIContract.newBuilder().build();
-    assertNotNull(blockingStubFull.clearContractABI(message));
+    assertContractValidationFailure(blockingStubFull.clearContractABI(message));
   }
 
   @Test
   public void testCreateWitness() {
     WitnessCreateContract message = WitnessCreateContract.newBuilder().build();
-    assertNotNull(blockingStubFull.createWitness(message));
-    assertNotNull(blockingStubFull.createWitness2(message));
+    assertDefaultResponse(blockingStubFull.createWitness(message));
+    assertContractValidationFailure(blockingStubFull.createWitness2(message));
   }
 
   @Test
   public void testCreateAccount() {
     AccountCreateContract message = AccountCreateContract.newBuilder().build();
-    assertNotNull(blockingStubFull.createAccount(message));
-    assertNotNull(blockingStubFull.createAccount2(message));
+    assertDefaultResponse(blockingStubFull.createAccount(message));
+    assertContractValidationFailure(blockingStubFull.createAccount2(message));
   }
 
   @Test
   public void testUpdateWitness() {
     WitnessUpdateContract message = WitnessUpdateContract.newBuilder().build();
-    assertNotNull(blockingStubFull.updateWitness(message));
-    assertNotNull(blockingStubFull.updateWitness2(message));
+    assertDefaultResponse(blockingStubFull.updateWitness(message));
+    assertContractValidationFailure(blockingStubFull.updateWitness2(message));
   }
 
   @Test
   public void testUpdateAccount() {
     AccountUpdateContract message = AccountUpdateContract.newBuilder().build();
-    assertNotNull(blockingStubFull.updateAccount(message));
-    assertNotNull(blockingStubFull.updateAccount2(message));
+    assertDefaultResponse(blockingStubFull.updateAccount(message));
+    assertContractValidationFailure(blockingStubFull.updateAccount2(message));
   }
 
   @Test
   public void testSetAccountId() {
     SetAccountIdContract message = SetAccountIdContract.newBuilder().build();
-    assertNotNull(blockingStubFull.setAccountId(message));
+    assertDefaultResponse(blockingStubFull.setAccountId(message));
   }
 
   @Test
   public void testUpdateAsset() {
     UpdateAssetContract message = UpdateAssetContract.newBuilder().build();
-    assertNotNull(blockingStubFull.updateAsset(message));
-    assertNotNull(blockingStubFull.updateAsset2(message));
+    assertDefaultResponse(blockingStubFull.updateAsset(message));
+    assertContractValidationFailure(blockingStubFull.updateAsset2(message));
   }
 
   @Test
   public void testFreezeBalance2() {
     FreezeBalanceContract message = FreezeBalanceContract.newBuilder().build();
-    assertNotNull(blockingStubFull.freezeBalance(message));
-    assertNotNull(blockingStubFull.freezeBalance2(message));
+    assertDefaultResponse(blockingStubFull.freezeBalance(message));
+    assertContractValidationFailure(blockingStubFull.freezeBalance2(message));
   }
 
   @Test
   public void testFreezeBalanceV2() {
     FreezeBalanceV2Contract message = FreezeBalanceV2Contract.newBuilder().build();
-    assertNotNull(blockingStubFull.freezeBalanceV2(message));
+    assertContractValidationFailure(blockingStubFull.freezeBalanceV2(message));
   }
 
   @Test
   public void testUnfreezeBalance() {
     UnfreezeBalanceContract message = UnfreezeBalanceContract.newBuilder().build();
-    assertNotNull(blockingStubFull.unfreezeBalance(message));
-    assertNotNull(blockingStubFull.unfreezeBalance2(message));
+    assertDefaultResponse(blockingStubFull.unfreezeBalance(message));
+    assertContractValidationFailure(blockingStubFull.unfreezeBalance2(message));
   }
 
   @Test
   public void testUnfreezeBalanceV2() {
     UnfreezeBalanceV2Contract message = UnfreezeBalanceV2Contract.newBuilder().build();
-    assertNotNull(blockingStubFull.unfreezeBalanceV2(message));
+    assertContractValidationFailure(blockingStubFull.unfreezeBalanceV2(message));
   }
 
   @Test
   public void testWithdrawBalance() {
     WithdrawBalanceContract message = WithdrawBalanceContract.newBuilder().build();
-    assertNotNull(blockingStubFull.withdrawBalance(message));
-    assertNotNull(blockingStubFull.withdrawBalance2(message));
+    assertDefaultResponse(blockingStubFull.withdrawBalance(message));
+    assertContractValidationFailure(blockingStubFull.withdrawBalance2(message));
   }
 
   @Test
   public void testWithdrawExpireUnfreeze() {
     WithdrawExpireUnfreezeContract message = WithdrawExpireUnfreezeContract.newBuilder().build();
-    assertNotNull(blockingStubFull.withdrawExpireUnfreeze(message));
+    assertContractValidationFailure(blockingStubFull.withdrawExpireUnfreeze(message));
   }
 
   @Test
   public void testDelegateResource() {
     DelegateResourceContract message = DelegateResourceContract.newBuilder().build();
-    assertNotNull(blockingStubFull.delegateResource(message));
+    assertContractValidationFailure(blockingStubFull.delegateResource(message));
   }
 
   @Test
   public void testUnDelegateResource() {
     UnDelegateResourceContract message = UnDelegateResourceContract.newBuilder().build();
-    assertNotNull(blockingStubFull.unDelegateResource(message));
+    assertContractValidationFailure(blockingStubFull.unDelegateResource(message));
   }
 
   @Test
   public void testCancelAllUnfreezeV2() {
     CancelAllUnfreezeV2Contract message = CancelAllUnfreezeV2Contract.newBuilder().build();
-    assertNotNull(blockingStubFull.cancelAllUnfreezeV2(message));
+    assertContractValidationFailure(blockingStubFull.cancelAllUnfreezeV2(message));
   }
 
   @Test
   public void testProposalCreate() {
     ProposalCreateContract message = ProposalCreateContract.newBuilder().build();
-    assertNotNull(blockingStubFull.proposalCreate(message));
+    assertContractValidationFailure(blockingStubFull.proposalCreate(message));
   }
 
   @Test
   public void testProposalApprove() {
     ProposalApproveContract message = ProposalApproveContract.newBuilder().build();
-    assertNotNull(blockingStubFull.proposalApprove(message));
+    assertContractValidationFailure(blockingStubFull.proposalApprove(message));
   }
 
   @Test
   public void testProposalDelete() {
     ProposalDeleteContract message = ProposalDeleteContract.newBuilder().build();
-    assertNotNull(blockingStubFull.proposalDelete(message));
+    assertContractValidationFailure(blockingStubFull.proposalDelete(message));
   }
 
   @Test
   public void testExchangeCreate() {
     ExchangeCreateContract message = ExchangeCreateContract.newBuilder().build();
-    assertNotNull(blockingStubFull.exchangeCreate(message));
+    assertContractValidationFailure(blockingStubFull.exchangeCreate(message));
   }
 
   @Test
   public void testExchangeInject() {
     ExchangeInjectContract message = ExchangeInjectContract.newBuilder().build();
-    assertNotNull(blockingStubFull.exchangeInject(message));
+    assertContractValidationFailure(blockingStubFull.exchangeInject(message));
   }
 
   @Test
   public void testExchangeWithdraw() {
     ExchangeWithdrawContract message = ExchangeWithdrawContract.newBuilder().build();
-    assertNotNull(blockingStubFull.exchangeWithdraw(message));
+    assertContractValidationFailure(blockingStubFull.exchangeWithdraw(message));
   }
 
   @Test
   public void testExchangeTransaction() {
     ExchangeTransactionContract message = ExchangeTransactionContract.newBuilder().build();
-    assertNotNull(blockingStubFull.exchangeTransaction(message));
+    assertContractValidationFailure(blockingStubFull.exchangeTransaction(message));
   }
 
   @Test
   public void testTransferAsset() {
     TransferAssetContract message = TransferAssetContract.newBuilder().build();
-    assertNotNull(blockingStubFull.transferAsset(message));
-    assertNotNull(blockingStubFull.transferAsset2(message));
+    assertDefaultResponse(blockingStubFull.transferAsset(message));
+    assertContractValidationFailure(blockingStubFull.transferAsset2(message));
   }
 
   @Test
   public void testParticipateAssetIssue() {
     ParticipateAssetIssueContract message = ParticipateAssetIssueContract.newBuilder().build();
-    assertNotNull(blockingStubFull.participateAssetIssue(message));
-    assertNotNull(blockingStubFull.participateAssetIssue2(message));
+    assertDefaultResponse(blockingStubFull.participateAssetIssue(message));
+    assertContractValidationFailure(blockingStubFull.participateAssetIssue2(message));
   }
 
   @Test
   public void testGetAssetIssueByAccount() {
     Account message = Account.newBuilder().build();
-    assertNotNull(blockingStubFull.getAssetIssueByAccount(message));
+    assertDefaultResponse(blockingStubFull.getAssetIssueByAccount(message));
   }
 
   @Test
   public void testGetAccountNet() {
     Account message = Account.newBuilder().build();
-    assertNotNull(blockingStubFull.getAccountNet(message));
+    assertDefaultResponse(blockingStubFull.getAccountNet(message));
   }
 
   @Test
   public void testGetAccountResource() {
     Account message = Account.newBuilder().build();
-    assertNotNull(blockingStubFull.getAccountResource(message));
+    assertDefaultResponse(blockingStubFull.getAccountResource(message));
   }
 
   @Test
   public void testGetBlockById() {
     BytesMessage message = BytesMessage.newBuilder().build();
-    assertNotNull(blockingStubFull.getBlockById(message));
+    assertDefaultResponse(blockingStubFull.getBlockById(message));
   }
 
   @Test
   public void testGetProposalById() {
     BytesMessage message = BytesMessage.newBuilder().build();
-    assertNotNull(blockingStubFull.getProposalById(message));
+    assertDefaultResponse(blockingStubFull.getProposalById(message));
   }
 
   @Test
   public void testGetBlockByLimitNext() {
     BlockLimit message = BlockLimit.newBuilder().build();
-    assertNotNull(blockingStubFull.getBlockByLimitNext(message));
-    assertNotNull(blockingStubFull.getBlockByLimitNext2(message));
+    assertDefaultResponse(blockingStubFull.getBlockByLimitNext(message));
+    assertDefaultResponse(blockingStubFull.getBlockByLimitNext2(message));
   }
 
   @Test
   public void testGetBlockByLatestNum() {
     NumberMessage message = NumberMessage.newBuilder().setNum(0).build();
-    assertNotNull(blockingStubFull.getBlockByLatestNum(message));
-    assertNotNull(blockingStubFull.getBlockByLatestNum2(message));
+    assertDefaultResponse(blockingStubFull.getBlockByLatestNum(message));
+    assertDefaultResponse(blockingStubFull.getBlockByLatestNum2(message));
   }
 
   @Test
-  public void testDeployContract() {
-    CreateSmartContract message = CreateSmartContract.newBuilder().build();
-    assertNotNull(blockingStubFull.deployContract(message));
+  public void testDeployContractReturnsUnsignedTransaction() {
+    CreateSmartContract message = CreateSmartContract.newBuilder()
+        .setOwnerAddress(ownerAddress)
+        .setNewContract(SmartContract.newBuilder().setOriginAddress(ownerAddress).build())
+        .build();
+    TransactionExtention response = blockingStubFull.deployContract(message);
+    assertNotNull(response);
+    Assert.assertTrue(response.hasResult());
+    Assert.assertTrue(response.getResult().getResult());
+    Assert.assertEquals(response_code.SUCCESS, response.getResult().getCode());
+    Assert.assertTrue(response.hasTransaction());
+    Assert.assertFalse(response.getTxid().isEmpty());
   }
 
   @Test
@@ -1118,35 +1091,37 @@ public class RpcApiServicesTest {
   }
 
   @Test
-  public void testTriggerContract() {
+  public void testEstimateEnergyReturnsDisabledErrorOnAllNodeTypes() {
     TriggerSmartContract message = TriggerSmartContract.newBuilder().build();
-    assertNotNull(blockingStubFull.estimateEnergy(message));
-    assertNotNull(blockingStubSolidity.estimateEnergy(message));
-    assertNotNull(blockingStubPBFT.estimateEnergy(message));
+    assertContractValidationFailure(blockingStubFull.estimateEnergy(message));
+    assertContractValidationFailure(blockingStubSolidity.estimateEnergy(message));
+    assertContractValidationFailure(blockingStubPBFT.estimateEnergy(message));
   }
 
   @Test
-  public void testEstimateEnergy() {
-    TriggerSmartContract message = TriggerSmartContract.newBuilder().build();
-    assertNotNull(blockingStubFull.estimateEnergy(message));
+  public void testTriggerConstantContractRejectsUnknownContract() {
+    TriggerSmartContract message = TriggerSmartContract.newBuilder()
+        .setContractAddress(ownerAddress)
+        .build();
+    assertContractValidationFailure(blockingStubFull.triggerConstantContract(message));
   }
 
   @Test
-  public void testTriggerConstantContract() {
+  public void testTriggerContractRejectsEmptyRequest() {
     TriggerSmartContract message = TriggerSmartContract.newBuilder().build();
-    assertNotNull(blockingStubFull.triggerConstantContract(message));
+    assertContractValidationFailure(blockingStubFull.triggerContract(message));
   }
 
   @Test
   public void testGetContract() {
     BytesMessage message = BytesMessage.newBuilder().build();
-    assertNotNull(blockingStubFull.getContract(message));
+    assertDefaultResponse(blockingStubFull.getContract(message));
   }
 
   @Test
   public void testGetContractInfo() {
     BytesMessage message = BytesMessage.newBuilder().build();
-    assertNotNull(blockingStubFull.getContractInfo(message));
+    assertDefaultResponse(blockingStubFull.getContractInfo(message));
   }
 
   @Test
@@ -1204,46 +1179,59 @@ public class RpcApiServicesTest {
   @Test
   public void testAccountPermissionUpdate() {
     AccountPermissionUpdateContract message = AccountPermissionUpdateContract.newBuilder().build();
-    assertNotNull(blockingStubFull.accountPermissionUpdate(message));
+    assertContractValidationFailure(blockingStubFull.accountPermissionUpdate(message));
   }
 
   @Test
   public void testCreateShieldedTransaction() {
     PrivateParameters message = PrivateParameters.newBuilder().build();
-    assertNotNull(blockingStubFull.createShieldedTransaction(message));
+    assertContractValidationFailure(blockingStubFull.createShieldedTransaction(message));
   }
 
   @Test
   public void testCreateShieldedTransactionWithoutSpendAuthSig() {
     PrivateParametersWithoutAsk message = PrivateParametersWithoutAsk.newBuilder().build();
-    assertNotNull(blockingStubFull.createShieldedTransactionWithoutSpendAuthSig(message));
+    assertContractValidationFailure(
+        blockingStubFull.createShieldedTransactionWithoutSpendAuthSig(message));
   }
 
   @Test
   public void testGetNewShieldedAddress() {
     EmptyMessage message = EmptyMessage.newBuilder().build();
-    assertNotNull(blockingStubFull.getNewShieldedAddress(message));
+    ShieldedAddressInfo address = blockingStubFull.getNewShieldedAddress(message);
+    Assert.assertEquals(32, address.getSk().size());
+    Assert.assertEquals(32, address.getAsk().size());
+    Assert.assertEquals(32, address.getNsk().size());
+    Assert.assertEquals(32, address.getOvk().size());
+    Assert.assertEquals(32, address.getAk().size());
+    Assert.assertEquals(32, address.getNk().size());
+    Assert.assertEquals(32, address.getIvk().size());
+    Assert.assertEquals(11, address.getD().size());
+    Assert.assertEquals(32, address.getPkD().size());
+    Assert.assertFalse(address.getPaymentAddress().isEmpty());
   }
 
   @Test
   public void test01GetSpendingKey() {
     EmptyMessage message = EmptyMessage.newBuilder().build();
     BytesMessage spendingKey = blockingStubFull.getSpendingKey(message);
-    assertNotNull(spendingKey);
+    Assert.assertEquals(32, spendingKey.getValue().size());
     sk = spendingKey.getValue();
   }
 
   @Test
   public void testGetRcm() {
     EmptyMessage message = EmptyMessage.newBuilder().build();
-    assertNotNull(blockingStubFull.getRcm(message));
+    Assert.assertEquals(32, blockingStubFull.getRcm(message).getValue().size());
   }
 
   @Test
   public void test02GetExpandedSpendingKey() {
     BytesMessage message = BytesMessage.newBuilder().setValue(sk).build();
     ExpandedSpendingKeyMessage eskMessage = blockingStubFull.getExpandedSpendingKey(message);
-    assertNotNull(eskMessage);
+    Assert.assertEquals(32, eskMessage.getAsk().size());
+    Assert.assertEquals(32, eskMessage.getNsk().size());
+    Assert.assertEquals(32, eskMessage.getOvk().size());
     ask = eskMessage.getAsk();
     nsk = eskMessage.getNsk();
     ovk = eskMessage.getOvk();
@@ -1253,7 +1241,7 @@ public class RpcApiServicesTest {
   public void test03GetAkFromAsk() {
     BytesMessage message = BytesMessage.newBuilder().setValue(ask).build();
     BytesMessage akMessage = blockingStubFull.getAkFromAsk(message);
-    assertNotNull(akMessage);
+    Assert.assertEquals(32, akMessage.getValue().size());
     ak = akMessage.getValue();
   }
 
@@ -1261,7 +1249,7 @@ public class RpcApiServicesTest {
   public void test04GetNkFromNsk() {
     BytesMessage message = BytesMessage.newBuilder().setValue(nsk).build();
     BytesMessage nkFromNsk = blockingStubFull.getNkFromNsk(message);
-    assertNotNull(nkFromNsk);
+    Assert.assertEquals(32, nkFromNsk.getValue().size());
     nk = nkFromNsk.getValue();
   }
 
@@ -1273,7 +1261,7 @@ public class RpcApiServicesTest {
         .build();
     IncomingViewingKeyMessage incomingViewingKey = blockingStubFull
         .getIncomingViewingKey(viewingKeyMessage);
-    assertNotNull(incomingViewingKey);
+    Assert.assertEquals(32, incomingViewingKey.getIvk().size());
     ivk = incomingViewingKey.getIvk();
   }
 
@@ -1281,7 +1269,7 @@ public class RpcApiServicesTest {
   public void test06GetDiversifier() {
     EmptyMessage message = EmptyMessage.newBuilder().build();
     DiversifierMessage diversifier = blockingStubFull.getDiversifier(message);
-    assertNotNull(diversifier);
+    Assert.assertEquals(11, diversifier.getD().size());
     d = diversifier.getD();
   }
 
@@ -1295,49 +1283,34 @@ public class RpcApiServicesTest {
         .setD(diversifierMessage)
         .setIvk(incomingViewingKey)
         .build();
-    assertNotNull(blockingStubFull.getZenPaymentAddress(message));
+    PaymentAddressMessage paymentAddress = blockingStubFull.getZenPaymentAddress(message);
+    Assert.assertEquals(d, paymentAddress.getD().getD());
+    Assert.assertEquals(32, paymentAddress.getPkD().size());
+    Assert.assertFalse(paymentAddress.getPaymentAddress().isEmpty());
   }
 
-  //  @Test
-  //  public void testCreateShieldNullifier() {
-  //    NfParameters message = NfParameters
-  //        .newBuilder().build();
-  //  assertNotNull(blockingStubFull.createShieldNullifier(message));
-  //  }
+  private static void assertContractValidationFailure(TransactionExtention response) {
+    assertNotNull(response);
+    Assert.assertTrue(response.hasResult());
+    assertContractValidationFailure(response.getResult());
+  }
 
-  //  @Test
-  //  public void testCreateSpendAuthSig() {
-  //    SpendAuthSigParameters message = SpendAuthSigParameters
-  //        .newBuilder().build();
-  //  assertNotNull(blockingStubFull.createSpendAuthSig(message));
-  //  }
+  private static void assertContractValidationFailure(EstimateEnergyMessage response) {
+    assertNotNull(response);
+    Assert.assertTrue(response.hasResult());
+    assertContractValidationFailure(response.getResult());
+  }
 
-  //  @Test
-  //  public void testGetShieldTransactionHash() {
-  //    Transaction message = Transaction
-  //        .newBuilder().build();
-  //  assertNotNull(blockingStubFull.getShieldTransactionHash(message));
-  //  }
+  private static void assertContractValidationFailure(Return result) {
+    Assert.assertFalse(result.getResult());
+    Assert.assertEquals(response_code.CONTRACT_VALIDATE_ERROR, result.getCode());
+    String message = result.getMessage().toStringUtf8();
+    Assert.assertTrue(message.startsWith(Wallet.CONTRACT_VALIDATE_ERROR));
+    Assert.assertTrue(message.length() > Wallet.CONTRACT_VALIDATE_ERROR.length());
+  }
 
-  //  @Test
-  //  public void testCreateShieldedContractParameters() {
-  //    PrivateShieldedTRC20Parameters message = PrivateShieldedTRC20Parameters
-  //        .newBuilder().build();
-  //  assertNotNull(blockingStubFull.createShieldedContractParameters(message));
-  //  }
-
-  //  @Test
-  //  public void testCreateShieldedContractParametersWithoutAsk() throws ZksnarkException {
-  //    SpendingKey sk = SpendingKey.random();
-  //    ExpandedSpendingKey expsk = sk.expandedSpendingKey();
-  //    byte[] ovk = expsk.getOvk();
-  //    PrivateShieldedTRC20ParametersWithoutAsk message = PrivateShieldedTRC20ParametersWithoutAsk
-  //        .newBuilder()
-  //        .setOvk(ByteString.copyFrom(ovk))
-  //        .setFromAmount(BigInteger.valueOf(50).toString())
-  //        .setShieldedTRC20ContractAddress(ownerAddress)
-  //        .build();
-  //  assertNotNull(blockingStubFull
-  //    .createShieldedContractParametersWithoutAsk(message));
-  //  }
+  private static void assertDefaultResponse(Message response) {
+    assertNotNull(response);
+    Assert.assertEquals(response.getDefaultInstanceForType(), response);
+  }
 }

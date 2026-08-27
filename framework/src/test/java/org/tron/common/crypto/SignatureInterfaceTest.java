@@ -2,16 +2,16 @@ package org.tron.common.crypto;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
+import java.nio.charset.StandardCharsets;
+import java.security.SignatureException;
 import java.util.Arrays;
-import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.util.encoders.Hex;
 import org.junit.Test;
 import org.tron.common.crypto.sm2.SM2;
 import org.tron.common.utils.PublicMethod;
 
-
-@Slf4j
 public class SignatureInterfaceTest {
 
   private String SM2_privString = PublicMethod.getSM2RandomPrivateKey();
@@ -31,14 +31,9 @@ public class SignatureInterfaceTest {
 
 
   @Test
-  public void testContructor() {
-    SignInterface sign = new SM2();
-    logger.info(Hex.toHexString(sign.getPrivateKey()) + " :SM2 Generated privkey");
-    logger.info(Hex.toHexString(sign.getPubKey()) + " :SM2 Generated pubkey");
-
-    sign = new ECKey();
-    logger.info(Hex.toHexString(sign.getPrivateKey()) + " :ECDSA Generated privkey");
-    logger.info(Hex.toHexString(sign.getPubKey()) + " :ECDSA Generated pubkey");
+  public void testConstructorGeneratesUsableKeys() throws SignatureException {
+    assertGeneratedKey(new SM2(), false);
+    assertGeneratedKey(new ECKey(), true);
   }
 
   @Test
@@ -63,10 +58,10 @@ public class SignatureInterfaceTest {
   @Test
   public void testNullKey() {
     SignInterface sign = new SM2(SM2_pubKey, false);
-    assertEquals(null, sign.getPrivateKey());
+    assertNull(sign.getPrivateKey());
 
     sign = new ECKey(EC_pubKey, false);
-    assertEquals(null, sign.getPrivateKey());
+    assertNull(sign.getPrivateKey());
   }
 
   @Test
@@ -75,11 +70,25 @@ public class SignatureInterfaceTest {
     byte[] prefix_address = sign.getAddress();
     byte[] address = Arrays.copyOfRange(prefix_address, 1, prefix_address.length);
     byte[] addressTmp = Arrays.copyOfRange(Hex.decode(SM2_address), 1, prefix_address.length);
-    assertEquals(Hex.toHexString(addressTmp), Hex.toHexString(address));
+    assertArrayEquals(addressTmp, address);
     sign = new ECKey(EC_pubKey, false);
     prefix_address = sign.getAddress();
     address = Arrays.copyOfRange(prefix_address, 1, prefix_address.length);
     byte[] ecAddressTmp = Arrays.copyOfRange(Hex.decode(EC_address), 1, prefix_address.length);
-    assertEquals(Hex.toHexString(ecAddressTmp), Hex.toHexString(address));
+    assertArrayEquals(ecAddressTmp, address);
+  }
+
+  private void assertGeneratedKey(SignInterface sign, boolean ecKeyCryptoEngine)
+      throws SignatureException {
+    assertEquals(32, sign.getPrivateKey().length);
+    assertEquals(65, sign.getPubKey().length);
+    assertEquals(21, sign.getAddress().length);
+    assertEquals(64, sign.getNodeId().length);
+
+    byte[] hash = Hash.sha3("signature-interface".getBytes(StandardCharsets.UTF_8));
+    String signature = sign.signHash(hash);
+    assertEquals(65, sign.Base64toBytes(signature).length);
+    assertArrayEquals(sign.getAddress(),
+        SignUtils.signatureToAddress(hash, signature, ecKeyCryptoEngine));
   }
 }

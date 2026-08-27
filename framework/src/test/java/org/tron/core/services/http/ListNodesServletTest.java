@@ -1,82 +1,59 @@
 package org.tron.core.services.http;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-import java.io.UnsupportedEncodingException;
-import javax.annotation.Resource;
+import com.google.protobuf.ByteString;
 import org.junit.Test;
-import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
-import org.tron.common.BaseTest;
-import org.tron.common.TestConstants;
-import org.tron.core.config.args.Args;
+import org.tron.api.GrpcAPI.Address;
+import org.tron.api.GrpcAPI.Node;
+import org.tron.api.GrpcAPI.NodeList;
+import org.tron.json.JSONArray;
+import org.tron.json.JSONObject;
 
-public class ListNodesServletTest extends BaseTest {
+public class ListNodesServletTest extends BaseHttpTest {
 
-  @Resource
-  private ListNodesServlet listNodesServlet;
+  private ListNodesServlet servlet;
 
-  static {
-    Args.setParam(
-        new String[]{
-            "--output-directory", dbPath(),
-        }, TestConstants.TEST_CONF
-    );
-  }
-
-  public MockHttpServletRequest createRequest(String contentType) {
-    MockHttpServletRequest request = new MockHttpServletRequest();
-    request.setMethod("POST");
-    request.setContentType(contentType);
-    request.setCharacterEncoding("UTF-8");
-    return request;
+  @Override
+  protected void setUpMocks() throws Exception {
+    servlet = new ListNodesServlet();
+    injectWallet(servlet);
+    when(wallet.listNodes()).thenReturn(NodeList.newBuilder()
+        .addNodes(Node.newBuilder().setAddress(Address.newBuilder()
+            .setHost(ByteString.copyFromUtf8("127.0.0.1"))
+            .setPort(18888)))
+        .build());
   }
 
   @Test
-  public void testListNodesByJson() {
-    String jsonParam = "{\"visible\": true}";
-    MockHttpServletRequest request = createRequest("application/json");
-    request.setContent(jsonParam.getBytes());
-    MockHttpServletResponse response = new MockHttpServletResponse();
-    listNodesServlet.doPost(request, response);
-    try {
-      String contentAsString = response.getContentAsString();
-      assertNotNull(contentAsString);
-    } catch (UnsupportedEncodingException e) {
-      fail(e.getMessage());
-    }
+  public void testPostReturnsNodeList() throws Exception {
+    MockHttpServletResponse response = newResponse();
+
+    servlet.doPost(postRequest("{}"), response);
+
+    assertEquals(200, response.getStatus());
+    verify(wallet).listNodes();
+    JSONObject json = JSONObject.parseObject(response.getContentAsString());
+    assertFalse(json.containsKey("Error"));
+    JSONArray nodes = json.getJSONArray("nodes");
+    assertEquals(1, nodes.size());
+    assertEquals(18888L, ((Number) nodes.getJSONObject(0)
+        .getJSONObject("address").get("port")).longValue());
   }
 
   @Test
-  public void testListNodesValue() {
-    MockHttpServletRequest request = createRequest("application/x-www-form-urlencoded");
-    try {
-      String params = "visible=true";
-      request.setContent(params.getBytes(UTF_8));
-      MockHttpServletResponse response = new MockHttpServletResponse();
-      listNodesServlet.doPost(request, response);
-      String contentAsString = response.getContentAsString();
-      assertNotNull(contentAsString);
-    } catch (UnsupportedEncodingException e) {
-      fail(e.getMessage());
-    }
-  }
+  public void testGetReturnsEmptyObjectWhenWalletReturnsNull() throws Exception {
+    when(wallet.listNodes()).thenReturn(null);
+    MockHttpServletResponse response = newResponse();
 
-  @Test
-  public void testListNodesEmptyParam() {
-    MockHttpServletRequest request = createRequest("application/x-www-form-urlencoded");
-    String params = "visible=";
-    request.setContent(params.getBytes(UTF_8));
-    MockHttpServletResponse response = new MockHttpServletResponse();
-    listNodesServlet.doPost(request, response);
-    try {
-      String contentAsString = response.getContentAsString();
-      assertNotNull(contentAsString);
-    } catch (UnsupportedEncodingException e) {
-      fail(e.getMessage());
-    }
-  }
+    servlet.doGet(getRequest("visible", "true"), response);
 
+    assertEquals(200, response.getStatus());
+    verify(wallet).listNodes();
+    assertEquals("{}", response.getContentAsString().trim());
+  }
 }

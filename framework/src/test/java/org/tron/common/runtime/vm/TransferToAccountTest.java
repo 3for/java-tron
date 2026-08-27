@@ -3,6 +3,7 @@ package org.tron.common.runtime.vm;
 import com.google.protobuf.ByteString;
 import lombok.extern.slf4j.Slf4j;
 import org.bouncycastle.util.encoders.Hex;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -31,6 +32,7 @@ import org.tron.core.exception.ReceiptCheckErrException;
 import org.tron.core.exception.VMIllegalException;
 import org.tron.core.store.StoreFactory;
 import org.tron.core.vm.EnergyCost;
+import org.tron.core.vm.config.VMConfig;
 import org.tron.core.vm.repository.RepositoryImpl;
 import org.tron.protos.Protocol.AccountType;
 import org.tron.protos.Protocol.Transaction;
@@ -72,6 +74,11 @@ public class TransferToAccountTest extends BaseTest {
             AccountType.AssetIssue);
 
     ownerCapsule.setBalance(1000_1000_1000L);
+  }
+
+  @After
+  public void clearVmConfigLocalSnapshot() {
+    VMConfig.clearLocalSnapshot();
   }
 
   private long createAsset(String tokenName) {

@@ -231,12 +231,6 @@ public class InternalTransactionCallTest extends BaseMethodTest {
         "0000000000000000000000000000000000000000000000000000000000000000");
   }
 
-  @Test
-  public void staticCallTest() {
-    //TODO: need to implement this
-  }
-
-
   // Just for the AB example above
   public byte[] deployAContractandGetItsAddress()
       throws ContractExeException, ReceiptCheckErrException, ContractValidateException,

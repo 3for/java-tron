@@ -22,6 +22,34 @@ import org.tron.protos.Protocol;
 @Slf4j
 public class AllowTvmLondonTest extends VMTestBase {
 
+  private boolean savedAllowTvmTransferTrc10;
+  private boolean savedAllowTvmConstantinople;
+  private boolean savedAllowTvmSolidity059;
+  private boolean savedAllowTvmIstanbul;
+  private boolean savedAllowTvmLondon;
+
+  @Override
+  protected void afterInit() {
+    super.afterInit();
+    VMConfig.clearLocalSnapshot();
+    savedAllowTvmTransferTrc10 = VMConfig.allowTvmTransferTrc10();
+    savedAllowTvmConstantinople = VMConfig.allowTvmConstantinople();
+    savedAllowTvmSolidity059 = VMConfig.allowTvmSolidity059();
+    savedAllowTvmIstanbul = VMConfig.allowTvmIstanbul();
+    savedAllowTvmLondon = VMConfig.allowTvmLondon();
+  }
+
+  @Override
+  protected void beforeDestroy() {
+    VMConfig.clearLocalSnapshot();
+    VMConfig.initAllowTvmTransferTrc10(savedAllowTvmTransferTrc10 ? 1 : 0);
+    VMConfig.initAllowTvmConstantinople(savedAllowTvmConstantinople ? 1 : 0);
+    VMConfig.initAllowTvmSolidity059(savedAllowTvmSolidity059 ? 1 : 0);
+    VMConfig.initAllowTvmIstanbul(savedAllowTvmIstanbul ? 1 : 0);
+    VMConfig.initAllowTvmLondon(savedAllowTvmLondon ? 1 : 0);
+    ConfigLoader.disable = false;
+  }
+
   /*contract c {
 
     function getbasefee() public returns(uint) {
@@ -74,8 +102,8 @@ public class AllowTvmLondonTest extends VMTestBase {
             factoryAddress, Hex.decode(hexInput), 0, feeLimit, manager, null);
     byte[] returnValue = result.getRuntime().getResult().getHReturn();
     Assert.assertNull(result.getRuntime().getRuntimeError());
-    Assert.assertArrayEquals(returnValue,
-        longTo32Bytes(manager.getDynamicPropertiesStore().getEnergyFee()));
+    Assert.assertArrayEquals(longTo32Bytes(manager.getDynamicPropertiesStore().getEnergyFee()),
+        returnValue);
   }
 
   @Test

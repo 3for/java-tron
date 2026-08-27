@@ -335,13 +335,11 @@ public class ShieldedReceiveTest extends BaseTest {
     TransactionCapsule transactionCap = builder.build();
 
     //Add public address sign
-    transactionCap = TransactionUtils.addTransactionSign(transactionCap.getInstance(),
+    TransactionCapsule signedTransactionCap = TransactionUtils.addTransactionSign(
+        transactionCap.getInstance(),
         ADDRESS_ONE_PRIVATE_KEY, chainBaseManager.getAccountStore());
-    try {
-      dbManager.pushTransaction(transactionCap);
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof ContractValidateException);
-    }
+    Assert.assertThrows(ContractValidateException.class,
+        () -> dbManager.pushTransaction(signedTransactionCap));
   }
 
   /*
@@ -1341,55 +1339,7 @@ public class ShieldedReceiveTest extends BaseTest {
 
     updateTotalShieldedPoolValue(builder.getValueBalance());
     TransactionCapsule transactionCap = builder.build();
-    Assert.assertTrue(true);
-  }
-
-  /*
-   * test add two same cm into spend
-   */
-  //@Test not used
-  public void testSameInputCm()
-      throws BadItemException, RuntimeException, ZksnarkException {
-    chainBaseManager.getDynamicPropertiesStore().saveAllowShieldedTransaction(1);
-    chainBaseManager.getDynamicPropertiesStore().saveTotalShieldedPoolValue(100 * 1000000L);
-    ZenTransactionBuilder builder = new ZenTransactionBuilder(wallet);
-
-    // generate input
-    SpendingKey sk = SpendingKey
-        .decode("ff2c06269315333a9207f817d2eca0ac555ca8f90196976324c7756504e7c9ee");
-    ExpandedSpendingKey expsk = sk.expandedSpendingKey();
-    PaymentAddress address = sk.defaultAddress();
-    Note note = new Note(address, 100 * 1000000L);
-    IncrementalMerkleVoucherContainer voucher = createSimpleMerkleVoucherContainer(note.cm());
-    byte[] anchor = voucher.root().getContent().toByteArray();
-    //put the voucher and anchor into db
-    chainBaseManager.getMerkleContainer()
-        .putMerkleTreeIntoStore(anchor, voucher.getVoucherCapsule().getTree());
-
-    //add two same cm
-    builder.addSpend(expsk, note, anchor, voucher);
-    builder.addSpend(expsk, note, anchor, voucher);
-
-    // generate output
-    SpendingKey sk1 = SpendingKey.random();
-    FullViewingKey fullViewingKey1 = sk1.fullViewingKey();
-    IncomingViewingKey ivk1 = fullViewingKey1.inViewingKey();
-    PaymentAddress paymentAddress1 = ivk1.address(new DiversifierT()).get();
-    builder.addOutput(expsk.getOvk(), paymentAddress1,
-        200 * 1000000L - wallet.getShieldedTransactionFee(), new byte[512]);
-
-    updateTotalShieldedPoolValue(builder.getValueBalance());
-    TransactionCapsule transactionCap = builder.build();
-
-    try {
-      //validate
-      List<Actuator> actuator = ActuatorCreator.getINSTANCE().createActuator(transactionCap);
-      actuator.get(0).validate();
-      Assert.assertFalse(true);
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof ContractValidateException);
-      Assert.assertEquals("duplicate sapling nullifiers in this transaction", e.getMessage());
-    }
+    Assert.assertNotNull(transactionCap);
   }
 
   /*
@@ -1770,7 +1720,7 @@ public class ShieldedReceiveTest extends BaseTest {
 
     List<Actuator> actuator = ActuatorCreator.getINSTANCE().createActuator(transactionCap);
     actuator.get(0).validate(); //there is hash(transaction) in librustzcashSaplingFinalCheck
-    Assert.assertTrue(true);
+    Assert.assertEquals(1, actuator.size());
   }
 
   /*
@@ -1809,7 +1759,7 @@ public class ShieldedReceiveTest extends BaseTest {
 
     List<Actuator> actuator = ActuatorCreator.getINSTANCE().createActuator(transactionCap);
     actuator.get(0).validate(); //there is hash(transaction) in librustzcashSaplingFinalCheck
-    Assert.assertTrue(true);
+    Assert.assertEquals(1, actuator.size());
   }
 
   /*
@@ -1940,7 +1890,7 @@ public class ShieldedReceiveTest extends BaseTest {
 
     List<Actuator> actuator = ActuatorCreator.getINSTANCE().createActuator(transactionCap);
     actuator.get(0).validate(); //there is hash(transaction) in librustzcashSaplingFinalCheck
-    Assert.assertTrue(true);
+    Assert.assertEquals(1, actuator.size());
   }
 
   /*
@@ -1979,7 +1929,7 @@ public class ShieldedReceiveTest extends BaseTest {
 
     List<Actuator> actuator = ActuatorCreator.getINSTANCE().createActuator(transactionCap);
     actuator.get(0).validate(); //there is hash(transaction) in librustzcashSaplingFinalCheck
-    Assert.assertTrue(true);
+    Assert.assertEquals(1, actuator.size());
   }
 
   /*
@@ -2404,7 +2354,7 @@ public class ShieldedReceiveTest extends BaseTest {
     List<String> localPrivateKeys = Args.getLocalWitnesses().getPrivateKeys();
     byte[] privateKey = ByteArray.fromHexString(localPrivateKeys.get(0));
     final ECKey ecKey = ECKey.fromPrivate(privateKey);
-    assert ecKey != null;
+    Assert.assertNotNull(ecKey);
     byte[] witnessAddress = ecKey.getAddress();
     WitnessCapsule witnessCapsule = new WitnessCapsule(ByteString.copyFrom(witnessAddress));
     // Stop the consensus task before modifying the witness schedule: DposTask uses the same

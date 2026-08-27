@@ -5,6 +5,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.AdditionalMatchers.aryEq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.doReturn;
@@ -108,7 +109,8 @@ public class WalletMockTest {
     Method privateMethod = Wallet.class.getDeclaredMethod(
         "setTransaction", TransactionCapsule.class);
     privateMethod.setAccessible(true);
-    privateMethod.invoke(wallet, transactionCapsuleMock);
+    assertNull(privateMethod.invoke(wallet, transactionCapsuleMock));
+    Mockito.verifyNoInteractions(transactionCapsuleMock);
   }
 
   @Test
@@ -131,7 +133,10 @@ public class WalletMockTest {
             Protocol.Transaction.Contract.ContractType.class,
             long.class);
       privateMethod.setAccessible(true);
-      privateMethod.invoke(wallet, message, contractType, timeout);
+      Object result = privateMethod.invoke(wallet, message, contractType, timeout);
+
+      assertEquals(1, mocked.constructed().size());
+      assertEquals(mocked.constructed().get(0), result);
     }
   }
 
@@ -157,6 +162,7 @@ public class WalletMockTest {
       field.set(wallet, chainBaseManagerMock);
 
       when(chainBaseManagerMock.getHeadBlockId()).thenReturn(blockId);
+      when(chainBaseManagerMock.getSolidBlockId()).thenReturn(blockId);
 
       Method privateMethod = Wallet.class.getDeclaredMethod(
           "createTransactionCapsuleWithoutValidateWithTimeout",
@@ -164,7 +170,14 @@ public class WalletMockTest {
           Protocol.Transaction.Contract.ContractType.class,
           long.class);
       privateMethod.setAccessible(true);
-      privateMethod.invoke(wallet, message, contractType, timeout);
+      Object result = privateMethod.invoke(wallet, message, contractType, timeout);
+
+      assertEquals(1, mocked.constructed().size());
+      TransactionCapsule constructed = mocked.constructed().get(0);
+      assertEquals(constructed, result);
+      Mockito.verify(chainBaseManagerMock).getHeadBlockTimeStamp();
+      Mockito.verify(constructed).setExpiration(timeout * 1000);
+      Mockito.verify(constructed).setTimestamp();
     }
   }
 
@@ -620,9 +633,11 @@ public class WalletMockTest {
   }
 
   @Test
-  public void testGetTransactionById2() throws Exception {
+  public void testGetTransactionByIdReturnsNullOnStoreException() throws Exception {
     Wallet wallet = new Wallet();
-    ByteString transactionId = ByteString.empty();
+    byte[] transactionIdBytes = Sha256Hash.of(true,
+        "unreadable-transaction-id".getBytes(StandardCharsets.UTF_8)).getBytes();
+    ByteString transactionId = ByteString.copyFrom(transactionIdBytes);
     ChainBaseManager chainBaseManagerMock = mock(ChainBaseManager.class);
     TransactionStore transactionStoreMock = mock(TransactionStore.class);
 
@@ -630,16 +645,32 @@ public class WalletMockTest {
     Field field = wallet.getClass().getDeclaredField("chainBaseManager");
     field.setAccessible(true);
     field.set(wallet, chainBaseManagerMock);
-    doThrow(new BadItemException()).when(transactionStoreMock).get(any());
+    doThrow(new BadItemException()).when(transactionStoreMock).get(aryEq(transactionIdBytes));
 
     Protocol.Transaction transaction = wallet.getTransactionById(transactionId);
     assertNull(transaction);
   }
 
   @Test
-  public void testGetTransactionById3() throws Exception {
+  public void testGetTransactionByEmptyIdReturnsNullWhenMissing() throws Exception {
     Wallet wallet = new Wallet();
-    ByteString transactionId = ByteString.empty();
+    ChainBaseManager chainBaseManagerMock = mock(ChainBaseManager.class);
+    TransactionStore transactionStoreMock = mock(TransactionStore.class);
+    when(chainBaseManagerMock.getTransactionStore()).thenReturn(transactionStoreMock);
+    Field field = wallet.getClass().getDeclaredField("chainBaseManager");
+    field.setAccessible(true);
+    field.set(wallet, chainBaseManagerMock);
+    when(transactionStoreMock.get(aryEq(new byte[0]))).thenReturn(null);
+
+    assertNull(wallet.getTransactionById(ByteString.EMPTY));
+  }
+
+  @Test
+  public void testGetTransactionByIdReturnsStoredTransaction() throws Exception {
+    Wallet wallet = new Wallet();
+    byte[] transactionIdBytes = Sha256Hash.of(true,
+        "transaction-id".getBytes(StandardCharsets.UTF_8)).getBytes();
+    ByteString transactionId = ByteString.copyFrom(transactionIdBytes);
     ChainBaseManager chainBaseManagerMock = mock(ChainBaseManager.class);
     TransactionStore transactionStoreMock = mock(TransactionStore.class);
     TransactionCapsule transactionCapsuleMock = mock(TransactionCapsule.class);
@@ -649,7 +680,7 @@ public class WalletMockTest {
     Field field = wallet.getClass().getDeclaredField("chainBaseManager");
     field.setAccessible(true);
     field.set(wallet, chainBaseManagerMock);
-    when(transactionStoreMock.get(any())).thenReturn(transactionCapsuleMock);
+    when(transactionStoreMock.get(aryEq(transactionIdBytes))).thenReturn(transactionCapsuleMock);
     when(transactionCapsuleMock.getInstance()).thenReturn(transaction);
 
     Protocol.Transaction transactionRet = wallet.getTransactionById(transactionId);
@@ -935,11 +966,11 @@ public class WalletMockTest {
     when(walletMock.createTransactionCapsule(any(), any()))
         .thenReturn(new TransactionCapsule(transaction));
 
-    try {
-      when(walletMock.getShieldedContractScalingFactor(contractAddress)).thenCallRealMethod();
-    } catch (Exception e) {
-      assertNotNull(e);
-    }
+    when(walletMock.getShieldedContractScalingFactor(contractAddress)).thenCallRealMethod();
+
+    ContractExeException exception = assertThrows(ContractExeException.class,
+        () -> walletMock.getShieldedContractScalingFactor(contractAddress));
+    assertEquals("trigger contract to get scaling factor error.", exception.getMessage());
   }
 
   @Test
@@ -1354,6 +1385,8 @@ public class WalletMockTest {
           builder,
           spendNote,
           ak, nk);
+
+      assertEquals(100L, builder.getValueBalance());
     }
 
   }
@@ -1393,6 +1426,8 @@ public class WalletMockTest {
           builder,
           spendNote,
           expandedSpendingKey);
+
+      assertEquals(100L, builder.getValueBalance());
     }
   }
 
@@ -1417,10 +1452,12 @@ public class WalletMockTest {
   }
 
   @Test
-  public void testGetContractInfo1() throws Exception {
+  public void testGetContractInfoReturnsStoredContract() throws Exception {
     Wallet wallet = new Wallet();
+    byte[] contractAddress = ByteArray.fromHexString(
+        "41abd4b9367799eaa3197fecb144eb71de1e049abc");
     GrpcAPI.BytesMessage bytesMessage = GrpcAPI.BytesMessage.newBuilder()
-        .setValue(ByteString.copyFrom("test".getBytes()))
+        .setValue(ByteString.copyFrom(contractAddress))
         .build();
 
     ChainBaseManager chainBaseManagerMock = mock(ChainBaseManager.class);
@@ -1445,13 +1482,13 @@ public class WalletMockTest {
     when(chainBaseManagerMock.getContractStateStore()).thenReturn(contractStateStore);
     when(chainBaseManagerMock.getDynamicPropertiesStore()).thenReturn(dynamicPropertiesStore);
 
-    when(accountStore.get(any())).thenReturn(accountCapsule);
-    when(contractStore.get(any())).thenReturn(contractCapsule);
+    when(accountStore.get(aryEq(contractAddress))).thenReturn(accountCapsule);
+    when(contractStore.get(aryEq(contractAddress))).thenReturn(contractCapsule);
     when(contractCapsule.generateWrapper())
         .thenReturn(SmartContractOuterClass.SmartContractDataWrapper.newBuilder().build());
-    when(abiStore.get(any())).thenReturn(null);
-    when(codeStore.get(any())).thenReturn(null);
-    when(contractStateStore.get(any())).thenReturn(contractStateCapsule);
+    when(abiStore.get(aryEq(contractAddress))).thenReturn(null);
+    when(codeStore.get(aryEq(contractAddress))).thenReturn(null);
+    when(contractStateStore.get(aryEq(contractAddress))).thenReturn(contractStateCapsule);
     when(dynamicPropertiesStore.getCurrentCycleNumber()).thenReturn(100L);
 
     SmartContractOuterClass.SmartContractDataWrapper smartContractDataWrapper =

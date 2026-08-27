@@ -17,6 +17,7 @@ import org.tron.core.capsule.AccountCapsule;
 import org.tron.core.config.args.Args;
 import org.tron.core.db2.core.Chainbase.Cursor;
 import org.tron.core.exception.jsonrpc.JsonRpcExceedLimitException;
+import org.tron.core.exception.jsonrpc.JsonRpcMethodNotFoundException;
 import org.tron.core.services.NodeInfoService;
 import org.tron.core.services.jsonrpc.TronJsonRpc.FilterRequest;
 import org.tron.core.services.jsonrpc.TronJsonRpcImpl;
@@ -83,7 +84,7 @@ public class WalletCursorTest extends BaseTest {
   }
 
   @Test
-  public void testDisableInSolidity() {
+  public void testDisableInSolidity() throws Exception {
     BuildArguments buildArguments = new BuildArguments();
     buildArguments.setFrom("0xabd4b9367799eaa3197fecb144eb71de1e049abc");
     buildArguments.setTo("0x548794500882809695a8a687866e76d4271a1abc");
@@ -95,18 +96,19 @@ public class WalletCursorTest extends BaseTest {
     TronJsonRpcImpl tronJsonRpc = new TronJsonRpcImpl(nodeInfoService, wallet);
     tronJsonRpc.setManager(dbManager);
     try {
-      tronJsonRpc.buildTransaction(buildArguments);
-      tronJsonRpc.close();
-    } catch (Exception e) {
+      JsonRpcMethodNotFoundException exception = Assert.assertThrows(
+          JsonRpcMethodNotFoundException.class,
+          () -> tronJsonRpc.buildTransaction(buildArguments));
       Assert.assertEquals("the method buildTransaction does not exist/is not available in "
-          + "SOLIDITY", e.getMessage());
+          + "SOLIDITY", exception.getMessage());
+    } finally {
+      tronJsonRpc.close();
+      dbManager.resetCursor();
     }
-
-    dbManager.resetCursor();
   }
 
   @Test
-  public void testDisableInPBFT() {
+  public void testDisableInPBFT() throws Exception {
     BuildArguments buildArguments = new BuildArguments();
     buildArguments.setFrom("0xabd4b9367799eaa3197fecb144eb71de1e049abc");
     buildArguments.setTo("0x548794500882809695a8a687866e76d4271a1abc");
@@ -118,22 +120,23 @@ public class WalletCursorTest extends BaseTest {
     TronJsonRpcImpl tronJsonRpc = new TronJsonRpcImpl(nodeInfoService, wallet);
     tronJsonRpc.setManager(dbManager);
     try {
-      tronJsonRpc.buildTransaction(buildArguments);
-    } catch (Exception e) {
+      JsonRpcMethodNotFoundException buildException = Assert.assertThrows(
+          JsonRpcMethodNotFoundException.class,
+          () -> tronJsonRpc.buildTransaction(buildArguments));
       Assert.assertEquals("the method buildTransaction does not exist/is not available in "
-          + "PBFT", e.getMessage());
-    }
+          + "PBFT", buildException.getMessage());
 
-    String method = "test";
-    try {
-      tronJsonRpc.disableInPBFT(method);
-    } catch (Exception e) {
+      String method = "test";
+      JsonRpcMethodNotFoundException disabledMethod = Assert.assertThrows(
+          JsonRpcMethodNotFoundException.class,
+          () -> tronJsonRpc.disableInPBFT(method));
       String expMsg = String.format("the method %s does not exist/is not available in PBFT",
           method);
-      Assert.assertEquals(expMsg, e.getMessage());
+      Assert.assertEquals(expMsg, disabledMethod.getMessage());
+    } finally {
+      tronJsonRpc.close();
+      dbManager.resetCursor();
     }
-
-    dbManager.resetCursor();
   }
 
   @Test

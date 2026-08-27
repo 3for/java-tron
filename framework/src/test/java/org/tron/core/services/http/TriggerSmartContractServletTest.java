@@ -1,88 +1,89 @@
 package org.tron.core.services.http;
 
-import com.google.gson.JsonObject;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.http.HttpResponse;
-import org.bouncycastle.util.encoders.Hex;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import com.google.protobuf.ByteString;
 import org.junit.Test;
-import org.tron.common.BaseTest;
-import org.tron.common.TestConstants;
+import org.mockito.ArgumentCaptor;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.tron.common.crypto.ECKey;
 import org.tron.common.utils.ByteArray;
-import org.tron.common.utils.PublicMethod;
-import org.tron.common.utils.client.utils.HttpMethed;
-import org.tron.core.capsule.ContractCapsule;
-import org.tron.core.config.args.Args;
-import org.tron.core.store.StoreFactory;
-import org.tron.core.vm.repository.Repository;
-import org.tron.core.vm.repository.RepositoryImpl;
-import org.tron.protos.Protocol;
-import org.tron.protos.contract.SmartContractOuterClass;
+import org.tron.core.capsule.TransactionCapsule;
+import org.tron.json.JSONObject;
+import org.tron.protos.Protocol.Transaction;
+import org.tron.protos.contract.SmartContractOuterClass.TriggerSmartContract;
 
-@Slf4j
-public class TriggerSmartContractServletTest extends BaseTest {
-  private static String httpNode;
-  private static final byte[] ownerAddr = Hex.decode("410000000000000000000000000000000000000000");
-  private static final byte[] contractAddr = Hex.decode(
-      "41000000000000000000000000000000000000dEaD");
+public class TriggerSmartContractServletTest extends BaseHttpTest {
 
-  @BeforeClass
-  public static void init() throws Exception {
-    Args.setParam(
-        new String[]{"--output-directory", dbPath(), "--debug"}, TestConstants.TEST_CONF);
-    Args.getInstance().needSyncCheck = false;
-    Args.getInstance().setFullNodeHttpEnable(true);
-    Args.getInstance().setFullNodeHttpPort(PublicMethod.chooseRandomPort());
-    Args.getInstance().setP2pDisable(true);
-    httpNode = String.format("%s:%d", "127.0.0.1",
-        Args.getInstance().getFullNodeHttpPort());
+  private final byte[] ownerAddress = new ECKey().getAddress();
+  private final byte[] contractAddress = new ECKey().getAddress();
+  private TriggerSmartContractServlet servlet;
+
+  @Override
+  protected void setUpMocks() throws Exception {
+    servlet = new TriggerSmartContractServlet();
+    injectWallet(servlet);
+    when(wallet.createTransactionCapsule(any(), any()))
+        .thenReturn(new TransactionCapsule(MINIMAL_TX));
+    when(wallet.triggerContract(any(), any(), any(), any()))
+        .thenAnswer(invocation -> ((TransactionCapsule) invocation.getArgument(1)).getInstance());
   }
-
-  @Before
-  public void before() {
-    // start services
-    appT.startup();
-
-    // create contract for testing
-    Repository rootRepository = RepositoryImpl.createRoot(StoreFactory.getInstance());
-    rootRepository.createAccount(contractAddr, Protocol.AccountType.Contract);
-    rootRepository.createContract(contractAddr, new ContractCapsule(
-        SmartContractOuterClass.SmartContract.newBuilder().build()));
-    rootRepository.saveCode(contractAddr, Hex.decode(
-        "608060405260043610601c5760003560e01c8063f8a8fd6d146021575b600080fd5b60276029565b00"
-            + "5b3373ffffffffffffffffffffffffffffffffffffffff166108fc34908115029060405160006040518"
-            + "0830381858888f19350505050158015606e573d6000803e3d6000fd5b5056fea2646970667358221220"
-            + "45fe2c565cf16b27bb8cbafbe251a850a0bb5cd8806a186dbda12d57685ced6f64736f6c63430008120"
-            + "033"));
-    rootRepository.commit();
-  }
-
 
   @Test
-  public void testNormalCall() {
-    HttpMethed.waitToProduceOneBlock(httpNode);
-    JsonObject parameter = new JsonObject();
-    parameter.addProperty("owner_address", ByteArray.toHexString(ownerAddr));
-    parameter.addProperty("contract_address", ByteArray.toHexString(contractAddr));
-    parameter.addProperty("function_selector", "test()");
-    HttpResponse triggersmartcontract1 = invokeToLocal("triggersmartcontract", parameter);
-    HttpResponse triggersmartcontract2 = invokeToLocal("triggerconstantcontract", parameter);
-    HttpResponse triggersmartcontract3 = invokeToLocal("estimateenergy", parameter);
-    Assert.assertNotNull(triggersmartcontract1);
-    Assert.assertNotNull(triggersmartcontract2);
-    Assert.assertNotNull(triggersmartcontract3);
+  public void testPostBuildsTriggerAndReturnsSuccessfulTransaction() throws Exception {
+    String body = "{\"owner_address\":\"" + ByteArray.toHexString(ownerAddress)
+        + "\",\"contract_address\":\"" + ByteArray.toHexString(contractAddress)
+        + "\",\"function_selector\":\"test()\",\"fee_limit\":123}";
+    MockHttpServletResponse response = newResponse();
+
+    servlet.doPost(postRequest(body), response);
+
+    assertEquals(200, response.getStatus());
+    ArgumentCaptor<TriggerSmartContract> triggerCaptor =
+        ArgumentCaptor.forClass(TriggerSmartContract.class);
+    verify(wallet).createTransactionCapsule(triggerCaptor.capture(),
+        eq(org.tron.protos.Protocol.Transaction.Contract.ContractType.TriggerSmartContract));
+    TriggerSmartContract trigger = triggerCaptor.getValue();
+    assertEquals(ByteString.copyFrom(ownerAddress), trigger.getOwnerAddress());
+    assertEquals(ByteString.copyFrom(contractAddress), trigger.getContractAddress());
+    assertEquals(4, trigger.getData().size());
+
+    JSONObject json = JSONObject.parseObject(response.getContentAsString());
+    JSONObject result = json.getJSONObject("result");
+    assertEquals(Boolean.TRUE, result.get("result"));
+    assertTrue(json.containsKey("transaction"));
+    assertTrue(json.getJSONObject("transaction").containsKey("txID"));
+    Number feeLimit = (Number) json.getJSONObject("transaction")
+        .getJSONObject("raw_data").get("fee_limit");
+    assertEquals(123L, feeLimit.longValue());
   }
 
-  public static HttpResponse invokeToLocal(
-      String method, JsonObject parameter) {
-    try {
-      final String requestUrl = "http://" + httpNode + "/wallet/" + method;
-      return HttpMethed.createConnect(requestUrl, parameter);
-    } catch (Exception e) {
-      e.printStackTrace();
-      return null;
-    }
+  @Test
+  public void testMissingOwnerReturnsBusinessErrorWithoutCallingWallet() throws Exception {
+    String body = "{\"contract_address\":\"" + ByteArray.toHexString(contractAddress) + "\"}";
+    MockHttpServletResponse response = newResponse();
+
+    servlet.doPost(postRequest(body), response);
+
+    assertEquals(200, response.getStatus());
+    JSONObject result = JSONObject.parseObject(response.getContentAsString())
+        .getJSONObject("result");
+    // Protobuf JSON omits scalar fields that hold their default value. A failed Return therefore
+    // has no "result" member rather than serializing it as false.
+    assertFalse(result.containsKey("result"));
+    assertEquals("OTHER_ERROR", result.getString("code"));
+    String errorMessage = ByteString.copyFrom(
+        ByteArray.fromHexString(result.getString("message"))).toStringUtf8();
+    assertEquals(
+        "class java.security.InvalidParameterException : owner_address isn't set.", errorMessage);
+    verify(wallet, never()).createTransactionCapsule(any(), any());
+    verify(wallet, never()).triggerContract(any(), any(), any(), any());
   }
 }

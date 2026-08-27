@@ -19,14 +19,9 @@ import static org.tron.common.zksnark.JLibsodium.CRYPTO_AEAD_CHACHA20POLY1305_IE
 import com.google.protobuf.ByteString;
 import java.util.Arrays;
 import java.util.Optional;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.stream.LongStream;
 import javax.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.tron.common.BaseTest;
 import org.tron.common.TestConstants;
@@ -268,39 +263,6 @@ public class LibrustzcashTest extends BaseTest {
     return time;
   }
 
-  @Ignore
-  @Test
-  public void calBenchmarkSpendConcurrent() throws Exception {
-    System.out.println("--- load ok ---");
-
-    int count = 2;
-
-    CountDownLatch countDownLatch = new CountDownLatch(count);
-
-    int availableProcessors = Runtime.getRuntime().availableProcessors();
-    logger.info("availableProcessors:" + availableProcessors);
-
-    ExecutorService generatePool =
-        Executors.newFixedThreadPool(
-            availableProcessors,
-            r -> new Thread(r, "generate-transaction"));
-
-    long startGenerate = System.currentTimeMillis();
-    LongStream.range(0L, count).forEach(l -> generatePool.execute(() -> {
-      try {
-        benchmarkCreateSpend();
-      } catch (Exception ex) {
-        ex.printStackTrace();
-        logger.error("", ex);
-      }
-    }));
-
-    countDownLatch.await();
-    generatePool.shutdown();
-
-    logger.info("generate cost time:" + (System.currentTimeMillis() - startGenerate));
-  }
-
   @Test
   public void calBenchmarkSpend() throws ZksnarkException {
     System.out.println("--- load ok ---");
@@ -515,21 +477,19 @@ public class LibrustzcashTest extends BaseTest {
 
       try {
         Optional<PaymentAddress> op = incomingViewingKey.address(diversifierT);
-        // PaymentAddress op = spendingKey.defaultAddress();
-        if (op.isPresent()) {
-          Note note = new Note(op.get(), 100);
-          note.setRcm(ByteArray
-              .fromHexString(
-                  "bf4b2042e3e8c4a0b390e407a79a0b46e36eff4f7bb54b2349dbb0046ee21e02"));
+        assertTrue("a valid random diversifier must produce a payment address", op.isPresent());
+        Note note = new Note(op.get(), 100);
+        note.setRcm(ByteArray
+            .fromHexString(
+                "bf4b2042e3e8c4a0b390e407a79a0b46e36eff4f7bb54b2349dbb0046ee21e02"));
 
-          byte[] cm = note.cm();
-          if (cm != null) {
-            success++;
-          } else {
-            fail++;
-          }
-          System.out.println("note is " + Arrays.toString(cm));
+        byte[] cm = note.cm();
+        if (cm != null) {
+          success++;
+        } else {
+          fail++;
         }
+        System.out.println("note is " + Arrays.toString(cm));
       } catch (ZksnarkException e) {
         System.out.println("failed: " + e.getMessage());
         fail++;
@@ -599,20 +559,14 @@ public class LibrustzcashTest extends BaseTest {
     FullViewingKey fullViewingKey = spendingKey.fullViewingKey();
     IncomingViewingKey incomingViewingKey = fullViewingKey.inViewingKey();
 
-    try {
-      Optional<PaymentAddress> op = incomingViewingKey.address(diversifierT);
-      // PaymentAddress op = spendingKey.defaultAddress();
-      if (op.isPresent()) {
-        Note note = new Note(op.get(), randomInt(100, 100000));
-        note.setRcm(ByteArray
-            .fromHexString("bf4b2042e3e8c4a0b390e407a79a0b46e36eff4f7bb54b2349dbb0046ee21e02"));
+    Optional<PaymentAddress> op = incomingViewingKey.address(diversifierT);
+    assertTrue(op.isPresent());
+    Note note = new Note(op.get(), randomInt(100, 100000));
+    note.setRcm(ByteArray
+        .fromHexString("bf4b2042e3e8c4a0b390e407a79a0b46e36eff4f7bb54b2349dbb0046ee21e02"));
 
-        byte[] cm = note.cm();
-        System.out.println("note is " + Arrays.toString(cm));
-      }
-    } catch (ZksnarkException e) {
-      System.out.println("failed: " + e.getMessage());
-    }
+    byte[] cm = note.cm();
+    assertEquals(32, cm.length);
 
   }
 

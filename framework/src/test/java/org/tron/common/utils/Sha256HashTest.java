@@ -78,7 +78,8 @@ public class Sha256HashTest {
       try {
         thread.join();
       } catch (InterruptedException e) {
-        e.printStackTrace();
+        Thread.currentThread().interrupt();
+        throw new AssertionError("Interrupted while waiting for hash worker", e);
       }
     });
     assertEquals(70000, countAll.get());

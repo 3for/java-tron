@@ -220,7 +220,7 @@ public class BatchValidateSignContractTest {
     long maxExecutionTime = 2000; // ms
     contract.setVmShouldEndInUs(System.nanoTime() / 1000 + maxExecutionTime * 1000);
     Pair<Boolean, byte[]> ret = contract.execute(input);
-    logger.info("BytesArray:{}，HexString:{}", Arrays.toString(ret.getValue()),
+    logger.info("BytesArray:{}, HexString:{}", Arrays.toString(ret.getValue()),
         Hex.toHexString(ret.getValue()));
     return ret;
   }

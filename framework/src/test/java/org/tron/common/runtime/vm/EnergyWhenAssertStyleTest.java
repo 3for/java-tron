@@ -18,7 +18,6 @@ import org.tron.core.exception.VMIllegalException;
 import org.tron.core.store.StoreFactory;
 import org.tron.core.vm.program.Program.IllegalOperationException;
 import org.tron.core.vm.program.Program.OutOfMemoryException;
-import org.tron.core.vm.program.Program.PrecompiledContractException;
 import org.tron.core.vm.repository.RepositoryImpl;
 import org.tron.protos.Protocol.AccountType;
 
@@ -439,76 +438,6 @@ public class EnergyWhenAssertStyleTest extends BaseTest {
 
   // pragma solidity ^0.4.0;
   //
-  // contract TronNative{
-  //
-  //   address public voteContractAddress= 0x10001;
-  //
-  //   function voteForSingleWitness (address witnessAddr, uint256 voteValue) public{
-  //     if (!voteContractAddress.delegatecall(witnessAddr,voteValue)){
-  //       revert();
-  //     }
-  //   }
-  //
-  //
-  // }
-
-  //@Test
-  public void systemPrecompileTest()
-      throws ContractExeException, ReceiptCheckErrException,
-      ContractValidateException, VMIllegalException {
-    long value = 0;
-    long feeLimit = 1_000_000_000L; // sun
-    long consumeUserResourcePercent = 100;
-
-    String contractName = "test";
-    byte[] address = Hex.decode(OWNER_ADDRESS);
-    String ABI = "[{\"constant\":true,\"inputs\":[],\"name\":\"voteContractAddress\",\"outputs\":"
-        + "[{\"name\":\"\",\"type\":\"address\"}],\"payable\":false,\"stateMutability\":\"view\","
-        + "\"type\":\"function\"},{\"constant\":false,\"inputs\":[{\"name\":\"witnessAddr\",\""
-        + "type\":\"address\"},{\"name\":\"voteValue\",\"type\":\"uint256\"}],\"name\":\""
-        + "voteForSingleWitness\",\"outputs\":[],\"payable\":false,\"stateMutability\":\""
-        + "nonpayable\",\"type\":\"function\"}]";
-    String code = "608060405260008054600160a060020a0319166201000117905534801561002557600080fd5b506"
-        + "10159806100356000396000f30060806040526004361061004b5763ffffffff7c0100000000000000000000"
-        + "000000000000000000000000000000000000600035041663906fbec98114610050578063cee14bb41461008"
-        + "e575b600080fd5b34801561005c57600080fd5b506100656100c1565b6040805173ffffffffffffffffffff"
-        + "ffffffffffffffffffff9092168252519081900360200190f35b34801561009a57600080fd5b506100bf73f"
-        + "fffffffffffffffffffffffffffffffffffffff600435166024356100dd565b005b60005473ffffffffffff"
-        + "ffffffffffffffffffffffffffff1681565b600080546040805173fffffffffffffffffffffffffffffffff"
-        + "fffffff868116825260208201869052825193169381830193909290918290030181855af491505015156101"
-        + "2957600080fd5b50505600a165627a7a723058206090aa7a8ac0e45fac642652417495e81dad6f1592343bf"
-        + "f8cfe97f61cf74e880029";
-
-    TVMTestResult result = TvmTestUtils
-        .deployContractAndReturnTvmTestResult(contractName, address, ABI, code, value, feeLimit,
-            consumeUserResourcePercent, null, dbManager, null);
-
-    long expectEnergyUsageTotal = 89214;
-    Assert.assertEquals(result.getReceipt().getEnergyUsageTotal(), expectEnergyUsageTotal);
-    Assert.assertEquals(dbManager.getAccountStore().get(address).getBalance(),
-        totalBalance - expectEnergyUsageTotal * 100);
-    byte[] contractAddress = result.getContractAddress();
-
-    String params =
-        Hex.toHexString(new DataWord(new DataWord(contractAddress).getLast20Bytes()).getData())
-            + "0000000000000000000000000000000000000000000000000000000000000003";
-
-    byte[] triggerData = TvmTestUtils.parseAbi("voteForSingleWitness(address,uint256)", params);
-    result = TvmTestUtils
-        .triggerContractAndReturnTvmTestResult(Hex.decode(OWNER_ADDRESS), contractAddress,
-            triggerData, 0, feeLimit, dbManager, null);
-
-    long expectEnergyUsageTotal2 = feeLimit / 100;
-    Assert.assertEquals(result.getReceipt().getEnergyUsageTotal(), expectEnergyUsageTotal2);
-    Assert.assertFalse(result.getRuntime().getResult().isRevert());
-    Assert.assertTrue(
-        result.getRuntime().getResult().getException() instanceof PrecompiledContractException);
-    Assert.assertEquals(dbManager.getAccountStore().get(address).getBalance(),
-        totalBalance - (expectEnergyUsageTotal + expectEnergyUsageTotal2) * 100);
-  }
-
-  // pragma solidity ^0.4.0;
-  //
   // contract TestMemContract{
   //
   //   function testMem(uint256 end) public {
@@ -563,4 +492,3 @@ public class EnergyWhenAssertStyleTest extends BaseTest {
   }
 
 }
-

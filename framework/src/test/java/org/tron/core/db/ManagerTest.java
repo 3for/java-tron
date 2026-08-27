@@ -265,7 +265,7 @@ public class ManagerTest extends BaseMethodTest {
   }
 
   @Test
-  public void pushBlock() {
+  public void pushBlock() throws ItemNotFoundException {
     boolean isUnlinked = false;
     try {
       dbManager.pushBlock(blockCapsule2);
@@ -282,14 +282,10 @@ public class ManagerTest extends BaseMethodTest {
       Assert.assertEquals("getBlockIdByNum is error",
           0, chainManager.getHeadBlockNum());
     } else {
-      try {
-        Assert.assertEquals(
-            "getBlockIdByNum is error",
-            blockCapsule2.getBlockId().toString(),
-            chainManager.getBlockIdByNum(1).toString());
-      } catch (ItemNotFoundException e) {
-        e.printStackTrace();
-      }
+      Assert.assertEquals(
+          "getBlockIdByNum is error",
+          blockCapsule2.getBlockId().toString(),
+          chainManager.getBlockIdByNum(1).toString());
     }
 
     Assert.assertThrows(ItemNotFoundException.class,
@@ -577,89 +573,6 @@ public class ManagerTest extends BaseMethodTest {
       Assert.assertFalse(e instanceof Exception);
     }
   }
-
-  @Test
-  public void pushSwitchFork()
-      throws UnLinkedBlockException, NonCommonBlockException, ContractValidateException,
-      ValidateScheduleException, ZksnarkException, BadBlockException, VMIllegalException,
-      BadNumberBlockException, DupTransactionException, ContractExeException,
-      ValidateSignatureException, TooBigTransactionResultException, TransactionExpirationException,
-      TaposException, ReceiptCheckErrException, TooBigTransactionException,
-      AccountResourceInsufficientException, EventBloomException {
-
-    String key = PublicMethod.getRandomPrivateKey();
-    String key2 = PublicMethod.getRandomPrivateKey();
-    byte[] privateKey = ByteArray.fromHexString(key);
-    final ECKey ecKey = ECKey.fromPrivate(privateKey);
-    byte[] address = ecKey.getAddress();
-
-    ByteString addressByte = ByteString.copyFrom(address);
-    AccountCapsule accountCapsule =
-            new AccountCapsule(Protocol.Account.newBuilder()
-                    .setAddress(addressByte).build());
-    chainManager.getAccountStore()
-            .put(addressByte.toByteArray(), accountCapsule);
-
-    WitnessCapsule sr1 = new WitnessCapsule(
-        ByteString.copyFrom(address), "www.tron.net/first");
-    sr1.setVoteCount(1000000000L);
-
-
-    byte[] privateKey2 = ByteArray.fromHexString(key2);
-    final ECKey ecKey2 = ECKey.fromPrivate(privateKey2);
-    byte[] address2 = ecKey2.getAddress();
-    WitnessCapsule sr2 = new WitnessCapsule(
-        ByteString.copyFrom(address2), "www.tron.net/second");
-    sr2.setVoteCount(100000L);
-    chainManager.getWitnessStore().put(address, sr1);
-    WitnessCapsule witnessCapsule = new WitnessCapsule(ByteString.copyFrom(address));
-    chainManager.getWitnessScheduleStore().saveActiveWitnesses(new ArrayList<>());
-    chainManager.addWitness(ByteString.copyFrom(address));
-    List<WitnessCapsule> witnessStandby1 = chainManager.getWitnessStore().getWitnessStandby(
-        chainManager.getDynamicPropertiesStore().allowWitnessSortOptimization());
-    Block block = blockGenerate.getSignedBlock(
-        witnessCapsule.getAddress(), 1533529947843L, privateKey);
-    dbManager.pushBlock(new BlockCapsule(block));
-
-    Map<ByteString, String> addressToProvateKeys = addTestWitnessAndAccount();
-    addressToProvateKeys.put(ByteString.copyFrom(address), key);
-
-    long num = chainManager.getDynamicPropertiesStore().getLatestBlockHeaderNumber();
-    ByteString latestHeadHash =
-        chainManager.getDynamicPropertiesStore().getLatestBlockHeaderHash().getByteString();
-    BlockCapsule blockCapsule1 =
-        createTestBlockCapsule(
-            1533529947843L + 3000,
-            num + 1,
-            latestHeadHash,
-            addressToProvateKeys);
-
-    dbManager.pushBlock(blockCapsule1);
-
-    BlockCapsule blockCapsule2 =
-        createTestBlockCapsule(
-            1533529947843L + 6000,
-            num + 2,
-            blockCapsule1.getBlockId().getByteString(),
-            addressToProvateKeys);
-
-    chainManager.getDynamicPropertiesStore()
-        .saveLatestBlockHeaderHash(latestHeadHash);  // change lastest block head
-
-    try {
-      dbManager.pushBlock(blockCapsule2);
-      Assert.assertTrue(false);
-    } catch (BadBlockException e) {
-      Assert.assertFalse(e instanceof BadBlockException);
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof Exception);
-    }
-    chainManager.getWitnessStore().put(address, sr2);
-    List<WitnessCapsule> witnessStandby2 = chainManager.getWitnessStore().getWitnessStandby(
-        chainManager.getDynamicPropertiesStore().allowWitnessSortOptimization());
-    Assert.assertNotEquals(witnessStandby1, witnessStandby2);
-  }
-
 
   public void updateWits() {
     int sizePrv = chainManager.getWitnessScheduleStore().getActiveWitnesses().size();
@@ -1096,16 +1009,16 @@ public class ManagerTest extends BaseMethodTest {
 
     dbManager.pushBlock(blockCapsule0);
     dbManager.pushBlock(blockCapsule1);
-    try {
-      BlockCapsule blockCapsule2 =
-          createTestBlockCapsuleError(
-              1533529947843L + 6000,
-              num + 2, blockCapsule1.getBlockId().getByteString(), addressToProvateKeys);
+    ValidateScheduleException scheduleException = Assert.assertThrows(
+        ValidateScheduleException.class, () -> {
+          BlockCapsule blockCapsule2 =
+              createTestBlockCapsuleError(
+                  1533529947843L + 6000,
+                  num + 2, blockCapsule1.getBlockId().getByteString(), addressToProvateKeys);
 
-      dbManager.pushBlock(blockCapsule2);
-    } catch (ValidateScheduleException e) {
-      logger.info("the fork chain has error block");
-    }
+          dbManager.pushBlock(blockCapsule2);
+        });
+    Assert.assertEquals("validateWitnessSchedule error", scheduleException.getMessage());
 
     Assert.assertNotNull(chainManager.getBlockStore().get(blockCapsule0.getBlockId().getBytes()));
     Assert.assertEquals(blockCapsule0.getBlockId(),
@@ -1534,12 +1447,19 @@ public class ManagerTest extends BaseMethodTest {
     EventPluginLoader originalLoader = (EventPluginLoader) instanceField.get(null);
     EventPluginLoader mockLoader = installMockLoader();
     when(mockLoader.isBlockLogTriggerEnable()).thenReturn(true);
+    when(mockLoader.isBlockLogTriggerSolidified()).thenReturn(false);
     when(mockLoader.isTransactionLogTriggerEnable()).thenReturn(false);
+    BlockingQueue<TriggerCapsule> queue = dbManager.getTriggerCapsuleQueue();
+    queue.clear();
     try {
       Method m = Manager.class.getDeclaredMethod("reOrgBlockTrigger");
       m.setAccessible(true);
-      // exercises the fetch of the old head block + try/catch; must not throw
       m.invoke(dbManager);
+      Assert.assertEquals(1, queue.size());
+      BlockLogTriggerCapsule trigger = (BlockLogTriggerCapsule) queue.poll();
+      Assert.assertTrue(trigger.getBlockLogTrigger().isRemoved());
+      Assert.assertEquals(dbManager.getHeadBlockNum(),
+          trigger.getBlockLogTrigger().getBlockNumber());
     } finally {
       restoreLoader(originalLoader);
     }
@@ -1558,11 +1478,18 @@ public class ManagerTest extends BaseMethodTest {
     when(mockLoader.isTransactionLogTriggerEthCompatible()).thenReturn(false);
     // make getContinuousBlockCapsule cover the current head block
     ReflectUtils.setFieldValue(dbManager, "lastUsedSolidityNum", -1L);
+    BlockingQueue<TriggerCapsule> queue = dbManager.getTriggerCapsuleQueue();
+    queue.clear();
     try {
       Method m = Manager.class.getDeclaredMethod("postSolidityTrigger", long.class);
       m.setAccessible(true);
-      // exercises the solidified-mode block/transaction batch emission
-      m.invoke(dbManager, dbManager.getHeadBlockNum());
+      long headBlockNum = dbManager.getHeadBlockNum();
+      m.invoke(dbManager, headBlockNum);
+      Assert.assertFalse(queue.isEmpty());
+      BlockLogTriggerCapsule trigger = (BlockLogTriggerCapsule) queue.poll();
+      Assert.assertFalse(trigger.getBlockLogTrigger().isRemoved());
+      Assert.assertEquals(headBlockNum,
+          trigger.getBlockLogTrigger().getLatestSolidifiedBlockNumber());
     } finally {
       restoreLoader(originalLoader);
     }

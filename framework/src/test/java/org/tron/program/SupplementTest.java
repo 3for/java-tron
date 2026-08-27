@@ -130,10 +130,9 @@ public class SupplementTest extends BaseTest {
   }
 
   @Test
-  public void testRun() {
+  public void testShutdownHookRunDoesNotThrow() {
     TronLogShutdownHook hook = new TronLogShutdownHook();
     hook.run();
-    assertTrue(true);
   }
 
 }
