@@ -1,5 +1,6 @@
 package org.tron.core.services.filter;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -36,9 +37,12 @@ public class CachedBodyRequestWrapperTest {
   @Test
   public void getInputStream_calledTwice_bothSucceed() throws IOException {
     CachedBodyRequestWrapper w = new CachedBodyRequestWrapper(new MockHttpServletRequest(), BODY);
-    w.getInputStream();
+    byte[] firstRead = readFully(w.getInputStream());
     // second call of the same accessor is allowed by the servlet spec
-    w.getInputStream();
+    byte[] secondRead = readFully(w.getInputStream());
+
+    assertArrayEquals(BODY, firstRead);
+    assertArrayEquals(BODY, secondRead);
   }
 
   // --- getReader ---
@@ -53,8 +57,11 @@ public class CachedBodyRequestWrapperTest {
   @Test
   public void getReader_calledTwice_bothSucceed() throws IOException {
     CachedBodyRequestWrapper w = new CachedBodyRequestWrapper(new MockHttpServletRequest(), BODY);
-    w.getReader();
-    w.getReader();
+    String firstRead = w.getReader().readLine();
+    String secondRead = w.getReader().readLine();
+
+    assertEquals("hello world", firstRead);
+    assertEquals("hello world", secondRead);
   }
 
   // --- mutual exclusion ---

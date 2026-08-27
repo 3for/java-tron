@@ -10,90 +10,21 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.List;
-import org.bouncycastle.util.encoders.Hex;
 import org.junit.Assert;
 import org.junit.Test;
 import org.tron.common.bloom.Bloom;
 import org.tron.common.crypto.Hash;
 import org.tron.common.parameter.CommonParameter;
-import org.tron.common.runtime.vm.DataWord;
 import org.tron.common.utils.ByteArray;
-import org.tron.common.utils.ByteUtil;
-import org.tron.common.utils.Commons;
 import org.tron.core.exception.jsonrpc.JsonRpcInvalidParamsException;
 import org.tron.core.services.jsonrpc.JsonRpcApiUtil;
 import org.tron.core.services.jsonrpc.TronJsonRpc.FilterRequest;
 import org.tron.core.services.jsonrpc.filters.LogBlockQuery;
 import org.tron.core.services.jsonrpc.filters.LogFilter;
 import org.tron.core.services.jsonrpc.filters.LogFilterWrapper;
-import org.tron.core.services.jsonrpc.types.CallArguments;
 
 
 public class JsonRpcTest {
-
-  public void generateCallParameterWIthMethodAndParam() {
-    String ownerAddress = "TXvRyjomvtNWSKvNouTvAedRGD4w9RXLZD";
-    String usdjAddress = "TLBaRhANQoJFTqre9Nf1mjuwNWjCJeYqUL"; // nile udsj address
-
-    byte[] addressData = Commons.decodeFromBase58Check(ownerAddress);
-    byte[] addressDataWord = new byte[32];
-    System.arraycopy(Commons.decodeFromBase58Check(ownerAddress), 0, addressDataWord,
-        32 - addressData.length, addressData.length);
-    String data = getMethodSign("balanceOf(address)") + Hex.toHexString(addressDataWord);
-
-    CallArguments transactionCall = new CallArguments();
-    transactionCall.setFrom(ByteArray.toHexString(Commons.decodeFromBase58Check(ownerAddress)));
-    transactionCall.setTo(ByteArray.toHexString(Commons.decodeFromBase58Check(usdjAddress)));
-    transactionCall.setData(data);
-
-    StringBuffer sb = new StringBuffer("{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[");
-    sb.append(transactionCall);
-    sb.append(", \"latest\"],\"id\":1}");
-
-    System.out.println(sb.toString());
-  }
-
-  public void generateCallParameterWithMethod() {
-    String ownerAddress = "TRXPT6Ny7EFvTPv7mFUqaFUST39WUZ4zzz";
-    String usdjAddress = "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"; // nile udsj address
-
-    byte[] addressData = Commons.decodeFromBase58Check(ownerAddress);
-    byte[] addressDataWord = new byte[32];
-    System.arraycopy(Commons.decodeFromBase58Check(ownerAddress), 0, addressDataWord,
-        32 - addressData.length, addressData.length);
-    String data = getMethodSign("name()");
-
-    CallArguments transactionCall = new CallArguments();
-    transactionCall.setFrom(ByteArray.toHexString(Commons.decodeFromBase58Check(ownerAddress)));
-    transactionCall.setTo(ByteArray.toHexString(Commons.decodeFromBase58Check(usdjAddress)));
-    transactionCall.setData(data);
-
-    StringBuffer sb = new StringBuffer("{\"jsonrpc\":\"2.0\",\"method\":\"eth_call\",\"params\":[");
-    sb.append(transactionCall);
-    sb.append(", \"latest\"],\"id\":1}");
-
-    System.out.println(sb.toString());
-  }
-
-  private String generateStorageParameter() {
-    // nile contract：TXEphLzyv5jFwvjzwMok9UoehaSn294ZhN
-    String contractAddress = "41E94EAD5F4CA072A25B2E5500934709F1AEE3C64B";
-
-    // nile：TXvRyjomvtNWSKvNouTvAedRGD4w9RXLZD
-    String sendAddress = "41F0CC5A2A84CD0F68ED1667070934542D673ACBD8";
-    String index = "01";
-    byte[] byte1 = new DataWord(new DataWord(sendAddress).getLast20Bytes()).getData();
-    byte[] byte2 = new DataWord(new DataWord(index).getLast20Bytes()).getData();
-    byte[] byte3 = ByteUtil.merge(byte1, byte2);
-    String position = ByteArray.toJsonHex(Hash.sha3(byte3));
-
-    StringBuffer sb = new StringBuffer(
-        "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getStorageAt\",\"params\":[\"0x");
-    sb.append(contractAddress + "\",\"");
-    sb.append(position + "\",");
-    sb.append("\"latest\"],\"id\":1}");
-    return sb.toString();
-  }
 
   private String constructData(String functionSelector, String parameter) {
     return getMethodSign(functionSelector) + parameter;
@@ -140,17 +71,28 @@ public class JsonRpcTest {
       Assert.fail();
     }
 
+    // Odd-length hex is intentionally left-padded by ByteArray.fromHexString before the
+    // TRON address prefix is added, so this is another supported compatibility form.
+    byte[] oddLengthExpected = ByteArray.fromHexString(
+        addressPreFixString + "0" + rawAddress.substring(1));
     try {
-      addressCompatibleToByteArray(rawAddress.substring(1));
+      Assert.assertArrayEquals(
+          oddLengthExpected, addressCompatibleToByteArray(rawAddress.substring(1)));
     } catch (JsonRpcInvalidParamsException e) {
-      Assert.assertEquals("invalid address", e.getMessage());
+      Assert.fail();
     }
 
-    try {
-      addressCompatibleToByteArray(rawAddress + "00");
-    } catch (JsonRpcInvalidParamsException e) {
-      Assert.assertEquals("invalid address", e.getMessage());
-    }
+    // Removing a complete byte leaves only 19 address bytes and must be rejected.
+    JsonRpcInvalidParamsException shortAddress = Assert.assertThrows(
+        JsonRpcInvalidParamsException.class,
+        () -> addressCompatibleToByteArray(rawAddress.substring(2)));
+    Assert.assertEquals("invalid address", shortAddress.getMessage());
+
+    // A 21-byte value must already carry the configured TRON network prefix.
+    JsonRpcInvalidParamsException wrongNetworkPrefix = Assert.assertThrows(
+        JsonRpcInvalidParamsException.class,
+        () -> addressCompatibleToByteArray(rawAddress + "00"));
+    Assert.assertEquals("invalid address", wrongNetworkPrefix.getMessage());
 
   }
 
@@ -223,20 +165,19 @@ public class JsonRpcTest {
       Assert.fail();
     }
 
-    try {
-      new LogFilter(new FilterRequest(null, null, null, new String[] {"0x0"}, null));
-    } catch (JsonRpcInvalidParamsException e) {
-      Assert.assertTrue(e.getMessage().contains("invalid topic"));
-    }
+    JsonRpcInvalidParamsException invalidTopic = Assert.assertThrows(
+        JsonRpcInvalidParamsException.class,
+        () -> new LogFilter(
+            new FilterRequest(null, null, null, new String[] {"0x0"}, null)));
+    Assert.assertTrue(invalidTopic.getMessage().contains("invalid topic"));
 
     // not empty topic and null cannot be in same level
-    try {
-      new LogFilter(new FilterRequest(null, null, null, new String[][] {
-          {"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef", null},
-      }, null));
-    } catch (JsonRpcInvalidParamsException e) {
-      Assert.assertTrue(e.getMessage().contains("invalid topic"));
-    }
+    JsonRpcInvalidParamsException mixedNullTopic = Assert.assertThrows(
+        JsonRpcInvalidParamsException.class,
+        () -> new LogFilter(new FilterRequest(null, null, null, new String[][] {
+            {"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef", null},
+        }, null)));
+    Assert.assertTrue(mixedNullTopic.getMessage().contains("invalid topic"));
 
     // non-string element in address array -> -32602, not a leaked ClassCastException
     JsonRpcInvalidParamsException badAddrElement = Assert.assertThrows(
@@ -253,23 +194,23 @@ public class JsonRpcTest {
     Assert.assertEquals("invalid topic(s): 1", badTopicElement.getMessage());
 
     // topic size should be <= 4
-    try {
-      new LogFilter(new FilterRequest(null, null, null,
-          new String[] {"0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
-              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
-              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
-              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
-              "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"}, null));
-    } catch (JsonRpcInvalidParamsException e) {
-      Assert.assertEquals("topics size should be <= 4", e.getMessage());
-    }
+    JsonRpcInvalidParamsException tooManyTopics = Assert.assertThrows(
+        JsonRpcInvalidParamsException.class,
+        () -> new LogFilter(new FilterRequest(null, null, null,
+            new String[] {
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+                "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+            }, null)));
+    Assert.assertEquals("topics size should be <= 4", tooManyTopics.getMessage());
 
     //address must be 40 hex string, not 41 ahead
-    try {
-      new LogFilter(new FilterRequest(null, null, "0x0", null, null));
-    } catch (JsonRpcInvalidParamsException e) {
-      Assert.assertTrue(e.getMessage().contains("invalid address"));
-    }
+    JsonRpcInvalidParamsException shortFilterAddress = Assert.assertThrows(
+        JsonRpcInvalidParamsException.class,
+        () -> new LogFilter(new FilterRequest(null, null, "0x0", null, null)));
+    Assert.assertTrue(shortFilterAddress.getMessage().contains("invalid address"));
     try {
       new LogFilter(
           new FilterRequest(null, null, "0xaa6612f03443517ced2bdcf27958c22353ceeab9", null, null));
@@ -278,13 +219,12 @@ public class JsonRpcTest {
     }
 
     //address length of 42 hex string with 41 ahead will be invalid
-    try {
-      new LogFilter(
-          new FilterRequest(null, null, "0x41aa6612f03443517ced2bdcf27958c22353ceeab9", null,
-              null));
-    } catch (JsonRpcInvalidParamsException e) {
-      Assert.assertTrue(e.getMessage().contains("invalid address"));
-    }
+    JsonRpcInvalidParamsException prefixedTronAddress = Assert.assertThrows(
+        JsonRpcInvalidParamsException.class,
+        () -> new LogFilter(
+            new FilterRequest(null, null, "0x41aa6612f03443517ced2bdcf27958c22353ceeab9",
+                null, null)));
+    Assert.assertTrue(prefixedTronAddress.getMessage().contains("invalid address"));
   }
 
   @Test

@@ -40,12 +40,12 @@ public class JsonFormatTest {
   @Test
   public void testPrintWithHelloMessage() throws IOException {
     Protocol.HelloMessage message = Protocol.HelloMessage.newBuilder()
-        .setAddress(ByteString.copyFrom("address".getBytes()))
+        .setAddress(ByteString.copyFromUtf8("address"))
         .build();
     StringWriter output = new StringWriter();
 
     JsonFormat.print(message, output, true);
-    assertNotNull(output.toString());
+    assertEquals("{\"address\": \"61646472657373\"}", output.toString());
   }
 
   private UnknownFieldSet createValidUnknownFieldSet() {
@@ -63,19 +63,24 @@ public class JsonFormatTest {
         .build();
   }
 
+  private String expectedUnknownFieldsJson() {
+    return "{\"1\": [12345678, \"0x0000007b\", \"0x0000000000003039\", "
+        + "\"6c656e677468\", {}]}";
+  }
+
   @Test
   public void testPrintWithFields() throws IOException {
     UnknownFieldSet unknownFieldSet = createValidUnknownFieldSet();
     StringWriter output = new StringWriter();
     JsonFormat.print(unknownFieldSet, output, true);
-    assertNotNull(output.toString());
+    assertEquals(expectedUnknownFieldsJson(), output.toString());
   }
 
   @Test
   public void testPrintToString() {
     UnknownFieldSet unknownFieldSet = createValidUnknownFieldSet();
     String output = JsonFormat.printToString(unknownFieldSet, true);
-    assertNotNull(output);
+    assertEquals(expectedUnknownFieldsJson(), output);
   }
 
   @Test
@@ -85,7 +90,7 @@ public class JsonFormatTest {
     String out3 =  (String)privateMethod.invoke(null, 100);
     assertEquals("100", out3);
     String out4 = (String)privateMethod.invoke(null, -100);
-    assertNotNull(out4);
+    assertEquals("4294967196", out4);
   }
 
   @Test
@@ -109,19 +114,19 @@ public class JsonFormatTest {
 
     char input1 = 0x09;
     String out =  (String)privateMethod.invoke(null, input1);
-    assertNotNull(out);
+    assertEquals("\\u" + "0009", out);
 
     char input2 = 0x99;
     String out2 =  (String)privateMethod.invoke(null, input2);
-    assertNotNull(out2);
+    assertEquals("\\u0099", out2);
 
     char input3 = 0x999;
     String out3 =  (String)privateMethod.invoke(null, input3);
-    assertNotNull(out3);
+    assertEquals("\\u0999", out3);
 
     char input4 = 0x1001;
     String out4 =  (String)privateMethod.invoke(null, input4);
-    assertNotNull(out4);
+    assertEquals("\\u1001", out4);
   }
 
   @Test
@@ -129,9 +134,10 @@ public class JsonFormatTest {
     Method privateMethod = JsonFormat.class.getDeclaredMethod("escapeText", String.class);
     privateMethod.setAccessible(true);
 
-    String input1 = "\b\f\n\r\t\\\"\\b\\f\\n\\r\\t\\\\\"test123";
+    String input1 = "\b\f\n\r\t\\\"" + ((char) 1) + "test123";
     String out = (String)privateMethod.invoke(null, input1);
-    assertNotNull(out);
+    String expected = "\\b\\f\\n\\r\\t" + "\\\\" + "\\\"" + "\\u0001test123";
+    assertEquals(expected, out);
   }
 
   @Test
@@ -144,22 +150,22 @@ public class JsonFormatTest {
     StringBuilder out1 = new StringBuilder();
 
     privateMethod.invoke(null, out1, input1);
-    assertNotNull(out1);
+    assertEquals("\\u" + "0009", out1.toString());
 
     char input2 = 0x99;
     StringBuilder out2 = new StringBuilder();
     privateMethod.invoke(null, out2, input2);
-    assertNotNull(out2);
+    assertEquals("\\u0099", out2.toString());
 
     char input3 = 0x999;
     StringBuilder out3 = new StringBuilder();
     privateMethod.invoke(null, out3, input3);
-    assertNotNull(out3);
+    assertEquals("\\u0999", out3.toString());
 
     char input4 = 0x1001;
     StringBuilder out4 = new StringBuilder();
     privateMethod.invoke(null, out4, input4);
-    assertNotNull(out4);
+    assertEquals("\\u1001", out4.toString());
   }
 
   @Test
@@ -167,9 +173,20 @@ public class JsonFormatTest {
     Method privateMethod = JsonFormat.class.getDeclaredMethod("unescapeText", String.class);
     privateMethod.setAccessible(true);
 
-    String input = "\\u1234\\b\\f\\n\\r\\t\\\\\"test123";;
+    String input = "\\u1234\\b\\f\\n\\r\\t" + "\\\\" + "\\\"" + "test123";
     String out = (String)privateMethod.invoke(null, input);
-    assertNotNull(out);
+    String expected = new StringBuilder()
+        .append((char) 0x1234)
+        .append('\b')
+        .append('\f')
+        .append('\n')
+        .append('\r')
+        .append('\t')
+        .append('\\')
+        .append('"')
+        .append("test123")
+        .toString();
+    assertEquals(expected, out);
   }
 
   @Test

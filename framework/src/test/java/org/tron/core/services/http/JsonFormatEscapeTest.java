@@ -194,7 +194,7 @@ public class JsonFormatEscapeTest {
   @Test
   public void testValidUtf8IsPreserved() {
     assertEquals("ok", escapeName("ok", URL_FIELD));
-    assertEquals("中文", escapeName("中文", URL_FIELD));
+    assertEquals("€✓", escapeName("€✓", URL_FIELD));
   }
 
   @Test
@@ -474,7 +474,7 @@ public class JsonFormatEscapeTest {
         "a\nb",
         "a\"b",
         "a\\u0041",
-        "中文",
+        "€✓",
         "\uFFFF sentinel",
         new String(Character.toChars(0x1F600))}) {
       ByteString original = ByteString.copyFromUtf8(value);
