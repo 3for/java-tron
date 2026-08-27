@@ -29,10 +29,6 @@ public class BlockStoreTest extends BaseTest {
   }
 
   @Test
-  public void testCreateBlockStore() {
-  }
-
-  @Test
   public void testPut() throws Exception {
     long number = 1;
     BlockCapsule blockCapsule = getBlockCapsule(number);

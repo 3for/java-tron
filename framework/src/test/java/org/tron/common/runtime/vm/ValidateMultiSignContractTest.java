@@ -270,7 +270,7 @@ public class ValidateMultiSignContractTest extends BaseTest {
 
     Pair<Boolean, byte[]> ret = contract.execute(input);
 
-    logger.info("BytesArray:{}，HexString:{}", Arrays.toString(ret.getValue()),
+    logger.info("BytesArray:{}, HexString:{}", Arrays.toString(ret.getValue()),
         Hex.toHexString(ret.getValue()));
     return ret;
   }

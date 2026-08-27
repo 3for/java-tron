@@ -831,14 +831,10 @@ public class PrecompiledContractsVerifyProofTest extends BaseTest {
     //initialize uncommitted
     uncommitted[0] = ByteArray.fromHexString(
         "0100000000000000000000000000000000000000000000000000000000000000");
-    try {
-      for (int i = 0; i < 31; i++) {
-        JLibrustzcash.librustzcashMerkleHash(
-            new LibrustzcashParam.MerkleHashParams(
-                i, uncommitted[i], uncommitted[i], uncommitted[i + 1]));
-      }
-    } catch (Throwable any) {
-      any.printStackTrace();
+    for (int i = 0; i < 31; i++) {
+      JLibrustzcash.librustzcashMerkleHash(
+          new LibrustzcashParam.MerkleHashParams(
+              i, uncommitted[i], uncommitted[i], uncommitted[i + 1]));
     }
     for (int cnt = 0; cnt < totalCountNum; cnt++) {
       SpendingKey sk = SpendingKey.random();

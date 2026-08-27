@@ -483,7 +483,7 @@ public class MarketCancelOrderActuatorTest extends BaseTest {
         .getPriceKeysList(TOKEN_ID_ONE.getBytes(), TOKEN_ID_TWO.getBytes(), 3);
     MarketOrderPair marketOrderPair = MarketUtils.decodeKeyToMarketPair(priceKeysList.get(0));
     MarketPrice marketPrice = MarketUtils.decodeKeyToMarketPrice(priceKeysList.get(1));
-    // 100:300 => 1；3
+    // 100:300 => 1:3
     Assert.assertEquals(1L, marketPrice.getSellTokenQuantity());
     Assert.assertEquals(3L, marketPrice.getBuyTokenQuantity());
 

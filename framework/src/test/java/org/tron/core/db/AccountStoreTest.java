@@ -100,6 +100,10 @@ public class AccountStoreTest extends BaseTest {
             ByteString.copyFrom(accountName),
             AccountType.forNumber(1));
     accountStore.put(data, accountCapsule);
+    AccountCapsule stored = accountStore.get(data);
+    Assert.assertNotNull(stored);
+    Assert.assertEquals(ByteString.copyFrom(address), stored.getAddress());
+    Assert.assertEquals(ByteString.copyFrom(accountName), stored.getAccountName());
   }
 
   @Test

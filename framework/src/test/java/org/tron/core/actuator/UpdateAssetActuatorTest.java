@@ -245,7 +245,7 @@ public class UpdateAssetActuatorTest extends BaseTest {
       actuator.validate();
       actuator.execute(ret);
       Assert.assertEquals(ret.getInstance().getRet(), Protocol.Transaction.Result.code.SUCESS);
-      //V1，Data is no longer update
+      // V1 data is no longer updated.
       AssetIssueCapsule assetIssueCapsule =
           dbManager.getAssetIssueStore().get(ByteString.copyFromUtf8(NAME).toByteArray());
       Assert.assertNull(assetIssueCapsule);

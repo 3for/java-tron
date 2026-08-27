@@ -113,6 +113,7 @@ public class CheckPointV2StoreTest {
 
     try {
       store.close();
+      verify(mockDbSource).closeDB();
     } finally {
       originalDbSource.closeDB();
     }

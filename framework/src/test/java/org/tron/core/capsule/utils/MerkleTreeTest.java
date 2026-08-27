@@ -8,16 +8,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.Assert;
 import org.junit.Test;
 import org.tron.common.parameter.CommonParameter;
-import org.tron.common.utils.ByteArray;
 import org.tron.common.utils.MerkleRoot;
 import org.tron.common.utils.Sha256Hash;
 import org.tron.core.capsule.utils.MerkleTree.Leaf;
 
-@Slf4j
 public class MerkleTreeTest {
 
   private static List<Sha256Hash> getHash(int hashNum) {
@@ -64,8 +61,6 @@ public class MerkleTreeTest {
       Assert.assertTrue(left == null);
       Assert.assertTrue(right == null);
       Assert.assertEquals(head.getHash(), hashList.get(number));
-      System.out.println("curBank :" + curBank + " number :" + number);
-      System.out.println(ByteArray.toHexString(head.getHash().getBytes()));
     }
   }
 
@@ -95,9 +90,7 @@ public class MerkleTreeTest {
    */
   public void test0HashNum() {
     List<Sha256Hash> hashList = getHash(0);  //Empty list.
-    Exception e = Assert.assertThrows(Exception.class,
-        () -> MerkleTree.build(hashList));
-    Assert.assertTrue(e instanceof IndexOutOfBoundsException);
+    Assert.assertThrows(IndexOutOfBoundsException.class, () -> MerkleTree.build(hashList));
   }
 
   @Test

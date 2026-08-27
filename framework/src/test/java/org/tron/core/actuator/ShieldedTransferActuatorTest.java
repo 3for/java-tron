@@ -268,17 +268,13 @@ public class ShieldedTransferActuatorTest extends BaseTest {
    * no public sign
    */
   @Test
-  public void publicAddressToPublicAddressNoPublicSign() {
+  public void publicAddressToPublicAddressNoPublicSign() throws Exception {
     dbManager.getDynamicPropertiesStore().saveAllowShieldedTransaction(1);
-    try {
-      TransactionCapsule transactionCap = getPublicToShieldedTransaction();
-      Assert.assertTrue(dbManager.pushTransaction(transactionCap));
-    } catch (ValidateSignatureException e) {
-      Assert.assertTrue(e instanceof ValidateSignatureException);
-      Assert.assertEquals("miss sig or contract", e.getMessage());
-    } catch (Exception e) {
-      Assert.assertTrue(false);
-    }
+    TransactionCapsule transactionCap = getPublicToShieldedTransaction();
+
+    ValidateSignatureException error = Assert.assertThrows(ValidateSignatureException.class,
+        () -> dbManager.pushTransaction(transactionCap));
+    Assert.assertEquals("miss sig or contract", error.getMessage());
   }
 
   /**
@@ -858,7 +854,7 @@ public class ShieldedTransferActuatorTest extends BaseTest {
   }
 
   /**
-   * transaction has no from address，and has validate shield input
+   * Transaction has no from address and has a valid shielded input.
    */
   @Test
   public void publicAddressAndShieldAddressToShieldAddressNoFromAddressFailure() {
@@ -907,7 +903,7 @@ public class ShieldedTransferActuatorTest extends BaseTest {
   }
 
   /**
-   * transaction hasn't to address，and has validate shield out
+   * Transaction has no to address and has a valid shielded output.
    */
   @Test
   public void publicAddressAToShieldAddressNoToAddressFailure() {
@@ -1132,7 +1128,7 @@ public class ShieldedTransferActuatorTest extends BaseTest {
     long fee = dbManager.getDynamicPropertiesStore().getShieldedTransactionFee();
     dbManager.getDynamicPropertiesStore().saveAllowShieldedTransaction(1);
 
-    try {
+    ArithmeticException exception = Assert.assertThrows(ArithmeticException.class, () -> {
       ZenTransactionBuilder builder = new ZenTransactionBuilder(wallet);
       //From amount
       long fromAmount = Long.MAX_VALUE + AMOUNT + fee;
@@ -1145,27 +1141,8 @@ public class ShieldedTransferActuatorTest extends BaseTest {
       PaymentAddress paymentAddress = incomingViewingKey.address(DiversifierT.random()).get();
       builder.addOutput(fullViewingKey.getOvk(), paymentAddress, AMOUNT, new byte[512]);
       builder.addOutput(fullViewingKey.getOvk(), paymentAddress, Long.MAX_VALUE, new byte[512]);
-      TransactionCapsule transactionCap = builder.build();
-
-      Contract contract =
-          transactionCap.getInstance().toBuilder().getRawDataBuilder().getContract(0);
-      ShieldedTransferActuator actuator = new ShieldedTransferActuator();
-      actuator.setChainBaseManager(dbManager.getChainBaseManager()).setContract(contract)
-          .setTx(transactionCap);
-      TransactionResultCapsule ret = new TransactionResultCapsule();
-
-      actuator.validate();
-      actuator.execute(ret);
-      Assert.assertTrue(false);
-    } catch (ArithmeticException e) {
-      // StrictMathWrapper.subtractExact throws ArithmeticException on overflow
-      Assert.assertTrue(true);
-    } catch (ContractValidateException e) {
-      Assert.assertTrue(e instanceof ContractValidateException);
-      Assert.assertEquals("librustzcashSaplingFinalCheck error", e.getMessage());
-    } catch (Exception e) {
-      Assert.assertTrue(false);
-    }
+    });
+    Assert.assertEquals("long overflow", exception.getMessage());
   }
 
   /**
@@ -1403,4 +1380,3 @@ public class ShieldedTransferActuatorTest extends BaseTest {
     }
   }
 }
-

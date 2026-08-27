@@ -123,7 +123,8 @@ public class UnfreezeBalanceV2ActuatorTest extends BaseTest {
   }
 
   @Test
-  public void testUnfreezeBalanceForBandwidth() {
+  public void testUnfreezeBalanceForBandwidth()
+      throws ContractValidateException, ContractExeException {
     long now = System.currentTimeMillis();
     dbManager.getDynamicPropertiesStore().saveLatestBlockHeaderTimestamp(now);
     dbManager.getDynamicPropertiesStore().saveTotalNetWeight(1000);
@@ -144,29 +145,22 @@ public class UnfreezeBalanceV2ActuatorTest extends BaseTest {
 
     long totalNetWeightBefore = dbManager.getDynamicPropertiesStore().getTotalNetWeight();
 
-    try {
-      actuator.validate();
-      actuator.execute(ret);
-      Assert.assertEquals(code.SUCESS, ret.getInstance().getRet());
-      AccountCapsule owner = dbManager.getAccountStore()
-          .get(ByteArray.fromHexString(OWNER_ADDRESS));
+    Assert.assertTrue(actuator.validate());
+    Assert.assertTrue(actuator.execute(ret));
+    Assert.assertEquals(code.SUCESS, ret.getInstance().getRet());
+    AccountCapsule owner = dbManager.getAccountStore()
+        .get(ByteArray.fromHexString(OWNER_ADDRESS));
+    Assert.assertEquals(100, owner.getFrozenV2BalanceForBandwidth());
+    Assert.assertEquals(100L, owner.getTronPower());
 
-      //Assert.assertEquals(owner.getBalance(), initBalance + frozenBalance);
-      Assert.assertEquals(100, owner.getFrozenV2BalanceForBandwidth());
-      Assert.assertEquals(100L, owner.getTronPower());
-
-      long totalNetWeightAfter = dbManager.getDynamicPropertiesStore().getTotalNetWeight();
-      Assert.assertEquals(totalNetWeightBefore - 1000, totalNetWeightAfter);
-
-    } catch (Exception e) {
-      Assert.assertFalse(e instanceof ContractValidateException);
-      Assert.assertFalse(e instanceof ContractExeException);
-    }
+    long totalNetWeightAfter = dbManager.getDynamicPropertiesStore().getTotalNetWeight();
+    Assert.assertEquals(totalNetWeightBefore - 1000, totalNetWeightAfter);
   }
 
 
   @Test
-  public void testUnfreezeBalanceForEnergy() {
+  public void testUnfreezeBalanceForEnergy()
+      throws ContractValidateException, ContractExeException {
     long now = System.currentTimeMillis();
     dbManager.getDynamicPropertiesStore().saveLatestBlockHeaderTimestamp(now);
     dbManager.getDynamicPropertiesStore().saveTotalNetWeight(1000);
@@ -185,22 +179,15 @@ public class UnfreezeBalanceV2ActuatorTest extends BaseTest {
     TransactionResultCapsule ret = new TransactionResultCapsule();
 
     long totalEnergyWeightBefore = dbManager.getDynamicPropertiesStore().getTotalEnergyWeight();
-    try {
-      actuator.validate();
-      actuator.execute(ret);
-      Assert.assertEquals(code.SUCESS, ret.getInstance().getRet());
-      AccountCapsule owner = dbManager.getAccountStore()
-              .get(ByteArray.fromHexString(OWNER_ADDRESS));
-
-      //Assert.assertEquals(owner.getBalance(), initBalance + frozenBalance);
-      Assert.assertEquals(100, owner.getAllFrozenBalanceForEnergy());
-      Assert.assertEquals(100, owner.getTronPower());
-      long totalEnergyWeightAfter = dbManager.getDynamicPropertiesStore().getTotalEnergyWeight();
-      Assert.assertEquals(totalEnergyWeightBefore - 1000, totalEnergyWeightAfter);
-    } catch (Exception e) {
-      Assert.assertFalse(e instanceof ContractValidateException);
-      Assert.assertFalse(e instanceof ContractExeException);
-    }
+    Assert.assertTrue(actuator.validate());
+    Assert.assertTrue(actuator.execute(ret));
+    Assert.assertEquals(code.SUCESS, ret.getInstance().getRet());
+    AccountCapsule owner = dbManager.getAccountStore()
+        .get(ByteArray.fromHexString(OWNER_ADDRESS));
+    Assert.assertEquals(100, owner.getAllFrozenBalanceForEnergy());
+    Assert.assertEquals(100, owner.getTronPower());
+    long totalEnergyWeightAfter = dbManager.getDynamicPropertiesStore().getTotalEnergyWeight();
+    Assert.assertEquals(totalEnergyWeightBefore - 1000, totalEnergyWeightAfter);
   }
 
 
@@ -485,7 +472,7 @@ public class UnfreezeBalanceV2ActuatorTest extends BaseTest {
 
 
   @Test
-  public void testUnfreezeBalanceForTronPowerWithOldTronPowerAfterNewResourceModelError() {
+  public void testUnfreezeTronPowerWithoutFrozenBalanceAfterNewResourceModel() {
     long now = System.currentTimeMillis();
     dbManager.getDynamicPropertiesStore().saveLatestBlockHeaderTimestamp(now);
     dbManager.getDynamicPropertiesStore().saveAllowNewResourceModel(1L);
@@ -494,22 +481,15 @@ public class UnfreezeBalanceV2ActuatorTest extends BaseTest {
     AccountCapsule accountCapsule = dbManager.getAccountStore()
         .get(ByteArray.fromHexString(OWNER_ADDRESS));
     accountCapsule.addFrozenBalanceForEnergyV2(frozenBalance);
-    accountCapsule.addFrozenForTronPowerV2(frozenBalance);
-    accountCapsule.addVotes(
-            ByteString.copyFrom(ByteArray.fromHexString(OWNER_ADDRESS)), 100L);
-
     dbManager.getAccountStore().put(accountCapsule.createDbKey(), accountCapsule);
+
     UnfreezeBalanceV2Actuator actuator = new UnfreezeBalanceV2Actuator();
     actuator.setChainBaseManager(dbManager.getChainBaseManager())
         .setAny(getContractForTronPowerV2(OWNER_ADDRESS, unfreezeBalance));
-    TransactionResultCapsule ret = new TransactionResultCapsule();
 
-    try {
-      actuator.validate();
-      //Assert.fail();
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof ContractValidateException);
-    }
+    ContractValidateException exception = Assert.assertThrows(
+        ContractValidateException.class, actuator::validate);
+    Assert.assertEquals("no frozenBalance(TronPower)", exception.getMessage());
   }
 
 
@@ -795,4 +775,3 @@ public class UnfreezeBalanceV2ActuatorTest extends BaseTest {
 
 
 }
-

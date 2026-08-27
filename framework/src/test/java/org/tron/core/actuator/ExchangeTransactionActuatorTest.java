@@ -1745,20 +1745,19 @@ public class ExchangeTransactionActuatorTest extends BaseTest {
    */
   @Test
   public void isExchangeTransactionPush() {
-    try {
-      TransactionCapsule transactionCap = new TransactionCapsule(
-          ExchangeTransactionContract.newBuilder()
-              .setOwnerAddress(ByteString.copyFrom(ByteArray.fromHexString(OWNER_ADDRESS_SECOND)))
-              .setExchangeId(1)
-              .setTokenId(ByteString.copyFrom("_".getBytes()))
-              .setQuant(1)
-              .setExpected(1)
-              .build(), ContractType.ExchangeTransactionContract);
-      dbManager.pushTransaction(transactionCap);
+    dbManager.getDynamicPropertiesStore().saveAllowHardenExchangeCalculation(0);
+    TransactionCapsule transactionCap = new TransactionCapsule(
+        ExchangeTransactionContract.newBuilder()
+            .setOwnerAddress(ByteString.copyFrom(ByteArray.fromHexString(OWNER_ADDRESS_SECOND)))
+            .setExchangeId(1)
+            .setTokenId(ByteString.copyFrom("_".getBytes()))
+            .setQuant(1)
+            .setExpected(1)
+            .build(), ContractType.ExchangeTransactionContract);
 
-    } catch (Exception e) {
-      Assert.assertTrue(true);
-    }
+    ContractValidateException exception = assertThrows(ContractValidateException.class,
+        () -> dbManager.pushTransaction(transactionCap));
+    Assert.assertEquals("ExchangeTransactionContract is rejected", exception.getMessage());
   }
 
   @Test

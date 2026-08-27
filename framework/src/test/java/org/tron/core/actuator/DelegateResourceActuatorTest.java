@@ -283,15 +283,9 @@ public class DelegateResourceActuatorTest extends BaseTest {
     actuator.setChainBaseManager(dbManager.getChainBaseManager()).setAny(
         getDelegateContractForBandwidth(OWNER_ADDRESS, RECEIVER_ADDRESS, 1_000_000_000L));
 
-    TransactionResultCapsule ret = new TransactionResultCapsule();
-    try {
-      actuator.validate();
-      actuator.execute(ret);
-    } catch (ContractValidateException e) {
-      assertEquals("Do not allow delegate resources to contract addresses", e.getMessage());
-    } catch (ContractExeException e) {
-      fail(e.getMessage());
-    }
+    ContractValidateException error = assertThrows(ContractValidateException.class,
+        actuator::validate);
+    assertEquals("Do not allow delegate resources to contract addresses", error.getMessage());
   }
 
   @Test
@@ -302,15 +296,9 @@ public class DelegateResourceActuatorTest extends BaseTest {
     actuator.setChainBaseManager(dbManager.getChainBaseManager()).setAny(
         getDelegateContractForBandwidth(OWNER_ADDRESS, OWNER_ADDRESS, 1_000_000_000L));
 
-    TransactionResultCapsule ret = new TransactionResultCapsule();
-    try {
-      actuator.validate();
-      actuator.execute(ret);
-    } catch (ContractValidateException e) {
-      assertEquals("receiverAddress must not be the same as ownerAddress", e.getMessage());
-    } catch (ContractExeException e) {
-      fail(e.getMessage());
-    }
+    ContractValidateException error = assertThrows(ContractValidateException.class,
+        actuator::validate);
+    assertEquals("receiverAddress must not be the same as ownerAddress", error.getMessage());
   }
 
   @Test

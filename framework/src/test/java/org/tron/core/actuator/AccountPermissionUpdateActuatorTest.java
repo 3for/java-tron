@@ -166,7 +166,6 @@ public class AccountPermissionUpdateActuatorTest extends BaseTest {
 
       fail(failMsg);
     } catch (ContractValidateException | RuntimeException e) {
-      Assert.assertTrue(true);
       Assert.assertEquals(expectedMsg, e.getMessage());
     } catch (ContractExeException e) {
       Assert.fail();

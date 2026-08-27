@@ -235,7 +235,7 @@ public class MarketSellAssetActuator extends AbstractActuator {
     if (marketAccountOrderCapsule != null
         && marketAccountOrderCapsule.getCount() >= MAX_ACTIVE_ORDER_NUM) {
       throw new ContractValidateException(
-          "Maximum number of orders exceeded，" + MAX_ACTIVE_ORDER_NUM);
+          "Maximum number of orders exceeded, " + MAX_ACTIVE_ORDER_NUM);
     }
 
     try {

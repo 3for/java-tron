@@ -81,19 +81,19 @@ public class SnapshotImplTest extends BaseMethodTest {
     from2.put("key4".getBytes(), "value4".getBytes());
 
     /*
-    // before merge  get data in from is success，traverse 0 times
+    // before merge  get data in from is success, traverse 0 times
     byte[] s1 = from.get("key1".getBytes());
     assertEquals(new String("value1".getBytes()), new String(s1));
     byte[] s2 = from.get("key2".getBytes());
     assertEquals(new String("value2".getBytes()), new String(s2));
-    // before merge  get data in from2 is success， traverse 0 times
+    // before merge  get data in from2 is success, traverse 0 times
     byte[] s3 = from2.get("key3".getBytes());
     assertEquals(new String("value3".getBytes()), new String(s3));
     byte[] s4 = from2.get("key4".getBytes());
     assertEquals(new String("value4".getBytes()), new String(s4));
      */
 
-    // before merge from2 get data is success， traverse 1 times
+    // before merge from2 get data is success, traverse 1 times
     byte[] s11 = from2.get("key1".getBytes());
     assertEquals(new String("value1".getBytes()), new String(s11));
     byte[] s12 = from2.get("key2".getBytes());
@@ -105,20 +105,20 @@ public class SnapshotImplTest extends BaseMethodTest {
     // do mergeAhead
     from2.mergeAhead(from);
     /*
-    // after merge  get data in from is success， traverse 0 times
+    // after merge  get data in from is success, traverse 0 times
     s1 = from.get("key1".getBytes());
     assertEquals(new String("value1".getBytes()), new String(s1));
     s2 = from.get("key2".getBytes());
     assertEquals(new String("value2".getBytes()), new String(s2));
 
-    // after merge get data in from2 is success， traverse 0 times
+    // after merge get data in from2 is success, traverse 0 times
     s3 = from2.get("key3".getBytes());
     assertEquals(new String("value3".getBytes()), new String(s3));
     s4 = from2.get("key4".getBytes());
     assertEquals(new String("value4".getBytes()), new String(s4));
      */
 
-    // after merge from2 get data is success， traverse 0 times
+    // after merge from2 get data is success, traverse 0 times
     byte[] s1 = from2.get("key1".getBytes());
     assertEquals(new String("value1".getBytes()), new String(s1));
     byte[] s2 = from2.get("key2".getBytes());
@@ -150,7 +150,7 @@ public class SnapshotImplTest extends BaseMethodTest {
     // do mergeAhead
     from2.mergeAhead(from);
 
-    // after merge from2 get data is success， traverse 0 times
+    // after merge from2 get data is success, traverse 0 times
     byte[] s1 = from2.get("key1".getBytes());
     assertEquals(new String("value1".getBytes()), new String(s1));
     byte[] s2 = from2.get("key2".getBytes());

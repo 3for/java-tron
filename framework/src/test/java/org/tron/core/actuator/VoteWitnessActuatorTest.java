@@ -575,7 +575,8 @@ public class VoteWitnessActuatorTest extends BaseTest {
   }
 
   @Test
-  public void voteWitnessWithOldTronPowerAfterNewResourceModel() {
+  public void voteWitnessWithOldTronPowerAfterNewResourceModel()
+      throws ContractValidateException, ContractExeException {
 
     dbManager.getDynamicPropertiesStore().saveAllowNewResourceModel(1L);
 
@@ -589,24 +590,20 @@ public class VoteWitnessActuatorTest extends BaseTest {
         .setAny(getContract(OWNER_ADDRESS, WITNESS_ADDRESS, 1L));
     TransactionResultCapsule ret = new TransactionResultCapsule();
     try {
-      actuator.validate();
-      actuator.execute(ret);
+      Assert.assertTrue(actuator.validate());
+      Assert.assertTrue(actuator.execute(ret));
 
-      owner =
-          dbManager.getAccountStore().get(ByteArray.fromHexString(OWNER_ADDRESS));
+      owner = dbManager.getAccountStore().get(ByteArray.fromHexString(OWNER_ADDRESS));
       Assert.assertEquals(2000000L, owner.getInstance().getOldTronPower());
-    } catch (ContractValidateException e) {
-      e.printStackTrace();
-      Assert.assertFalse(e instanceof ContractValidateException);
-    } catch (ContractExeException e) {
-      Assert.assertFalse(e instanceof ContractExeException);
+    } finally {
+      dbManager.getDynamicPropertiesStore().saveAllowNewResourceModel(0L);
     }
-    dbManager.getDynamicPropertiesStore().saveAllowNewResourceModel(0L);
   }
 
 
   @Test
-  public void voteWitnessWithOldAndNewTronPowerAfterNewResourceModel() {
+  public void voteWitnessWithOldAndNewTronPowerAfterNewResourceModel()
+      throws ContractValidateException, ContractExeException {
 
     dbManager.getDynamicPropertiesStore().saveAllowNewResourceModel(1L);
 
@@ -621,21 +618,16 @@ public class VoteWitnessActuatorTest extends BaseTest {
         .setAny(getContract(OWNER_ADDRESS, WITNESS_ADDRESS, 1L));
     TransactionResultCapsule ret = new TransactionResultCapsule();
     try {
-      actuator.validate();
-      actuator.execute(ret);
+      Assert.assertTrue(actuator.validate());
+      Assert.assertTrue(actuator.execute(ret));
 
-      owner =
-          dbManager.getAccountStore().get(ByteArray.fromHexString(OWNER_ADDRESS));
+      owner = dbManager.getAccountStore().get(ByteArray.fromHexString(OWNER_ADDRESS));
       Assert.assertEquals(3000000L, owner.getAllTronPower());
       Assert.assertEquals(2000000L, owner.getInstance().getOldTronPower());
       Assert.assertEquals(1000000L, owner.getInstance().getTronPower().getFrozenBalance());
-    } catch (ContractValidateException e) {
-      e.printStackTrace();
-      Assert.assertFalse(e instanceof ContractValidateException);
-    } catch (ContractExeException e) {
-      Assert.assertFalse(e instanceof ContractExeException);
+    } finally {
+      dbManager.getDynamicPropertiesStore().saveAllowNewResourceModel(0L);
     }
-    dbManager.getDynamicPropertiesStore().saveAllowNewResourceModel(0L);
   }
 
 

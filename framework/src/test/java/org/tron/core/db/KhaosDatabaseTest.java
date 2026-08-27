@@ -4,14 +4,13 @@ import com.google.common.collect.Lists;
 import com.google.protobuf.ByteString;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
-import java.util.List;
+import java.util.LinkedList;
 import javax.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Assert;
 import org.junit.Test;
 import org.tron.common.BaseTest;
 import org.tron.common.TestConstants;
-import org.tron.common.parameter.CommonParameter;
 import org.tron.common.utils.ByteArray;
 import org.tron.common.utils.Pair;
 import org.tron.common.utils.Sha256Hash;
@@ -57,11 +56,8 @@ public class KhaosDatabaseTest extends BaseTest {
             ByteArray.fromHexString(
                 "9938a342238077182498b464ac029222ae169360e540d1fd6aee7c2ae9575a06"))))).build());
     khaosDatabase.start(blockCapsule);
-    try {
-      khaosDatabase.push(blockCapsule2);
-    } catch (UnLinkedBlockException | BadNumberBlockException e) {
-      System.out.println(e.getMessage());
-    }
+    Assert.assertThrows(UnLinkedBlockException.class,
+        () -> khaosDatabase.push(blockCapsule2));
 
     Assert.assertEquals(blockCapsule2, khaosDatabase.getBlock(blockCapsule2.getBlockId()));
     Assert.assertTrue("contain is error", khaosDatabase.containBlock(blockCapsule2.getBlockId()));
@@ -101,7 +97,8 @@ public class KhaosDatabaseTest extends BaseTest {
   }
 
   @Test
-  public void testGetBranch() {
+  public void testGetBranch()
+      throws UnLinkedBlockException, BadNumberBlockException, NonCommonBlockException {
     final String mockedHash = "0304f784e4e7bae517bcab94c3e0c9214fb4ac7ff9d7d5a937d1f40031f87b82";
     // common parent block
     BlockCapsule parentBlock = new BlockCapsule(Block.newBuilder().setBlockHeader(
@@ -114,49 +111,32 @@ public class KhaosDatabaseTest extends BaseTest {
         1, parentBlock.getBlockId(), 0, ByteString.EMPTY);
     BlockCapsule block2OnforkA = new BlockCapsule(
         2, block1OnforkA.getBlockId(), 0, ByteString.EMPTY);
-    List<KhaosDatabase.KhaosBlock> forkA = Lists.newLinkedList();
+    LinkedList<KhaosDatabase.KhaosBlock> forkA = Lists.newLinkedList();
     forkA.add(new KhaosDatabase.KhaosBlock(block2OnforkA));
     forkA.add(new KhaosDatabase.KhaosBlock(block1OnforkA));
-    forkA.add(new KhaosDatabase.KhaosBlock(parentBlock));
     // fork-chain-B
     BlockCapsule block1OnforkB = new BlockCapsule(
-        1, parentBlock.getBlockId(), 0, ByteString.EMPTY);
-    List<KhaosDatabase.KhaosBlock> forkB = Lists.newLinkedList();
-    forkA.add(new KhaosDatabase.KhaosBlock(block1OnforkB));
-    forkA.add(new KhaosDatabase.KhaosBlock(parentBlock));
+        1, parentBlock.getBlockId(), 1, ByteString.EMPTY);
+    LinkedList<KhaosDatabase.KhaosBlock> forkB = Lists.newLinkedList();
+    forkB.add(new KhaosDatabase.KhaosBlock(block1OnforkB));
 
     khaosDatabase.start(parentBlock);
-    try {
-      khaosDatabase.push(block1OnforkA);
-      khaosDatabase.push(block2OnforkA);
-      khaosDatabase.push(block1OnforkB);
-      // case: block num of param1 > block num of param2
-      Pair result1 = khaosDatabase.getBranch(
-          Sha256Hash.of(
-              CommonParameter
-                  .getInstance().isECKeyCryptoEngine(),
-              block2OnforkA.getInstance().getBlockHeader().getRawData().toByteArray()),
-          Sha256Hash.of(
-              CommonParameter
-                  .getInstance().isECKeyCryptoEngine(),
-              block1OnforkB.getInstance().getBlockHeader().getRawData().toByteArray()));
-      Assert.assertEquals(forkA, result1.getKey());
-      Assert.assertEquals(forkB, result1.getValue());
-      // case: block num of param2 > block num of param1
-      Pair result2 = khaosDatabase.getBranch(
-          Sha256Hash.of(
-              CommonParameter
-                  .getInstance().isECKeyCryptoEngine(),
-              block1OnforkB.getInstance().getBlockHeader().getRawData().toByteArray()),
-          Sha256Hash.of(
-              CommonParameter
-                  .getInstance().isECKeyCryptoEngine(),
-              block2OnforkA.getInstance().getBlockHeader().getRawData().toByteArray()));
-      Assert.assertEquals(forkB, result2.getKey());
-      Assert.assertEquals(forkA, result2.getValue());
-    } catch (UnLinkedBlockException | BadNumberBlockException | NonCommonBlockException e) {
-      System.out.println(e.getMessage());
-    }
+    khaosDatabase.push(block1OnforkA);
+    khaosDatabase.push(block2OnforkA);
+    khaosDatabase.push(block1OnforkB);
+    // Keep the static type as Sha256Hash so this exercises the strict branch lookup overload.
+    Sha256Hash forkAHead = block2OnforkA.getBlockId();
+    Sha256Hash forkBHead = block1OnforkB.getBlockId();
+    // case: block num of param1 > block num of param2
+    Pair<LinkedList<KhaosDatabase.KhaosBlock>, LinkedList<KhaosDatabase.KhaosBlock>> result1 =
+        khaosDatabase.getBranch(forkAHead, forkBHead);
+    Assert.assertEquals(forkA, result1.getKey());
+    Assert.assertEquals(forkB, result1.getValue());
+    // case: block num of param2 > block num of param1
+    Pair<LinkedList<KhaosDatabase.KhaosBlock>, LinkedList<KhaosDatabase.KhaosBlock>> result2 =
+        khaosDatabase.getBranch(forkBHead, forkAHead);
+    Assert.assertEquals(forkB, result2.getKey());
+    Assert.assertEquals(forkA, result2.getValue());
   }
 
   @Test(expected = UnsupportedOperationException.class)

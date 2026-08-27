@@ -121,7 +121,6 @@ public class TransferActuatorTest extends BaseTest {
 
       Assert.assertEquals(owner.getBalance(), OWNER_BALANCE - AMOUNT - TRANSFER_FEE);
       Assert.assertEquals(toAccount.getBalance(), TO_BALANCE + AMOUNT);
-      Assert.assertTrue(true);
     } catch (ContractValidateException e) {
       Assert.assertFalse(e instanceof ContractValidateException);
     } catch (ContractExeException e) {
@@ -147,7 +146,6 @@ public class TransferActuatorTest extends BaseTest {
 
       Assert.assertEquals(owner.getBalance(), 0);
       Assert.assertEquals(toAccount.getBalance(), TO_BALANCE + OWNER_BALANCE);
-      Assert.assertTrue(true);
     } catch (ContractValidateException e) {
       Assert.assertFalse(e instanceof ContractValidateException);
     } catch (ContractExeException e) {
@@ -500,18 +498,9 @@ public class TransferActuatorTest extends BaseTest {
     TransferActuator actuator = new TransferActuator();
     actuator.setChainBaseManager(dbManager.getChainBaseManager())
         .setAny(getContract(1, contractAddress));
-    TransactionResultCapsule ret = new TransactionResultCapsule();
-    try {
-      actuator.validate();
-      actuator.execute(ret);
-      Assert.assertEquals(ret.getInstance().getRet(), code.SUCESS);
-      AccountCapsule owner =
-          dbManager.getAccountStore().get(ByteArray.fromHexString(OWNER_ADDRESS));
-      AccountCapsule toAccount =
-          dbManager.getAccountStore().get(contractAddress);
-    } catch (ContractValidateException e) {
-      Assert.assertTrue(e.getMessage().contains("Cannot transfer"));
-    }
+    ContractValidateException error = Assert.assertThrows(ContractValidateException.class,
+        actuator::validate);
+    Assert.assertEquals("Cannot transfer TRX to a smartContract.", error.getMessage());
   }
 
 }

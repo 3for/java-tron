@@ -962,61 +962,6 @@ public class UnfreezeBalanceActuatorTest extends BaseTest {
 
   }
 
-  /*@Test
-  public void InvalidTotalNetWeight(){
-    long now = System.currentTimeMillis();
-    dbManager.getDynamicPropertiesStore().saveLatestBlockHeaderTimestamp(now);
-    dbManager.getDynamicPropertiesStore().saveTotalNetWeight(smallTatalResource);
-
-    AccountCapsule accountCapsule = dbManager.getAccountStore()
-            .get(ByteArray.fromHexString(OWNER_ADDRESS));
-    accountCapsule.setFrozen(frozenBalance, now);
-    dbManager.getAccountStore().put(accountCapsule.createDbKey(), accountCapsule);
-
-    Assert.assertTrue(frozenBalance/1000_000L > smallTatalResource );
-    UnfreezeBalanceActuator actuator = new UnfreezeBalanceActuator(
-            getContract(OWNER_ADDRESS), dbManager);
-    TransactionResultCapsule ret = new TransactionResultCapsule();
-    try {
-      actuator.validate();
-      actuator.execute(ret);
-
-      Assert.assertTrue(dbManager.getDynamicPropertiesStore().getTotalNetWeight() >= 0);
-    } catch (ContractValidateException e) {
-      Assert.assertTrue(e instanceof ContractValidateException);
-    } catch (ContractExeException e) {
-      Assert.assertTrue(e instanceof ContractExeException);
-    }
-  }
-
-  @Test
-  public void InvalidTotalEnergyWeight(){
-    long now = System.currentTimeMillis();
-    dbManager.getDynamicPropertiesStore().saveLatestBlockHeaderTimestamp(now);
-    dbManager.getDynamicPropertiesStore().saveTotalEnergyWeight(smallTatalResource);
-
-    AccountCapsule accountCapsule = dbManager.getAccountStore()
-            .get(ByteArray.fromHexString(OWNER_ADDRESS));
-    accountCapsule.setFrozenForEnergy(frozenBalance, now);
-    dbManager.getAccountStore().put(accountCapsule.createDbKey(), accountCapsule);
-
-    Assert.assertTrue(frozenBalance/1000_000L > smallTatalResource );
-    UnfreezeBalanceActuator actuator = new UnfreezeBalanceActuator(
-            getContract(OWNER_ADDRESS, Contract.ResourceCode.ENERGY), dbManager);
-    TransactionResultCapsule ret = new TransactionResultCapsule();
-    try {
-      actuator.validate();
-      actuator.execute(ret);
-
-      Assert.assertTrue(dbManager.getDynamicPropertiesStore().getTotalEnergyWeight() >= 0);
-    } catch (ContractValidateException e) {
-      Assert.assertTrue(e instanceof ContractValidateException);
-    } catch (ContractExeException e) {
-      Assert.assertTrue(e instanceof ContractExeException);
-    }
-  }*/
-
-
   @Test
   public void commonErrorCheck() {
     UnfreezeBalanceActuator actuator = new UnfreezeBalanceActuator();
@@ -1172,4 +1117,3 @@ public class UnfreezeBalanceActuatorTest extends BaseTest {
   }
 
 }
-

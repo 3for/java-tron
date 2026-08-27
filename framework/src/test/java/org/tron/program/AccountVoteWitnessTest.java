@@ -2,10 +2,9 @@ package org.tron.program;
 
 import com.google.common.collect.Lists;
 import com.google.protobuf.ByteString;
-import java.io.File;
 import java.util.List;
 import javax.annotation.Resource;
-import lombok.extern.slf4j.Slf4j;
+import org.junit.Assert;
 import org.junit.Test;
 import org.tron.common.BaseTest;
 import org.tron.common.TestConstants;
@@ -15,7 +14,6 @@ import org.tron.core.capsule.WitnessCapsule;
 import org.tron.core.config.args.Args;
 import org.tron.protos.Protocol.AccountType;
 
-@Slf4j
 public class AccountVoteWitnessTest extends BaseTest {
 
   @Resource
@@ -25,20 +23,8 @@ public class AccountVoteWitnessTest extends BaseTest {
     Args.setParam(new String[]{"-d", dbPath()}, TestConstants.TEST_CONF);
   }
 
-  private static Boolean deleteFolder(File index) {
-    if (!index.isDirectory() || index.listFiles().length <= 0) {
-      return index.delete();
-    }
-    for (File file : index.listFiles()) {
-      if (null != file && !deleteFolder(file)) {
-        return false;
-      }
-    }
-    return index.delete();
-  }
-
   @Test
-  public void testAccountVoteWitness() {
+  public void testMaintenanceIgnoresVotesWithoutPendingVoteRecords() {
     final List<AccountCapsule> accountCapsuleList = this.getAccountList();
     final List<WitnessCapsule> witnessCapsuleList = this.getWitnessList();
     accountCapsuleList.forEach(
@@ -46,7 +32,6 @@ public class AccountVoteWitnessTest extends BaseTest {
           dbManager
               .getAccountStore()
               .put(accountCapsule.getAddress().toByteArray(), accountCapsule);
-          this.printAccount(accountCapsule.getAddress());
         });
     witnessCapsuleList.forEach(
         witnessCapsule ->
@@ -54,37 +39,17 @@ public class AccountVoteWitnessTest extends BaseTest {
                 .getWitnessStore()
                 .put(witnessCapsule.getAddress().toByteArray(), witnessCapsule));
     maintenanceManager.doMaintenance();
-    this.printWitness(ByteString.copyFrom("00000000001".getBytes()));
-    this.printWitness(ByteString.copyFrom("00000000002".getBytes()));
-    this.printWitness(ByteString.copyFrom("00000000003".getBytes()));
-    this.printWitness(ByteString.copyFrom("00000000004".getBytes()));
-    this.printWitness(ByteString.copyFrom("00000000005".getBytes()));
-    this.printWitness(ByteString.copyFrom("00000000006".getBytes()));
-    this.printWitness(ByteString.copyFrom("00000000007".getBytes()));
+    Assert.assertEquals(0L, getWitnessVoteCount("00000000001"));
+    Assert.assertEquals(100L, getWitnessVoteCount("00000000003"));
+    Assert.assertEquals(200L, getWitnessVoteCount("00000000005"));
+    Assert.assertEquals(300L, getWitnessVoteCount("00000000006"));
+    Assert.assertNull(dbManager.getWitnessStore().get("00000000002".getBytes()));
   }
 
-  private void printAccount(final ByteString address) {
-    final AccountCapsule accountCapsule = dbManager.getAccountStore().get(address.toByteArray());
-    if (null == accountCapsule) {
-      logger.info("address is {}  , account is null", address.toStringUtf8());
-      return;
-    }
-    logger.info(
-        "address is {}  ,countVoteSize is {}",
-        accountCapsule.getAddress().toStringUtf8(),
-        accountCapsule.getVotesList().size());
-  }
-
-  private void printWitness(final ByteString address) {
-    final WitnessCapsule witnessCapsule = dbManager.getWitnessStore().get(address.toByteArray());
-    if (null == witnessCapsule) {
-      logger.info("address is {}  , witness is null", address.toStringUtf8());
-      return;
-    }
-    logger.info(
-        "address is {}  ,countVote is {}",
-        witnessCapsule.getAddress().toStringUtf8(),
-        witnessCapsule.getVoteCount());
+  private long getWitnessVoteCount(String address) {
+    WitnessCapsule witness = dbManager.getWitnessStore().get(address.getBytes());
+    Assert.assertNotNull(witness);
+    return witness.getVoteCount();
   }
 
   private List<AccountCapsule> getAccountList() {

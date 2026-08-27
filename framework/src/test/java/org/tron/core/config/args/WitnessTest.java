@@ -77,6 +77,7 @@ public class WitnessTest {
   @Test
   public void setUrlRight() {
     witness.setUrl("afwe");
+    Assert.assertEquals("afwe", witness.getUrl());
   }
 
   @Test

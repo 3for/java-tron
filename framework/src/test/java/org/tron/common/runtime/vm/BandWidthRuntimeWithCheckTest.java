@@ -17,11 +17,14 @@ package org.tron.common.runtime.vm;
 
 import com.google.protobuf.Any;
 import com.google.protobuf.ByteString;
+import java.util.concurrent.atomic.AtomicLong;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.tron.common.BaseTest;
 import org.tron.common.TestConstants;
+import org.tron.common.parameter.CommonParameter;
 import org.tron.common.runtime.RuntimeImpl;
 import org.tron.common.runtime.TvmTestUtils;
 import org.tron.common.utils.Commons;
@@ -37,7 +40,6 @@ import org.tron.core.exception.ContractValidateException;
 import org.tron.core.exception.ReceiptCheckErrException;
 import org.tron.core.exception.TooBigTransactionException;
 import org.tron.core.exception.TooBigTransactionResultException;
-import org.tron.core.exception.TronException;
 import org.tron.core.exception.VMIllegalException;
 import org.tron.core.store.StoreFactory;
 import org.tron.protos.Protocol.AccountType;
@@ -67,8 +69,9 @@ public class BandWidthRuntimeWithCheckTest extends BaseTest {
   private static final String OwnerAddress = "TCWHANtDDdkZCTo2T2peyEq3Eg9c2XB7ut";
   private static final String TriggerOwnerAddress = "TCSgeWapPJhCqgWRxXCKb6jJ5AgNWSGjPA";
   private static final String TriggerOwnerTwoAddress = "TPMBUANrTwwQAPwShn7ZZjTJz1f3F8jknj";
-
-  private static boolean init;
+  private static final AtomicLong TRANSACTION_TIMESTAMP =
+      new AtomicLong(System.currentTimeMillis());
+  private boolean originalDebug;
 
   static {
     Args.setParam(
@@ -85,9 +88,9 @@ public class BandWidthRuntimeWithCheckTest extends BaseTest {
    */
   @Before
   public void init() {
-    if (init) {
-      return;
-    }
+    originalDebug = CommonParameter.getInstance().isDebug();
+    CommonParameter.getInstance().setDebug(true);
+
     //init energy
     dbManager.getDynamicPropertiesStore().saveLatestBlockHeaderTimestamp(1526647838000L);
     dbManager.getDynamicPropertiesStore().saveTotalEnergyWeight(10_000_000L);
@@ -117,81 +120,80 @@ public class BandWidthRuntimeWithCheckTest extends BaseTest {
     accountCapsule3.setFrozenForEnergy(10_000_000L, 0L);
     dbManager.getAccountStore()
         .put(Commons.decodeFromBase58Check(TriggerOwnerTwoAddress), accountCapsule3);
-    init = true;
+  }
+
+  @After
+  public void after() {
+    CommonParameter.getInstance().setDebug(originalDebug);
   }
 
   @Test
-  public void testSuccess() {
-    try {
-      byte[] contractAddress = createContract();
-      AccountCapsule triggerOwner = dbManager.getAccountStore()
-          .get(Commons.decodeFromBase58Check(TriggerOwnerAddress));
-      long energy = triggerOwner.getEnergyUsage();
-      long balance = triggerOwner.getBalance();
-      TriggerSmartContract triggerContract = TvmTestUtils.createTriggerContract(contractAddress,
-          "fibonacciNotify(uint256)", "7000", false,
-          0, Commons.decodeFromBase58Check(TriggerOwnerAddress));
-      Transaction transaction = Transaction.newBuilder().setRawData(raw.newBuilder().addContract(
-          Contract.newBuilder().setParameter(Any.pack(triggerContract))
-              .setType(ContractType.TriggerSmartContract)).setFeeLimit(1000000000)).build();
-      TransactionCapsule trxCap = new TransactionCapsule(transaction);
-      TransactionTrace trace = new TransactionTrace(trxCap, StoreFactory.getInstance(),
-          new RuntimeImpl());
-      dbManager.consumeBandwidth(trxCap, trace);
+  public void testSuccess() throws Exception {
+    byte[] contractAddress = createContract();
+    AccountCapsule triggerOwner = dbManager.getAccountStore()
+        .get(Commons.decodeFromBase58Check(TriggerOwnerAddress));
+    long energy = triggerOwner.getEnergyUsage();
+    long balance = triggerOwner.getBalance();
+    TriggerSmartContract triggerContract = TvmTestUtils.createTriggerContract(contractAddress,
+        "fibonacciNotify(uint256)", "7000", false,
+        0, Commons.decodeFromBase58Check(TriggerOwnerAddress));
+    Transaction transaction = Transaction.newBuilder().setRawData(raw.newBuilder().addContract(
+        Contract.newBuilder().setParameter(Any.pack(triggerContract))
+            .setType(ContractType.TriggerSmartContract)).setFeeLimit(1000000000)).build();
+    TransactionCapsule trxCap = new TransactionCapsule(transaction);
+    trxCap.setResultCode(contractResult.SUCCESS);
+    TransactionTrace trace = new TransactionTrace(trxCap, StoreFactory.getInstance(),
+        new RuntimeImpl());
+    dbManager.consumeBandwidth(trxCap, trace);
 
-      trace.init(null);
-      trace.exec();
-      trace.finalization();
+    trace.init(null);
+    trace.exec();
+    trace.setResult();
+    trace.check();
+    trace.finalization();
 
-      triggerOwner = dbManager.getAccountStore()
-          .get(Commons.decodeFromBase58Check(TriggerOwnerAddress));
-      energy = triggerOwner.getEnergyUsage() - energy;
-      balance = balance - triggerOwner.getBalance();
-      Assert.assertEquals(624668, trace.getReceipt().getEnergyUsageTotal());
-      Assert.assertEquals(50000, energy);
-      Assert.assertEquals(57466800, balance);
-      Assert.assertEquals(624668 * Constant.SUN_PER_ENERGY,
-          balance + energy * Constant.SUN_PER_ENERGY);
-    } catch (TronException | ReceiptCheckErrException e) {
-      Assert.assertNotNull(e);
-    }
-
+    triggerOwner = dbManager.getAccountStore()
+        .get(Commons.decodeFromBase58Check(TriggerOwnerAddress));
+    energy = triggerOwner.getEnergyUsage() - energy;
+    balance = balance - triggerOwner.getBalance();
+    Assert.assertEquals(624668, trace.getReceipt().getEnergyUsageTotal());
+    Assert.assertEquals(50000, energy);
+    Assert.assertEquals(57466800, balance);
+    Assert.assertEquals(624668 * Constant.SUN_PER_ENERGY,
+        balance + energy * Constant.SUN_PER_ENERGY);
   }
 
   @Test
-  public void testSuccessNoBandWidth() {
-    try {
-      byte[] contractAddress = createContract();
-      TriggerSmartContract triggerContract = TvmTestUtils.createTriggerContract(contractAddress,
-          "fibonacciNotify(uint256)", "50", false,
-          0, Commons.decodeFromBase58Check(TriggerOwnerTwoAddress));
-      Transaction transaction = Transaction.newBuilder().setRawData(raw.newBuilder().addContract(
-          Contract.newBuilder().setParameter(Any.pack(triggerContract))
-              .setType(ContractType.TriggerSmartContract)).setFeeLimit(1000000000)).build();
-      TransactionCapsule trxCap = new TransactionCapsule(transaction);
-      trxCap.setResultCode(contractResult.SUCCESS);
-      TransactionTrace trace = new TransactionTrace(trxCap, StoreFactory.getInstance(),
-          new RuntimeImpl());
-      dbManager.consumeBandwidth(trxCap, trace);
-      long bandWidth = trxCap.getSerializedSize() + Constant.MAX_RESULT_SIZE_IN_TX;
-      trace.init(null);
-      trace.exec();
-      trace.finalization();
-      trace.check();
-      AccountCapsule triggerOwnerTwo = dbManager.getAccountStore()
-          .get(Commons.decodeFromBase58Check(TriggerOwnerTwoAddress));
-      long balance = triggerOwnerTwo.getBalance();
-      ReceiptCapsule receipt = trace.getReceipt();
-      Assert.assertNull(trace.getRuntimeError());
-      Assert.assertEquals(bandWidth, receipt.getNetUsage());
-      Assert.assertEquals(6118, receipt.getEnergyUsageTotal());
-      Assert.assertEquals(6118, receipt.getEnergyUsage());
-      Assert.assertEquals(0, receipt.getEnergyFee());
-      Assert.assertEquals(totalBalance,
-          balance);
-    } catch (TronException | ReceiptCheckErrException e) {
-      Assert.assertNotNull(e);
-    }
+  public void testSuccessNoBandWidth() throws Exception {
+    byte[] contractAddress = createContract();
+    TriggerSmartContract triggerContract = TvmTestUtils.createTriggerContract(contractAddress,
+        "fibonacciNotify(uint256)", "50", false,
+        0, Commons.decodeFromBase58Check(TriggerOwnerTwoAddress));
+    Transaction transaction = Transaction.newBuilder().setRawData(raw.newBuilder().addContract(
+        Contract.newBuilder().setParameter(Any.pack(triggerContract))
+            .setType(ContractType.TriggerSmartContract)).setFeeLimit(1000000000)).build();
+    TransactionCapsule trxCap = new TransactionCapsule(transaction);
+    trxCap.setResultCode(contractResult.SUCCESS);
+    TransactionTrace trace = new TransactionTrace(trxCap, StoreFactory.getInstance(),
+        new RuntimeImpl());
+    dbManager.consumeBandwidth(trxCap, trace);
+    long bandWidth = trxCap.getInstance().toBuilder().clearRet().build().getSerializedSize()
+        + Constant.MAX_RESULT_SIZE_IN_TX;
+    trace.init(null);
+    trace.exec();
+    trace.setResult();
+    trace.check();
+    trace.finalization();
+    AccountCapsule triggerOwnerTwo = dbManager.getAccountStore()
+        .get(Commons.decodeFromBase58Check(TriggerOwnerTwoAddress));
+    long balance = triggerOwnerTwo.getBalance();
+    ReceiptCapsule receipt = trace.getReceipt();
+    Assert.assertNull(trace.getRuntimeError());
+    Assert.assertEquals(bandWidth, receipt.getNetUsage());
+    Assert.assertEquals(6118, receipt.getEnergyUsageTotal());
+    Assert.assertEquals(6118, receipt.getEnergyUsage());
+    Assert.assertEquals(0, receipt.getEnergyFee());
+    Assert.assertEquals(totalBalance, balance);
   }
 
   private byte[] createContract()
@@ -231,7 +233,8 @@ public class BandWidthRuntimeWithCheckTest extends BaseTest {
         100);
     Transaction transaction = Transaction.newBuilder().setRawData(raw.newBuilder().addContract(
         Contract.newBuilder().setParameter(Any.pack(smartContract))
-            .setType(ContractType.CreateSmartContract)).setFeeLimit(1000000000)).build();
+            .setType(ContractType.CreateSmartContract)).setFeeLimit(1000000000)
+        .setTimestamp(TRANSACTION_TIMESTAMP.incrementAndGet())).build();
     TransactionCapsule trxCap = new TransactionCapsule(transaction);
     trxCap.setResultCode(contractResult.SUCCESS);
     TransactionTrace trace = new TransactionTrace(trxCap, StoreFactory.getInstance(),
@@ -240,8 +243,9 @@ public class BandWidthRuntimeWithCheckTest extends BaseTest {
 
     trace.init(null);
     trace.exec();
-    trace.finalization();
+    trace.setResult();
     trace.check();
+    trace.finalization();
 
     owner = dbManager.getAccountStore()
         .get(Commons.decodeFromBase58Check(OwnerAddress));
@@ -254,9 +258,6 @@ public class BandWidthRuntimeWithCheckTest extends BaseTest {
     Assert
         .assertEquals(88529 * Constant.SUN_PER_ENERGY,
             balance + energy * Constant.SUN_PER_ENERGY);
-    if (trace.getRuntimeError() != null) {
-      return trace.getRuntimeResult().getContractAddress();
-    }
     return trace.getRuntimeResult().getContractAddress();
 
   }

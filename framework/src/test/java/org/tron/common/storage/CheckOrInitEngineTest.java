@@ -4,6 +4,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.tron.core.db.common.DbSourceInter.ENGINE_FILE;
 import static org.tron.core.db.common.DbSourceInter.ENGINE_KEY;
 import static org.tron.core.db.common.DbSourceInter.LEVELDB;
@@ -162,6 +164,12 @@ public class CheckOrInitEngineTest {
 
       TronError.ErrCode errCode = TronError.ErrCode.LEVELDB_INIT;
       checkOrInitEngine(LEVELDB, dir, errCode);
+
+      fileUtil.verify(() -> FileUtil.createDirIfNotExists(dir));
+      fileUtil.verify(() -> FileUtil.createFileIfNotExists(engineFile));
+      propUtil.verify(() -> PropUtil.readProperty(engineFile, ENGINE_KEY), times(2));
+      strings.verify(() -> Strings.isNullOrEmpty(null));
+      propUtil.verify(() -> PropUtil.writeProperty(engineFile, ENGINE_KEY, LEVELDB));
     }
   }
 
@@ -181,6 +189,12 @@ public class CheckOrInitEngineTest {
 
       TronError.ErrCode errCode = TronError.ErrCode.ROCKSDB_INIT;
       checkOrInitEngine(ROCKSDB, dir, errCode);
+
+      fileUtil.verify(() -> FileUtil.createDirIfNotExists(dir));
+      fileUtil.verify(() -> FileUtil.createFileIfNotExists(engineFile));
+      propUtil.verify(() -> PropUtil.readProperty(engineFile, ENGINE_KEY), times(2));
+      strings.verify(() -> Strings.isNullOrEmpty(ROCKSDB));
+      propUtil.verify(() -> PropUtil.writeProperty(engineFile, ENGINE_KEY, ROCKSDB), never());
     }
   }
 
@@ -206,6 +220,12 @@ public class CheckOrInitEngineTest {
       TronError.ErrCode errCode = TronError.ErrCode.LEVELDB_INIT;
 
       checkOrInitEngine(LEVELDB, dir, errCode);
+
+      fileUtil.verify(() -> FileUtil.createDirIfNotExists(dir));
+      fileUtil.verify(() -> FileUtil.createFileIfNotExists(engineFile));
+      propUtil.verify(() -> PropUtil.readProperty(engineFile, ENGINE_KEY), times(2));
+      strings.verify(() -> Strings.isNullOrEmpty(LEVELDB));
+      propUtil.verify(() -> PropUtil.writeProperty(engineFile, ENGINE_KEY, LEVELDB), never());
     }
   }
 
@@ -235,6 +255,12 @@ public class CheckOrInitEngineTest {
 
       TronError.ErrCode errCode = TronError.ErrCode.ROCKSDB_INIT;
       checkOrInitEngine(ROCKSDB, dir, errCode);
+
+      fileUtil.verify(() -> FileUtil.createDirIfNotExists(dir));
+      fileUtil.verify(() -> FileUtil.createFileIfNotExists(engineFile));
+      propUtil.verify(() -> PropUtil.readProperty(engineFile, ENGINE_KEY), times(2));
+      strings.verify(() -> Strings.isNullOrEmpty(ROCKSDB));
+      propUtil.verify(() -> PropUtil.writeProperty(engineFile, ENGINE_KEY, ROCKSDB), never());
     }
   }
 
@@ -258,6 +284,12 @@ public class CheckOrInitEngineTest {
           .thenReturn(true);
       TronError.ErrCode errCode = TronError.ErrCode.ROCKSDB_INIT;
       checkOrInitEngine(ROCKSDB, dir, errCode);
+
+      fileUtil.verify(() -> FileUtil.createDirIfNotExists(dir));
+      fileUtil.verify(() -> FileUtil.createFileIfNotExists(engineFile));
+      propUtil.verify(() -> PropUtil.readProperty(engineFile, ENGINE_KEY), times(2));
+      strings.verify(() -> Strings.isNullOrEmpty(""));
+      propUtil.verify(() -> PropUtil.writeProperty(engineFile, ENGINE_KEY, ROCKSDB));
     }
   }
 }

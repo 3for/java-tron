@@ -94,7 +94,6 @@ public class UpdateAccountActuatorTest extends BaseTest {
       AccountCapsule accountCapsule = dbManager.getAccountStore()
           .get(ByteArray.fromHexString(OwnerAddress));
       Assert.assertEquals(accountName, accountCapsule.getAccountName().toStringUtf8());
-      Assert.assertTrue(true);
     } catch (ContractValidateException e) {
       Assert.assertFalse(e instanceof ContractValidateException);
     } catch (ContractExeException e) {
@@ -255,7 +254,6 @@ public class UpdateAccountActuatorTest extends BaseTest {
           .get(ByteArray.fromHexString(OWNER_ADDRESS));
       Assert.assertEquals("testname0123456789abcdefghijgklm",
           accountCapsule.getAccountName().toStringUtf8());
-      Assert.assertTrue(true);
     } catch (ContractValidateException e) {
       Assert.assertFalse(e instanceof ContractValidateException);
     } catch (ContractExeException e) {
@@ -278,26 +276,27 @@ public class UpdateAccountActuatorTest extends BaseTest {
           .get(ByteArray.fromHexString(OWNER_ADDRESS));
       Assert.assertEquals("testname",
           accountCapsule.getAccountName().toStringUtf8());
-      Assert.assertTrue(true);
     } catch (ContractValidateException e) {
       Assert.assertFalse(e instanceof ContractValidateException);
     } catch (ContractExeException e) {
       Assert.assertFalse(e instanceof ContractExeException);
     }
-    //Empty name
+    // Empty name is allowed and clears the existing account name.
     try {
       UpdateAccountActuator actuator = new UpdateAccountActuator();
       actuator.setChainBaseManager(dbManager.getChainBaseManager())
           .setAny(getContract(ByteString.EMPTY, OWNER_ADDRESS));
 
-      actuator.validate();
-      actuator.execute(ret);
-      Assert.assertEquals(ret.getInstance().getRet(), code.SUCESS);
+      Assert.assertTrue(actuator.validate());
+      Assert.assertTrue(actuator.execute(ret));
+      Assert.assertEquals(code.SUCESS, ret.getInstance().getRet());
+      accountCapsule = dbManager.getAccountStore()
+          .get(ByteArray.fromHexString(OWNER_ADDRESS));
+      Assert.assertTrue(accountCapsule.getAccountName().isEmpty());
     } catch (ContractValidateException e) {
-      Assert.assertTrue(e instanceof ContractValidateException);
-      Assert.assertEquals("Invalid accountName", e.getMessage());
+      Assert.fail("Empty account name should be valid: " + e.getMessage());
     } catch (ContractExeException e) {
-      Assert.assertFalse(e instanceof ContractExeException);
+      Assert.fail("Empty account name update should execute: " + e.getMessage());
     }
     //Too long name 33 bytes
     try {

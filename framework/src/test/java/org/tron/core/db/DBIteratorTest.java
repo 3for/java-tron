@@ -10,9 +10,7 @@ import org.iq80.leveldb.DB;
 import org.iq80.leveldb.Options;
 import org.junit.Assert;
 import org.junit.ClassRule;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
 import org.rocksdb.ReadOptions;
 import org.rocksdb.RocksDB;
@@ -26,10 +24,6 @@ public class DBIteratorTest {
   @ClassRule
   public static final TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-  @Rule
-  public final ExpectedException thrown = ExpectedException.none();
-
-
   @Test
   public void testLevelDb() throws IOException {
     TestConstants.assumeLevelDbAvailable();
@@ -37,43 +31,31 @@ public class DBIteratorTest {
     try (DB db = factory.open(file, new Options().createIfMissing(true))) {
       db.put("1".getBytes(StandardCharsets.UTF_8), "1".getBytes(StandardCharsets.UTF_8));
       db.put("2".getBytes(StandardCharsets.UTF_8), "2".getBytes(StandardCharsets.UTF_8));
-      StoreIterator iterator = new StoreIterator(db.iterator());
-      iterator.seekToFirst();
-      Assert.assertArrayEquals("1".getBytes(StandardCharsets.UTF_8), iterator.getKey());
-      Assert.assertArrayEquals("1".getBytes(StandardCharsets.UTF_8), iterator.next().getValue());
-      Assert.assertTrue(iterator.hasNext());
+      StoreIterator forwardIterator = new StoreIterator(db.iterator());
+      forwardIterator.seekToFirst();
+      Assert.assertArrayEquals("1".getBytes(StandardCharsets.UTF_8), forwardIterator.getKey());
+      Assert.assertArrayEquals("1".getBytes(StandardCharsets.UTF_8),
+          forwardIterator.next().getValue());
+      Assert.assertTrue(forwardIterator.hasNext());
 
-      Assert.assertArrayEquals("2".getBytes(StandardCharsets.UTF_8), iterator.getValue());
-      Assert.assertArrayEquals("2".getBytes(StandardCharsets.UTF_8), iterator.next().getKey());
-      Assert.assertFalse(iterator.hasNext());
+      Assert.assertArrayEquals("2".getBytes(StandardCharsets.UTF_8), forwardIterator.getValue());
+      Assert.assertArrayEquals("2".getBytes(StandardCharsets.UTF_8),
+          forwardIterator.next().getKey());
+      Assert.assertFalse(forwardIterator.hasNext());
+      Assert.assertThrows(IllegalStateException.class, forwardIterator::seekToLast);
 
-      try {
-        iterator.seekToLast();
-      } catch (Exception e) {
-        Assert.assertTrue(e instanceof  IllegalStateException);
+      StoreIterator reverseIterator = new StoreIterator(db.iterator());
+      reverseIterator.seekToLast();
+      Assert.assertArrayEquals("2".getBytes(StandardCharsets.UTF_8), reverseIterator.getKey());
+      Assert.assertArrayEquals("2".getBytes(StandardCharsets.UTF_8), reverseIterator.getValue());
+      reverseIterator.seekToFirst();
+      while (reverseIterator.hasNext()) {
+        reverseIterator.next();
       }
-
-      iterator = new StoreIterator(db.iterator());
-      iterator.seekToLast();
-      Assert.assertArrayEquals("2".getBytes(StandardCharsets.UTF_8), iterator.getKey());
-      Assert.assertArrayEquals("2".getBytes(StandardCharsets.UTF_8), iterator.getValue());
-      iterator.seekToFirst();
-      while (iterator.hasNext()) {
-        iterator.next();
-      }
-      Assert.assertFalse(iterator.hasNext());
-      try {
-        iterator.getKey();
-      } catch (Exception e) {
-        Assert.assertTrue(e instanceof IllegalStateException);
-      }
-      try {
-        iterator.getValue();
-      } catch (Exception e) {
-        Assert.assertTrue(e instanceof IllegalStateException);
-      }
-      thrown.expect(NoSuchElementException.class);
-      iterator.next();
+      Assert.assertFalse(reverseIterator.hasNext());
+      Assert.assertThrows(IllegalStateException.class, reverseIterator::getKey);
+      Assert.assertThrows(IllegalStateException.class, reverseIterator::getValue);
+      Assert.assertThrows(NoSuchElementException.class, reverseIterator::next);
     }
 
 
@@ -113,8 +95,7 @@ public class DBIteratorTest {
         Assert.assertFalse(iterator.hasNext());
         Assert.assertThrows(IllegalStateException.class, iterator::getKey);
         Assert.assertThrows(IllegalStateException.class, iterator::getValue);
-        thrown.expect(NoSuchElementException.class);
-        iterator.next();
+        Assert.assertThrows(NoSuchElementException.class, iterator::next);
       }
     }
   }

@@ -195,16 +195,10 @@ public class FreezeBalanceActuatorTest extends BaseTest {
     actuator.setChainBaseManager(dbManager.getChainBaseManager()).setAny(
         getDelegatedContractForBandwidth(OWNER_ADDRESS, RECEIVER_ADDRESS, frozenBalance, duration));
 
-    TransactionResultCapsule ret = new TransactionResultCapsule();
-
-    try {
-      actuator.validate();
-      actuator.execute(ret);
-    } catch (ContractValidateException e) {
-      Assert.assertEquals("Do not allow delegate resources to contract addresses", e.getMessage());
-    } catch (ContractExeException e) {
-      Assert.fail();
-    }
+    ContractValidateException error = Assert.assertThrows(ContractValidateException.class,
+        actuator::validate);
+    Assert.assertEquals("Do not allow delegate resources to contract addresses",
+        error.getMessage());
   }
 
   @Test
