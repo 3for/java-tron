@@ -36,19 +36,17 @@ public class ChainInventoryMsgHandlerTest {
 
   @Test
   public void testProcessMessage() throws Exception {
-    try {
-      handler.processMessage(peer, msg);
-    } catch (P2pException e) {
-      Assert.assertEquals("not send syncBlockChainMsg", e.getMessage());
-    }
+    P2pException notRequested = Assert.assertThrows(P2pException.class,
+        () -> handler.processMessage(peer, msg));
+    Assert.assertEquals(P2pException.TypeEnum.BAD_MESSAGE, notRequested.getType());
+    Assert.assertEquals("not send syncBlockChainMsg", notRequested.getMessage());
 
     peer.setSyncChainRequested(new Pair<>(new LinkedList<>(), System.currentTimeMillis()));
 
-    try {
-      handler.processMessage(peer, msg);
-    } catch (P2pException e) {
-      Assert.assertEquals("blockIds is empty", e.getMessage());
-    }
+    P2pException empty = Assert.assertThrows(P2pException.class,
+        () -> handler.processMessage(peer, msg));
+    Assert.assertEquals(P2pException.TypeEnum.BAD_MESSAGE, empty.getType());
+    Assert.assertEquals("blockIds is empty", empty.getMessage());
 
     long size = NetConstants.SYNC_FETCH_BATCH_NUM + 2;
     for (int i = 0; i < size; i++) {
@@ -56,11 +54,10 @@ public class ChainInventoryMsgHandlerTest {
     }
     msg = new ChainInventoryMessage(blockIds, 0L);
 
-    try {
-      handler.processMessage(peer, msg);
-    } catch (P2pException e) {
-      Assert.assertEquals(e.getMessage(), "big blockIds size: " + size);
-    }
+    P2pException tooMany = Assert.assertThrows(P2pException.class,
+        () -> handler.processMessage(peer, msg));
+    Assert.assertEquals(P2pException.TypeEnum.BAD_MESSAGE, tooMany.getType());
+    Assert.assertEquals("big blockIds size: " + size, tooMany.getMessage());
 
     blockIds.clear();
     size = NetConstants.SYNC_FETCH_BATCH_NUM / 100;
@@ -69,11 +66,10 @@ public class ChainInventoryMsgHandlerTest {
     }
     msg = new ChainInventoryMessage(blockIds, 100L);
 
-    try {
-      handler.processMessage(peer, msg);
-    } catch (P2pException e) {
-      Assert.assertEquals(e.getMessage(), "remain: 100, blockIds size: " + size);
-    }
+    P2pException invalidRemain = Assert.assertThrows(P2pException.class,
+        () -> handler.processMessage(peer, msg));
+    Assert.assertEquals(P2pException.TypeEnum.BAD_MESSAGE, invalidRemain.getType());
+    Assert.assertEquals("remain: 100, blockIds size: " + size, invalidRemain.getMessage());
     Assert.assertNotNull(msg.toString());
     Assert.assertNull(msg.getAnswerMessage());
   }

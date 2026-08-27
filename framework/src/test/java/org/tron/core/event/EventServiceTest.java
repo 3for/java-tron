@@ -6,9 +6,7 @@ import org.junit.Test;
 import org.mockito.Mockito;
 import org.tron.common.logsfilter.EventPluginLoader;
 import org.tron.common.utils.ReflectUtils;
-import org.tron.core.capsule.BlockCapsule;
 import org.tron.core.db.Manager;
-import org.tron.core.services.event.BlockEventCache;
 import org.tron.core.services.event.BlockEventLoad;
 import org.tron.core.services.event.EventService;
 import org.tron.core.services.event.HistoryEventService;
@@ -18,31 +16,32 @@ import org.tron.core.services.event.SolidEventService;
 public class EventServiceTest {
 
   @Test
-  public void test() {
-    BlockCapsule.BlockId b1 = new BlockCapsule.BlockId(BlockEventCacheTest.getBlockId(), 1);
-    BlockEventCache.init(b1);
-
+  public void initAndCloseDelegateToEventServicesWhenPluginV1IsLoaded() {
     EventService eventService = new EventService();
-    HistoryEventService historyEventService = new HistoryEventService();
-    RealtimeEventService realtimeEventService = new RealtimeEventService();
-    SolidEventService solidEventService = new SolidEventService();
-    BlockEventLoad blockEventLoad = new BlockEventLoad();
+    HistoryEventService historyEventService = mock(HistoryEventService.class);
+    RealtimeEventService realtimeEventService = mock(RealtimeEventService.class);
+    SolidEventService solidEventService = mock(SolidEventService.class);
+    BlockEventLoad blockEventLoad = mock(BlockEventLoad.class);
+    Manager manager = mock(Manager.class);
+    EventPluginLoader instance = mock(EventPluginLoader.class);
 
     ReflectUtils.setFieldValue(eventService, "historyEventService", historyEventService);
     ReflectUtils.setFieldValue(eventService, "solidEventService", solidEventService);
     ReflectUtils.setFieldValue(eventService, "realtimeEventService", realtimeEventService);
     ReflectUtils.setFieldValue(eventService, "blockEventLoad", blockEventLoad);
-
-    Manager manager = mock(Manager.class);
     ReflectUtils.setFieldValue(eventService, "manager", manager);
+    ReflectUtils.setFieldValue(eventService, "instance", instance);
+
     Mockito.when(manager.isEventPluginLoaded()).thenReturn(true);
+    Mockito.when(instance.getVersion()).thenReturn(1);
 
     eventService.init();
     eventService.close();
 
-    EventPluginLoader instance = mock(EventPluginLoader.class);
-    Mockito.when(instance.getVersion()).thenReturn(1);
-    ReflectUtils.setFieldValue(eventService, "instance", instance);
-    eventService.close();
+    Mockito.verify(historyEventService).init();
+    Mockito.verify(historyEventService).close();
+    Mockito.verify(blockEventLoad).close();
+    Mockito.verify(realtimeEventService).close();
+    Mockito.verify(solidEventService).close();
   }
 }

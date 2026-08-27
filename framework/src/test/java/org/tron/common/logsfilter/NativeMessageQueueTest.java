@@ -1,87 +1,68 @@
 package org.tron.common.logsfilter;
 
-import java.util.concurrent.ExecutorService;
-import org.junit.After;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.TimeUnit;
 import org.junit.Assert;
 import org.junit.Test;
-import org.tron.common.es.ExecutorServiceManager;
 import org.tron.common.logsfilter.nativequeue.NativeMessageQueue;
+import org.tron.common.utils.PublicMethod;
 import org.zeromq.SocketType;
 import org.zeromq.ZContext;
 import org.zeromq.ZMQ;
 
 public class NativeMessageQueueTest {
 
-  public int bindPort = 5555;
-  public String dataToSend = "################";
-  public String topic = "testTopic";
-
-  private ExecutorService subscriberExecutor;
-  private final String zmqSubscriber = "zmq-subscriber";
-
-  @After
-  public void tearDown() {
-    ExecutorServiceManager.shutdownAndAwaitTermination(subscriberExecutor, zmqSubscriber);
-    subscriberExecutor = null;
-  }
+  private static final String DATA_TO_SEND = "################";
+  private static final String TOPIC = "testTopic";
 
   @Test
   public void invalidBindPort() {
-    boolean bRet = NativeMessageQueue.getInstance().start(-1111, 0);
-    Assert.assertEquals(true, bRet);
-    NativeMessageQueue.getInstance().stop();
+    try {
+      Assert.assertTrue(NativeMessageQueue.getInstance().start(-1111, 0));
+    } finally {
+      NativeMessageQueue.getInstance().stop();
+    }
   }
 
   @Test
   public void invalidSendLength() {
-    boolean bRet = NativeMessageQueue.getInstance().start(0, -2222);
-    Assert.assertEquals(true, bRet);
-    NativeMessageQueue.getInstance().stop();
+    try {
+      Assert.assertTrue(NativeMessageQueue.getInstance().start(0, -2222));
+    } finally {
+      NativeMessageQueue.getInstance().stop();
+    }
   }
 
-  @Test
-  public void publishTrigger() {
+  @Test(timeout = 10_000)
+  public void publishTriggerDeliversTopicAndData() {
+    int bindPort = PublicMethod.chooseRandomPort();
+    Assert.assertTrue(NativeMessageQueue.getInstance().start(bindPort, 0));
 
-    int sendLength = 0;
-    boolean bRet = NativeMessageQueue.getInstance().start(bindPort, sendLength);
-    Assert.assertEquals(true, bRet);
-
-    startSubscribeThread();
-
-    try {
-      Thread.sleep(1000);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    }
-
-    NativeMessageQueue.getInstance().publishTrigger(dataToSend, topic);
-
-    try {
-      Thread.sleep(1000);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    }
-
-    NativeMessageQueue.getInstance().stop();
-  }
-
-  public void startSubscribeThread() {
-    subscriberExecutor = ExecutorServiceManager.newSingleThreadExecutor(zmqSubscriber);
-    subscriberExecutor.execute(() -> {
-      try (ZContext context = new ZContext()) {
+    try (ZContext context = new ZContext()) {
+      try {
         ZMQ.Socket subscriber = context.createSocket(SocketType.SUB);
-
         Assert.assertTrue(subscriber.connect(String.format("tcp://localhost:%d", bindPort)));
-        Assert.assertTrue(subscriber.subscribe(topic));
+        Assert.assertTrue(subscriber.subscribe(TOPIC));
+        subscriber.setReceiveTimeOut(250);
 
-        while (!Thread.currentThread().isInterrupted()) {
-          byte[] message = subscriber.recv();
-          String triggerMsg = new String(message);
-
-          Assert.assertTrue(triggerMsg.contains(dataToSend) || triggerMsg.contains(topic));
+        byte[] receivedTopic = null;
+        byte[] receivedData = null;
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (receivedTopic == null && System.nanoTime() < deadline) {
+          NativeMessageQueue.getInstance().publishTrigger(DATA_TO_SEND, TOPIC);
+          receivedTopic = subscriber.recv();
+          if (receivedTopic != null) {
+            receivedData = subscriber.recv();
+          }
         }
-        // ZMQ.Socket will be automatically closed when ZContext is closed
+
+        Assert.assertNotNull("subscriber did not receive the published topic", receivedTopic);
+        Assert.assertNotNull("subscriber did not receive the published data", receivedData);
+        Assert.assertEquals(TOPIC, new String(receivedTopic, StandardCharsets.UTF_8));
+        Assert.assertEquals(DATA_TO_SEND, new String(receivedData, StandardCharsets.UTF_8));
+      } finally {
+        NativeMessageQueue.getInstance().stop();
       }
-    });
+    }
   }
 }

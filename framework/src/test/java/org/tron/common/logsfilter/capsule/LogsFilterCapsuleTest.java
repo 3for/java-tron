@@ -1,11 +1,17 @@
 package org.tron.common.logsfilter.capsule;
 
-import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.tron.common.bloom.Bloom;
+import org.tron.protos.Protocol.TransactionInfo;
 
 public class LogsFilterCapsuleTest {
 
@@ -20,13 +26,23 @@ public class LogsFilterCapsuleTest {
 
   @Test
   public void testSetAndGetLogsFilterCapsule() {
-    capsule.setBlockNumber(capsule.getBlockNumber());
-    capsule.setBlockHash(capsule.getBlockHash());
-    capsule.setSolidified(capsule.isSolidified());
-    capsule.setBloom(capsule.getBloom());
-    capsule.setRemoved(capsule.isRemoved());
-    capsule.setTxInfoList(capsule.getTxInfoList());
-    assertNotNull(capsule.toString());
+    Bloom bloom = new Bloom();
+    List<TransactionInfo> transactions =
+        Collections.singletonList(TransactionInfo.getDefaultInstance());
+
+    capsule.setBlockNumber(42L);
+    capsule.setBlockHash("updated-block-hash");
+    capsule.setSolidified(false);
+    capsule.setBloom(bloom);
+    capsule.setRemoved(true);
+    capsule.setTxInfoList(transactions);
+
+    assertEquals(42L, capsule.getBlockNumber());
+    assertEquals("updated-block-hash", capsule.getBlockHash());
+    assertFalse(capsule.isSolidified());
+    assertSame(bloom, capsule.getBloom());
+    assertTrue(capsule.isRemoved());
+    assertSame(transactions, capsule.getTxInfoList());
   }
 
 }

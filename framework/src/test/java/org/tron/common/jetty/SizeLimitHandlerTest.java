@@ -328,21 +328,23 @@ public class SizeLimitHandlerTest {
   }
 
   /**
-   * For UTF-8 JSON with multi-byte characters (CJK), wire bytes and
-   * {@code body.getBytes().length} must still be identical - UTF-8 round-trips
-   * through {@code request.getReader()} -> {@code String.getBytes()} losslessly.
+   * {@code Util.checkBodySize()} uses the platform default charset after the request has been
+   * decoded into a String. That value is not necessarily the UTF-8 wire size (for example, a
+   * US-ASCII default charset replaces CJK characters). The primary SizeLimitHandler assertion is
+   * covered by {@link #testLimitIsBasedOnBytesNotCharacters()}; this test mirrors the deprecated
+   * servlet-side check without assuming a particular process charset.
    */
   @Test
-  public void testWireBytesMatchCheckBodySizeForUtf8Json() throws Exception {
+  public void testCheckBodySizeUsesPlatformCharsetForUtf8Json() throws Exception {
     String jsonBody = "{\"name\":\"测试地址\",\"amount\":100}";
-    int wireBytes = jsonBody.getBytes("UTF-8").length;
+    int expectedServletBytes = jsonBody.getBytes().length;
 
     String respBody = postForBody(httpServerUri, new StringEntity(jsonBody, "UTF-8"));
     JSONObject json = JSONObject.parseObject(respBody);
     int servletBytes = json.getIntValue("bytes");
 
-    Assert.assertEquals("wire bytes should equal checkBodySize for UTF-8 JSON",
-        wireBytes, servletBytes);
+    Assert.assertEquals("checkBodySize should use the platform default charset",
+        expectedServletBytes, servletBytes);
   }
 
   /**

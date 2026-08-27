@@ -71,12 +71,11 @@ public class SyncBlockChainMsgHandlerTest {
 
   @Test
   public void testProcessMessage() throws Exception {
-    try {
-      peer.setRemainNum(1);
-      handler.processMessage(peer, new SyncBlockChainMessage(new ArrayList<>()));
-    } catch (P2pException e) {
-      Assert.assertEquals("SyncBlockChain blockIds is empty", e.getMessage());
-    }
+    peer.setRemainNum(0);
+    P2pException empty = Assert.assertThrows(P2pException.class,
+        () -> handler.processMessage(peer, new SyncBlockChainMessage(new ArrayList<>())));
+    Assert.assertEquals(P2pException.TypeEnum.BAD_MESSAGE, empty.getType());
+    Assert.assertEquals("SyncBlockChain blockIds is empty", empty.getMessage());
 
     List<BlockCapsule.BlockId> blockIds = new ArrayList<>();
     blockIds.add(new BlockCapsule.BlockId());
@@ -97,11 +96,13 @@ public class SyncBlockChainMsgHandlerTest {
     Method method1 = handler.getClass().getDeclaredMethod(
         "getLostBlockIds", List.class, BlockId.class);
     method1.setAccessible(true);
-    try {
-      method1.invoke(handler, blockIds, new BlockCapsule.BlockId());
-    } catch (InvocationTargetException e) {
-      Assert.assertEquals("unForkId is null", e.getTargetException().getMessage());
-    }
+    InvocationTargetException noCommonBlock = Assert.assertThrows(
+        InvocationTargetException.class,
+        () -> method1.invoke(handler, blockIds, new BlockCapsule.BlockId()));
+    Assert.assertTrue(noCommonBlock.getCause() instanceof P2pException);
+    P2pException syncFailed = (P2pException) noCommonBlock.getCause();
+    Assert.assertEquals(P2pException.TypeEnum.SYNC_FAILED, syncFailed.getType());
+    Assert.assertEquals("unForkId is null", syncFailed.getMessage());
 
     Method method2 = handler.getClass().getDeclaredMethod(
         "getBlockIds", Long.class, BlockId.class);
@@ -150,14 +151,7 @@ public class SyncBlockChainMsgHandlerTest {
     Method checkMethod = SyncBlockChainMsgHandler.class
         .getDeclaredMethod("check", PeerConnection.class, SyncBlockChainMessage.class);
     checkMethod.setAccessible(true);
-    // does not throw P2pException due to length (may return false for other checks — that's fine)
-    try {
-      checkMethod.invoke(handler, peer, msg);
-    } catch (InvocationTargetException e) {
-      Assert.assertFalse("Should not fail with BAD_MESSAGE for length at limit",
-          e.getCause() instanceof P2pException
-          && ((P2pException) e.getCause()).getMessage().contains("exceeds limit"));
-    }
+    Assert.assertEquals(Boolean.TRUE, checkMethod.invoke(handler, peer, msg));
   }
 
   @AfterClass

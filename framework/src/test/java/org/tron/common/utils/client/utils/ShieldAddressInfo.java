@@ -84,26 +84,6 @@ public class ShieldAddressInfo {
     return getShieldAddress(d, pkD);
   }
 
-  //  public static PaymentAddress parseFromShieldAddress(final String shieldAddress) {
-  //    PaymentAddress paymentAddress = null;
-  //    try {
-  //      byte[] byteShield = ByteArray.fromHexString(shieldAddress);
-  //      int lenPkd = byteShield.length - Constant.ZC_DIVERSIFIER_SIZE;
-  //      byte[] d =  new byte[Constant.ZC_DIVERSIFIER_SIZE];
-  //      byte[] pkd = new byte[lenPkd];
-  //
-  //      System.arraycopy(byteShield, 0, d, 0, Constant.ZC_DIVERSIFIER_SIZE);
-  //      System.arraycopy(byteShield, Constant.ZC_DIVERSIFIER_SIZE, pkd, 0, lenPkd);
-  //
-  //      paymentAddress = new PaymentAddress(new DiversifierT(d), pkd);
-  //    } catch (Exception e) {
-  //      System.out.println("parseFromShieldAddress " + shieldAddress + " failure.");
-  //      e.printStackTrace();
-  //    }
-  //
-  //    return paymentAddress;
-  //  }
-
   /**
    * format shield address info to a string.
    */

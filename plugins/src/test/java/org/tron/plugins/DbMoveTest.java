@@ -44,7 +44,7 @@ public class DbMoveTest {
   private static boolean deleteDir(File dir) {
     if (dir.isDirectory()) {
       String[] children = dir.list();
-      assert children != null;
+      Assert.assertNotNull("Failed to list directory " + dir, children);
       for (String child : children) {
         boolean success = deleteDir(new File(dir, child));
         if (!success) {

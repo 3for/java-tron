@@ -5,6 +5,7 @@ import com.google.common.collect.Lists;
 import com.google.common.io.Files;
 import com.google.protobuf.ByteString;
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import org.junit.Assert;
 import org.junit.Before;
@@ -21,6 +22,7 @@ import org.tron.core.capsule.IncrementalMerkleTreeCapsule;
 import org.tron.core.capsule.IncrementalMerkleVoucherCapsule;
 import org.tron.core.capsule.PedersenHashCapsule;
 import org.tron.core.config.args.Args;
+import org.tron.core.exception.ZksnarkException;
 import org.tron.json.JSONArray;
 import org.tron.protos.contract.ShieldContract.PedersenHash;
 
@@ -56,7 +58,7 @@ public class MerkleTreeTest extends BaseTest {
     init = true;
   }
 
-  private JSONArray readFile(String fileName) throws Exception {
+  private JSONArray readFile(String fileName) throws IOException {
     String file1 = SendCoinShieldTest.class.getClassLoader()
         .getResource("json" + File.separator + fileName).getFile();
     List<String> readLines = Files.readLines(new File(file1),
@@ -71,7 +73,7 @@ public class MerkleTreeTest extends BaseTest {
   }
 
   @Test
-  public void testComplexTreePath() throws Exception {
+  public void testComplexTreePath() throws IOException, ZksnarkException {
     IncrementalMerkleTreeContainer.setDEPTH(4);
     EmptyMerkleRoots.setEmptyMerkleRootsInstance(new EmptyMerkleRoots());
 
@@ -82,18 +84,13 @@ public class MerkleTreeTest extends BaseTest {
     IncrementalMerkleTreeContainer tree = new IncrementalMerkleTreeCapsule()
         .toMerkleTreeContainer();
     tree.toVoucher().setDEPTH(4);
-    System.out.println("tree depth is " + IncrementalMerkleVoucherContainer.getDEPTH());
 
     // The root of the tree at this point is expected to be the root of the
     // empty tree.
     Assert.assertEquals(PedersenHash2String(tree.root()),
         PedersenHash2String(IncrementalMerkleTreeContainer.emptyRoot()));
-    try {
-      tree.last();
-      Assert.fail("The tree doesn't have a 'last' element added since it's blank.");
-    } catch (Exception ex) {
-      System.out.println(ex.getMessage());
-    }
+    ZksnarkException noCursor = Assert.assertThrows(ZksnarkException.class, tree::last);
+    Assert.assertEquals("tree has no cursor", noCursor.getMessage());
     // The tree is empty.
     Assert.assertEquals(0, tree.size());
 
@@ -105,8 +102,6 @@ public class MerkleTreeTest extends BaseTest {
     for (int i = 0; i < 16; i++) {
       // Witness here
       witnesses.add(tree.toVoucher().getVoucherCapsule());
-
-      System.out.println("i=" + i + ", depth is: " + IncrementalMerkleVoucherContainer.getDEPTH());
 
       PedersenHashCapsule test_commitment = new PedersenHashCapsule();
       byte[] bytes = ByteArray.fromHexString(commitment_tests.getString(i));
@@ -129,18 +124,14 @@ public class MerkleTreeTest extends BaseTest {
         // Append the same commitment to all the witnesses
         wit.toMerkleVoucherContainer().append(test_commitment.getInstance());
         if (first) {
-          try {
-            wit.toMerkleVoucherContainer().path();
-            Assert.fail("The first witness can never form a path");
-          } catch (Exception ex) {
-            System.out.println(ex.getMessage());
-          }
-          try {
-            wit.toMerkleVoucherContainer().element();
-            Assert.fail("The first witness can never form a path");
-          } catch (Exception ex) {
-            System.out.println(ex.getMessage());
-          }
+          ZksnarkException noPath = Assert.assertThrows(ZksnarkException.class,
+              () -> wit.toMerkleVoucherContainer().path());
+          Assert.assertEquals(
+              "can't create an authentication path for the beginning of the tree",
+              noPath.getMessage());
+          ZksnarkException noElement = Assert.assertThrows(ZksnarkException.class,
+              () -> wit.toMerkleVoucherContainer().element());
+          Assert.assertEquals("tree has no cursor", noElement.getMessage());
         } else {
           MerklePath path = wit.toMerkleVoucherContainer().path();
           Assert.assertEquals(path_tests.getString(path_i++), ByteArray.toHexString(path.encode()));
@@ -151,19 +142,14 @@ public class MerkleTreeTest extends BaseTest {
         first = false;
       }
     }
-    try {
-      tree.append(new PedersenHashCapsule().getInstance());
-      Assert.fail("Tree should be full now");
-    } catch (Exception ex) {
-      System.out.println(ex.getMessage());
-    }
+    ZksnarkException fullTree = Assert.assertThrows(ZksnarkException.class,
+        () -> tree.append(new PedersenHashCapsule().getInstance()));
+    Assert.assertEquals("tree is full", fullTree.getMessage());
     for (IncrementalMerkleVoucherCapsule wit : witnesses) {
-      try {
-        wit.toMerkleVoucherContainer().append(new PedersenHashCapsule().getInstance());
-        Assert.fail("Tree should be full now");
-      } catch (Exception ex) {
-        System.out.println(ex.getMessage());
-      }
+      ZksnarkException fullWitness = Assert.assertThrows(ZksnarkException.class,
+          () -> wit.toMerkleVoucherContainer()
+              .append(new PedersenHashCapsule().getInstance()));
+      Assert.assertEquals("tree is full", fullWitness.getMessage());
     }
 
     IncrementalMerkleTreeContainer.setDEPTH(32);

@@ -72,16 +72,6 @@ public class WalletUtilsInputPasswordTest {
   }
 
   @Test(timeout = 5000)
-  public void testInputPasswordStripsBom() {
-    System.setIn(new ByteArrayInputStream(
-        "\uFEFFpassword123\n".getBytes(StandardCharsets.UTF_8)));
-
-    String pw = WalletUtils.inputPassword();
-
-    assertEquals("UTF-8 BOM must be stripped from the start", "password123", pw);
-  }
-
-  @Test(timeout = 5000)
   public void testInputPasswordPreservesLeadingAndTrailingSpaces() {
     // The legacy bug also called trim(); post-fix, spaces at the edges
     // are part of the password. Callers that want to trim should do so

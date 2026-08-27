@@ -1,13 +1,13 @@
 package org.tron.core.event;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
 import org.junit.Test;
-import org.mockito.Mockito;
 import org.tron.common.logsfilter.EventPluginLoader;
 import org.tron.common.utils.ReflectUtils;
-import org.tron.common.utils.Sha256Hash;
 import org.tron.core.ChainBaseManager;
 import org.tron.core.capsule.BlockCapsule;
 import org.tron.core.db.Manager;
@@ -21,77 +21,66 @@ import org.tron.core.store.DynamicPropertiesStore;
 
 public class HistoryEventServiceTest {
 
-  HistoryEventService historyEventService = new HistoryEventService();
+  @Test
+  public void initAtHeadInitializesAllEventServices() {
+    Fixture fixture = new Fixture();
+    BlockCapsule.BlockId headId = mock(BlockCapsule.BlockId.class);
+    when(fixture.instance.getStartSyncBlockNum()).thenReturn(0L);
+    when(fixture.chainBaseManager.getHeadBlockId()).thenReturn(headId);
 
-  @Test(timeout = 60_000)
-  public void test() throws Exception {
-    EventPluginLoader instance = mock(EventPluginLoader.class);
-    Mockito.when(instance.isUseNativeQueue()).thenReturn(true);
-    Mockito.when(instance.isUseNativeQueue()).thenReturn(false);
+    fixture.service.init();
 
-    ReflectUtils.setFieldValue(historyEventService, "instance", instance);
+    verify(fixture.realtimeEventService).init();
+    verify(fixture.blockEventLoad).init();
+    verify(fixture.solidEventService).init();
+  }
 
-    DynamicPropertiesStore dynamicPropertiesStore = mock(DynamicPropertiesStore.class);
-    ChainBaseManager chainBaseManager = mock(ChainBaseManager.class);
-    Manager manager = mock(Manager.class);
-    ReflectUtils.setFieldValue(historyEventService, "manager", manager);
-    Mockito.when(manager.getChainBaseManager()).thenReturn(chainBaseManager);
-    Mockito.when(manager.getDynamicPropertiesStore()).thenReturn(dynamicPropertiesStore);
-    Mockito.when(chainBaseManager.getHeadBlockId()).thenReturn(new BlockCapsule.BlockId());
+  @Test
+  public void syncEventFlushesEachHistoricalBlockThenInitializesAtSolidHead() throws Exception {
+    Fixture fixture = new Fixture();
+    BlockEvent blockEvent = mock(BlockEvent.class);
+    BlockCapsule.BlockId solidHeadId = mock(BlockCapsule.BlockId.class);
+    when(fixture.instance.getStartSyncBlockNum()).thenReturn(1L);
+    when(fixture.dynamicPropertiesStore.getLatestSolidifiedBlockNum()).thenReturn(2L);
+    when(fixture.instance.isUseNativeQueue()).thenReturn(false);
+    when(fixture.instance.isBusy()).thenReturn(false);
+    when(fixture.blockEventGet.getBlockEvent(1L)).thenReturn(blockEvent);
+    when(fixture.chainBaseManager.getBlockIdByNum(1L)).thenReturn(solidHeadId);
+    ReflectUtils.setFieldValue(fixture.service, "thread", Thread.currentThread());
 
-    SolidEventService solidEventService = new SolidEventService();
-    RealtimeEventService realtimeEventService = new RealtimeEventService();
-    BlockEventLoad blockEventLoad = new BlockEventLoad();
-    ReflectUtils.setFieldValue(blockEventLoad, "instance", instance);
-    ReflectUtils.setFieldValue(blockEventLoad, "manager", manager);
+    Method syncEvent = HistoryEventService.class.getDeclaredMethod("syncEvent");
+    syncEvent.setAccessible(true);
+    syncEvent.invoke(fixture.service);
 
-    ReflectUtils.setFieldValue(historyEventService, "solidEventService", solidEventService);
-    ReflectUtils.setFieldValue(historyEventService, "realtimeEventService", realtimeEventService);
-    ReflectUtils.setFieldValue(historyEventService, "blockEventLoad", blockEventLoad);
-    historyEventService.init();
-    historyEventService.close();
-    solidEventService.close();
-    realtimeEventService.close();
-    blockEventLoad.close();
+    verify(fixture.realtimeEventService).flush(blockEvent, false);
+    verify(fixture.solidEventService).flush(blockEvent);
+    verify(fixture.realtimeEventService).init();
+    verify(fixture.blockEventLoad).init();
+    verify(fixture.solidEventService).init();
+  }
 
-    solidEventService = mock(SolidEventService.class);
-    ReflectUtils.setFieldValue(historyEventService, "solidEventService", solidEventService);
-    realtimeEventService = mock(RealtimeEventService.class);
-    ReflectUtils.setFieldValue(historyEventService, "realtimeEventService", realtimeEventService);
-    blockEventLoad = mock(BlockEventLoad.class);
-    ReflectUtils.setFieldValue(historyEventService, "blockEventLoad", blockEventLoad);
+  private static class Fixture {
 
-    Mockito.when(instance.getStartSyncBlockNum()).thenReturn(0L);
+    private final HistoryEventService service = new HistoryEventService();
+    private final EventPluginLoader instance = mock(EventPluginLoader.class);
+    private final DynamicPropertiesStore dynamicPropertiesStore =
+        mock(DynamicPropertiesStore.class);
+    private final ChainBaseManager chainBaseManager = mock(ChainBaseManager.class);
+    private final Manager manager = mock(Manager.class);
+    private final SolidEventService solidEventService = mock(SolidEventService.class);
+    private final RealtimeEventService realtimeEventService = mock(RealtimeEventService.class);
+    private final BlockEventLoad blockEventLoad = mock(BlockEventLoad.class);
+    private final BlockEventGet blockEventGet = mock(BlockEventGet.class);
 
-    Mockito.when(dynamicPropertiesStore.getLatestSolidifiedBlockNum()).thenReturn(0L);
-    Mockito.when(chainBaseManager.getBlockIdByNum(0L))
-        .thenReturn(new BlockCapsule.BlockId(Sha256Hash.ZERO_HASH, 0));
-    historyEventService.init();
-
-    BlockEvent be2 = new BlockEvent();
-    BlockCapsule.BlockId b2 = new BlockCapsule.BlockId(BlockEventCacheTest.getBlockId(), 2);
-    be2.setBlockId(b2);
-
-    BlockEventGet blockEventGet = mock(BlockEventGet.class);
-    ReflectUtils.setFieldValue(historyEventService, "blockEventGet", blockEventGet);
-    Mockito.when(blockEventGet.getBlockEvent(1)).thenReturn(be2);
-
-    Mockito.when(instance.getStartSyncBlockNum()).thenReturn(1L);
-    Mockito.when(dynamicPropertiesStore.getLatestSolidifiedBlockNum()).thenReturn(1L);
-
-    Mockito.when(chainBaseManager.getBlockIdByNum(1L))
-        .thenReturn(new BlockCapsule.BlockId(Sha256Hash.ZERO_HASH, 1));
-
-    Mockito.when(instance.isUseNativeQueue()).thenReturn(true);
-
-    Method method1 = historyEventService.getClass().getDeclaredMethod("syncEvent");
-    method1.setAccessible(true);
-    method1.invoke(historyEventService);
-
-    Mockito.when(instance.isUseNativeQueue()).thenReturn(false);
-    Mockito.when(instance.isBusy()).thenReturn(true);
-    historyEventService.init();
-    Thread.sleep(1000);
-    historyEventService.close();
+    private Fixture() {
+      when(manager.getChainBaseManager()).thenReturn(chainBaseManager);
+      when(manager.getDynamicPropertiesStore()).thenReturn(dynamicPropertiesStore);
+      ReflectUtils.setFieldValue(service, "instance", instance);
+      ReflectUtils.setFieldValue(service, "manager", manager);
+      ReflectUtils.setFieldValue(service, "solidEventService", solidEventService);
+      ReflectUtils.setFieldValue(service, "realtimeEventService", realtimeEventService);
+      ReflectUtils.setFieldValue(service, "blockEventLoad", blockEventLoad);
+      ReflectUtils.setFieldValue(service, "blockEventGet", blockEventGet);
+    }
   }
 }

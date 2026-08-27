@@ -1,18 +1,16 @@
 package org.tron.common.logsfilter.capsule;
 
 import static com.google.common.collect.Lists.newArrayList;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.beust.jcommander.internal.Lists;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.Arrays;
-import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.ArrayUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.tron.common.logsfilter.EventPluginLoader;
@@ -22,7 +20,6 @@ import org.tron.common.runtime.vm.DataWord;
 import org.tron.common.runtime.vm.LogInfo;
 import org.tron.core.config.args.Args;
 
-@Slf4j
 public class ContractTriggerCapsuleTest {
 
   private ContractTriggerCapsule capsule;
@@ -50,17 +47,25 @@ public class ContractTriggerCapsuleTest {
   }
 
   @Test
-  public void testSetAndGetContractTrigger() {
+  public void testSetAndGetContractTrigger() throws Exception {
     capsule.setContractTrigger(capsule.getContractTrigger());
     capsule.setBlockHash("e58f33f9baf9305dc6f82b9f1934ea8f0ade2defb951258d50167028c780351f");
     capsule.setLatestSolidifiedBlockNumber(0);
     assertEquals(0, capsule.getContractTrigger().getLatestSolidifiedBlockNumber());
     assertEquals("e58f33f9baf9305dc6f82b9f1934ea8f0ade2defb951258d50167028c780351f",
         capsule.getContractTrigger().getBlockHash());
+
+    EventPluginLoader mockLoader = mock(EventPluginLoader.class);
+    when(mockLoader.isContractLogTriggerEnable()).thenReturn(true);
+    Field instanceField = EventPluginLoader.class.getDeclaredField("instance");
+    instanceField.setAccessible(true);
+    EventPluginLoader originalInstance = (EventPluginLoader) instanceField.get(null);
+    instanceField.set(null, mockLoader);
     try {
       capsule.processTrigger();
-    } catch (Exception e) {
-      assertTrue(e instanceof NullPointerException);
+      verify(mockLoader).postContractLogTrigger(any(ContractLogTrigger.class));
+    } finally {
+      instanceField.set(null, originalInstance);
     }
   }
 
@@ -105,11 +110,16 @@ public class ContractTriggerCapsuleTest {
 
   @Test
   public void testLogInfo() {
-    logger.info("log info to string: {}, ", logInfo.toString());
-    logger.info("log clone data: {}, ", logInfo.getClonedData());
-    CollectionUtils.isNotEmpty(logInfo.getClonedTopics());
-    CollectionUtils.isNotEmpty(logInfo.getHexTopics());
-    new LogInfo(null, null, null);
+    assertArrayEquals(new byte[0], logInfo.getClonedData());
+    assertEquals(1, logInfo.getClonedTopics().size());
+    assertArrayEquals(new byte[32], logInfo.getClonedTopics().get(0));
+    assertEquals(1, logInfo.getHexTopics().size());
+    assertTrue(logInfo.toString().contains("address=0000000000000000000000000000000000000011"));
+
+    LogInfo empty = new LogInfo(null, null, null);
+    assertArrayEquals(new byte[0], empty.getAddress());
+    assertArrayEquals(new byte[0], empty.getData());
+    assertTrue(empty.getTopics().isEmpty());
   }
 
 }

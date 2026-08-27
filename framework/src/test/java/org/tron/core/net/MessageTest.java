@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import org.junit.Assert;
 import org.junit.Test;
 import org.tron.common.overlay.message.Message;
-import org.tron.core.exception.P2pException;
 import org.tron.core.net.message.MessageTypes;
 import org.tron.core.net.message.adv.FetchInvDataMessage;
 import org.tron.core.net.message.adv.InventoryMessage;
@@ -19,18 +18,17 @@ public class MessageTest {
   private DisconnectMessage disconnectMessage;
 
   @Test
-  public void test1() {
+  public void test1() throws Exception {
     DisconnectMessageTest disconnectMessageTest = new DisconnectMessageTest();
-    try {
-      disconnectMessage = new DisconnectMessage(MessageTypes.P2P_DISCONNECT.asByte(),
-          disconnectMessageTest.toByteArray());
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof P2pException);
-    }
+    disconnectMessage = new DisconnectMessage(MessageTypes.P2P_DISCONNECT.asByte(),
+        disconnectMessageTest.toByteArray());
+
+    Assert.assertNotNull(disconnectMessage);
+    Assert.assertEquals(disconnectMessageTest.getReason(), disconnectMessage.getReason());
   }
 
   @Test
-  public void testMessageStatistics() {
+  public void testMessageStatistics() throws InterruptedException {
     MessageStatistics messageStatistics = new MessageStatistics();
     Message message1 = new Message(MessageTypes.P2P_HELLO.asByte(), null) {
       @Override
@@ -94,11 +92,7 @@ public class MessageTest {
     messageStatistics.addTcpOutMessage(message4);
     messageStatistics.addTcpInMessage(message5);
     messageStatistics.addTcpOutMessage(message5);
-    try {
-      Thread.sleep(2000);// so that gap > 1 in MessageCount.update method
-    } catch (InterruptedException e) {
-      //ignore
-    }
+    Thread.sleep(2000);// so that gap > 1 in MessageCount.update method
     messageStatistics.addTcpInMessage(message6);
     messageStatistics.addTcpOutMessage(message6);
     messageStatistics.addTcpInMessage(message7);

@@ -103,10 +103,6 @@ public class FilterQueryTest {
     }
 
     TriggerCapsule triggerCapsule = new TriggerCapsule();
-    try {
-      triggerCapsule.processTrigger();
-    } catch (Exception e) {
-      assertTrue(e instanceof UnsupportedOperationException);
-    }
+    assertThrows(UnsupportedOperationException.class, triggerCapsule::processTrigger);
   }
 }
