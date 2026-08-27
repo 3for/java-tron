@@ -8,6 +8,7 @@ import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.codec.protobuf.ProtobufVarint32FrameDecoder;
 import io.netty.handler.codec.protobuf.ProtobufVarint32LengthFieldPrepender;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +34,7 @@ public class BackupServer implements AutoCloseable {
 
   private final String name = "BackupServer";
   private ExecutorService executor;
+  private Future<?> serverTask;
 
   @Autowired
   public BackupServer(final BackupManager backupManager) {
@@ -42,7 +44,7 @@ public class BackupServer implements AutoCloseable {
   public void initServer() {
     if (port > 0 && commonParameter.getBackupMembers().size() > 0) {
       executor = ExecutorServiceManager.newSingleThreadExecutor(name);
-      executor.submit(() -> {
+      serverTask = executor.submit(() -> {
         try {
           start();
         } catch (Exception e) {
@@ -95,7 +97,6 @@ public class BackupServer implements AutoCloseable {
   public void close() {
     logger.info("Closing backup server...");
     shutdown = true;
-    backupManager.stop();
     if (channel != null) {
       try {
         channel.close().await(10, TimeUnit.SECONDS);
@@ -103,6 +104,10 @@ public class BackupServer implements AutoCloseable {
         logger.warn("Closing backup server failed.", e);
       }
     }
+    if (serverTask != null) {
+      serverTask.cancel(true);
+    }
+    backupManager.stop();
     ExecutorServiceManager.shutdownAndAwaitTermination(executor, name);
     logger.info("Backup server closed.");
   }

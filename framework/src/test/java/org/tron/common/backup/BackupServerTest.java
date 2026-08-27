@@ -1,5 +1,7 @@
 package org.tron.common.backup;
 
+import static org.mockito.Mockito.mock;
+
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.After;
@@ -21,7 +23,7 @@ public class BackupServerTest {
   public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
   @Rule
-  public Timeout globalTimeout = Timeout.seconds(60);
+  public Timeout globalTimeout = Timeout.seconds(30);
   private BackupServer backupServer;
 
   @Before
@@ -32,8 +34,7 @@ public class BackupServerTest {
     List<String> members = new ArrayList<>();
     members.add("127.0.0.2");
     CommonParameter.getInstance().setBackupMembers(members);
-    BackupManager backupManager = new BackupManager();
-    backupManager.init();
+    BackupManager backupManager = mock(BackupManager.class);
     backupServer = new BackupServer(backupManager);
   }
 
@@ -43,10 +44,8 @@ public class BackupServerTest {
     Args.clearParam();
   }
 
-  @Test(timeout = 60_000)
-  public void test() throws InterruptedException {
+  @Test
+  public void test() {
     backupServer.initServer();
-    // wait for the server to start so channel is assigned before close() is called
-    Thread.sleep(1000);
   }
 }
