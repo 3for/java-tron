@@ -18,7 +18,7 @@ $ wget https://raw.githubusercontent.com/tronprotocol/java-tron/develop/docker/d
 ### Pull the mirror image
 Get the `tronprotocol/java-tron` image from the DockerHub, this image contains the full JDK environment and the host network configuration file, using the script for simple docker operations.
 ```shell
-$ sh docker.sh --pull
+$ bash docker.sh --pull
 ```
 
 ### Run the service
@@ -30,46 +30,63 @@ Before running the java-tron service, make sure some ports on your local machine
 #### Full node on the main network
 
 ```shell
-$ sh docker.sh --run --net main
+$ bash docker.sh --run
 ```
-or you can use `-p` to customize the port mapping, more custom parameters, please refer to [Options](#Options)
+The mainnet configuration is bundled in the image at `/java-tron/config.conf` and comes from the
+same java-tron revision used to build the image. `--net main` remains available as an explicit form.
+
+You can use `-p` to customize the port mapping. For more custom parameters, see
+[Options](#Options).
 
 ```shell
-$ sh docker.sh --run --net main -p 8080:8090 -p 40051:50051 
-```
-
-#### Full node on the nile test network
-```shell
-$ sh docker.sh --run --net test
+$ bash docker.sh --run --net main -p 8080:8090 -p 40051:50051
 ```
 
 #### Full node on the private network
-you can also build your own private-net and will download a configuration file from the network for your private network, which will be stored in your local `config` directory.
+You can also run a private network with the configuration maintained by `tron-deployment`.
+If `config/private_net_config.conf` does not exist in the current directory, the script downloads
+it automatically. An existing local configuration is reused so that local changes are preserved.
 ```shell
-$ sh docker.sh --run --net private
+$ bash docker.sh --run --net private
 ```
+
+To replace an existing local copy with the latest maintained configuration, explicitly request an
+update. This overwrites `config/private_net_config.conf`.
+
+```shell
+$ bash docker.sh --run --net private --update-config true
+```
+
 #### Configuration
-The script will automatically download and use the corresponding configuration file from the github repository according to the `--net` parameter. if you don't want to update the configuration file every time you start the service, please add a startup parameter.
+Mainnet uses the configuration bundled in the image and never downloads another configuration.
+The `private` network option uses `config/private_net_config.conf` from the current directory,
+downloading it from `tron-deployment` only when it is missing or an update is explicitly requested.
+
+Nile is intentionally not supported by this script because it may require features that are not
+yet available on the mainnet source revision. Follow the Nile-specific build instructions in the
+project README instead.
+
+Alternatively, mount a configuration into the container and select it with `-c`:
 
 ```shell
-$ sh docker.sh --run --update-config false
+$ bash docker.sh --run \
+    -v /absolute/path/custom.conf:/java-tron/custom.conf:ro \
+    -c /java-tron/custom.conf
 ```
-
-Or use the `-c` parameter to specify your own configuration file, which will not automatically download a new configuration file from github repository.
 
 
 ### View logs
 If you want to see the logs of the java-tron service, please use the `--log` parameter
 
 ```shell
-$ sh docker.sh --log | grep 'PushBlock'
+$ bash docker.sh --log | grep 'PushBlock'
 ```
 ### Stop the service
 
 If you want to stop the container of java-tron, you can execute
 
 ```shell
-$ sh docker.sh --stop
+$ bash docker.sh --stop
 ```
 
 ## Build Image
@@ -88,7 +105,7 @@ DOCKER_TARGET="1.0"
 then execute the build:
 
 ```shell
-$ sh docker.sh --build
+$ bash docker.sh --build
 ```
 
 ## Options
@@ -104,7 +121,5 @@ Parameters for all functions：
 * **`-p`** publish a container's port to the host, format:`-p hostPort:containerPort`
 * **`-c`** specify other java-tron configuration file in the container
 * **`-v`** bind mount a volume for the container,format: `-v host-src:container-dest`, the `host-src` is an absolute path
-* **`--net`** select the network, you can join the main-net, test-net
-* **`--update-config`** update configuration file, default true
-
-
+* **`--net`** select `main` or `private`; a missing private configuration is downloaded automatically
+* **`--update-config`** set to `true` with `--net private` to replace the local private configuration

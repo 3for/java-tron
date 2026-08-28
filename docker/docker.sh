@@ -32,17 +32,12 @@ DOCKER_RPC_PORT=50051
 DOCKER_LISTEN_PORT=18888
 
 VOLUME=`pwd`
-CONFIG="$VOLUME/config"
+CONFIG_DIR="$VOLUME/config"
 OUTPUT_DIRECTORY="$VOLUME/output-directory"
 
-CONFIG_PATH="/java-tron/config/"
-CONFIG_FILE="main_net_config.conf"
-MAIN_NET_CONFIG_FILE="main_net_config.conf"
-TEST_NET_CONFIG_FILE="test_net_config.conf"
+BUNDLED_CONFIG_FILE="$BASE_DIR/config.conf"
 PRIVATE_NET_CONFIG_FILE="private_net_config.conf"
-
-# update the configuration file, if true, the configuration file will be fetched from the network every time you start
-UPDATE_CONFIG=true
+PRIVATE_NET_CONFIG_URL="https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/$PRIVATE_NET_CONFIG_FILE"
 
 LOG_FILE="/logs/tron.log"
 
@@ -67,25 +62,53 @@ docker_image() {
   image=$image_name
 }
 
-download_config() {
-  mkdir -p config
-  if test curl; then
-    curl -o config/$CONFIG_FILE -LO https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/$CONFIG_FILE -s
-  elif test wget; then
-    wget -P -q config/ https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/$CONFIG_FILE
+download_private_config() {
+  local config_file=$1
+  local temp_file
+
+  if ! mkdir -p "$CONFIG_DIR"; then
+    echo "run: failed to create configuration directory: $CONFIG_DIR"
+    return 1
   fi
-}
 
+  if ! temp_file=$(mktemp "$CONFIG_DIR/.private_net_config.conf.XXXXXX"); then
+    echo "run: failed to create a temporary configuration file"
+    return 1
+  fi
 
-check_download_config() {
-  if [[ ! -d 'config' || ! -f "config/$CONFIG_FILE" ]]; then
-    mkdir -p config
-    if test curl; then
-      curl -o config/$CONFIG_FILE -LO https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/$CONFIG_FILE -s
-    elif test wget; then
-      wget -P -q config/ https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/$CONFIG_FILE
+  if command -v curl >/dev/null 2>&1; then
+    if ! curl --fail --silent --show-error --location \
+        --output "$temp_file" "$PRIVATE_NET_CONFIG_URL"; then
+      rm -f "$temp_file"
+      echo "run: failed to download private network configuration"
+      return 1
     fi
+  elif command -v wget >/dev/null 2>&1; then
+    if ! wget --quiet --output-document="$temp_file" "$PRIVATE_NET_CONFIG_URL"; then
+      rm -f "$temp_file"
+      echo "run: failed to download private network configuration"
+      return 1
+    fi
+  else
+    rm -f "$temp_file"
+    echo "run: curl or wget is required to download the private network configuration"
+    return 1
   fi
+
+  if [[ ! -s "$temp_file" ]]; then
+    rm -f "$temp_file"
+    echo "run: downloaded private network configuration is empty"
+    return 1
+  fi
+
+  chmod 644 "$temp_file"
+  if ! mv -f "$temp_file" "$config_file"; then
+    rm -f "$temp_file"
+    echo "run: failed to save private network configuration: $config_file"
+    return 1
+  fi
+
+  echo "private network configuration saved to $config_file"
 }
 
 run() {
@@ -106,6 +129,10 @@ run() {
   volume=""
   parameter=""
   tron_parameter=""
+  network="main"
+  network_config=""
+  custom_config=false
+  update_config=false
   if [ $# -gt 0 ]; then
     while [ -n "$1" ]; do
       case "$1" in
@@ -119,21 +146,19 @@ run() {
           ;;
         -c)
           tron_parameter="$tron_parameter -c $2"
-          UPDATE_CONFIG=false
+          custom_config=true
           shift 2
           ;;
         --net)
-          if [[ "$2" = "main" ]]; then
-            CONFIG_FILE=$MAIN_NET_CONFIG_FILE
-          elif [[ "$2" = "test" ]]; then
-            CONFIG_FILE=$TEST_NET_CONFIG_FILE
-          elif [[ "$2" = "private" ]]; then
-            CONFIG_FILE=$PRIVATE_NET_CONFIG_FILE
-          fi
+          network=$2
           shift 2
           ;;
         --update-config)
-          UPDATE_CONFIG=$2
+          if [[ "$2" != "true" && "$2" != "false" ]]; then
+            echo "run: --update-config expects true or false"
+            exit 1
+          fi
+          update_config=$2
           shift 2
           ;;
         *)
@@ -142,12 +167,37 @@ run() {
           ;;
       esac
     done
-    if [ $UPDATE_CONFIG = true ]; then
-      download_config
+
+    if [[ "$network" = "private" ]]; then
+      network_config="$CONFIG_DIR/$PRIVATE_NET_CONFIG_FILE"
+    elif [[ "$network" != "main" ]]; then
+      echo "run: unsupported network '$network'; expected main or private"
+      exit 1
     fi
 
-    if [ -z "$volume" ]; then
-      volume=" -v $CONFIG:/java-tron/config -v $OUTPUT_DIRECTORY:/java-tron/output-directory"
+    if [[ "$custom_config" = true && -n "$network_config" ]]; then
+      echo "run: -c cannot be combined with --net private"
+      exit 1
+    fi
+
+    if [[ "$update_config" = true && "$network" != "private" ]]; then
+      echo "run: --update-config true is only supported with --net private"
+      exit 1
+    fi
+
+    if [[ -n "$network_config" ]]; then
+      if [[ "$update_config" = true ]]; then
+        echo "updating private network configuration from tron-deployment"
+        download_private_config "$network_config" || exit 1
+      elif [[ ! -f "$network_config" ]]; then
+        echo "private network configuration not found; downloading it from tron-deployment"
+        download_private_config "$network_config" || exit 1
+      fi
+      volume="$volume -v $network_config:$BUNDLED_CONFIG_FILE:ro"
+    fi
+
+    if [[ "$volume" != *":/java-tron/output-directory"* ]]; then
+      volume=" -v $OUTPUT_DIRECTORY:/java-tron/output-directory$volume"
     fi
 
     if [ -z "$parameter" ]; then
@@ -155,7 +205,7 @@ run() {
     fi
 
     if [ -z "$tron_parameter" ]; then
-      tron_parameter=" -c $CONFIG_PATH$CONFIG_FILE"
+      tron_parameter=" -c $BUNDLED_CONFIG_FILE"
     fi
 
     # Using custom parameters
@@ -166,19 +216,15 @@ run() {
         "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
         $tron_parameter
   else
-    if [ $UPDATE_CONFIG = true ]; then
-      download_config
-    fi
     # Default parameters
     docker run -d -it --name "$DOCKER_REPOSITORY-$DOCKER_IMAGES" \
-      -v $CONFIG:/java-tron/config \
       -v $OUTPUT_DIRECTORY:/java-tron/output-directory \
       -p $HOST_HTTP_PORT:$DOCKER_HTTP_PORT \
       -p $HOST_RPC_PORT:$DOCKER_RPC_PORT \
       -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT \
       --restart always \
       "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
-      -c "$CONFIG_PATH$CONFIG_FILE"
+      -c "$BUNDLED_CONFIG_FILE"
   fi
 }
 
