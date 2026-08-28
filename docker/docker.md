@@ -35,11 +35,16 @@ $ bash docker.sh --run
 The mainnet configuration is bundled in the image at `/java-tron/config.conf` and comes from the
 same java-tron revision used to build the image. `--net main` remains available as an explicit form.
 
-You can use `-p` to customize the port mapping. For more custom parameters, see
+You can use `-p` to customize the port mapping. Supplying any custom `-p` replaces the complete
+default port set, so include both TCP and UDP mappings for P2P. For more custom parameters, see
 [Options](#Options).
 
 ```shell
-$ bash docker.sh --run --net main -p 8080:8090 -p 40051:50051
+$ bash docker.sh --run --net main \
+    -p 8080:8090 \
+    -p 40051:50051 \
+    -p 18888:18888 \
+    -p 18888:18888/udp
 ```
 
 #### Full node on the private network
@@ -131,7 +136,7 @@ Parameters for all functions：
 * **`--log`** exporting the java-tron run log on the container
 * **`--stop`** stopping a running container
 * **`--rm`** remove container,only deletes the container, not the image
-* **`-p`** publish a container's port to the host, format:`-p hostPort:containerPort`
+* **`-p`** publish a container's port to the host, format: `-p hostPort:containerPort[/protocol]`; custom mappings replace all defaults
 * **`-c`** specify other java-tron configuration file in the container
 * **`-v`** bind mount a volume for the container,format: `-v host-src:container-dest`, the `host-src` is an absolute path
 * **`--net`** select `main` or `private`; a missing private configuration is downloaded automatically

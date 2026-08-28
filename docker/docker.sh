@@ -227,7 +227,7 @@ run() {
     fi
 
     if [ -z "$parameter" ]; then
-      parameter=" -p $HOST_HTTP_PORT:$DOCKER_HTTP_PORT -p $HOST_RPC_PORT:$DOCKER_RPC_PORT -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT"
+      parameter=" -p $HOST_HTTP_PORT:$DOCKER_HTTP_PORT -p $HOST_RPC_PORT:$DOCKER_RPC_PORT -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT/udp"
     fi
 
     if [ -z "$tron_parameter" ]; then
@@ -248,6 +248,7 @@ run() {
       -p $HOST_HTTP_PORT:$DOCKER_HTTP_PORT \
       -p $HOST_RPC_PORT:$DOCKER_RPC_PORT \
       -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT \
+      -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT/udp \
       --restart always \
       "$IMAGE_REFERENCE" \
       -c "$BUNDLED_CONFIG_FILE"
