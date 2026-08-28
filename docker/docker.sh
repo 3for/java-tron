@@ -311,7 +311,7 @@ build() {
       ;;
   esac
 
-  if [[ ! -f "$dockerfile_path" || ! -f "$SCRIPT_DIR/docker-entrypoint.sh" ]]; then
+  if [[ ! -f "$dockerfile_path" ]]; then
     if ! temporary_context=$(mktemp -d "${TMPDIR:-/tmp}/java-tron-docker.XXXXXX"); then
       echo "build: failed to create a temporary build context" >&2
       return 1
@@ -321,13 +321,10 @@ build() {
     dockerfile_path="$temporary_context/Dockerfile"
 
     echo "build files not found next to docker.sh; downloading a temporary build context"
-    if ! download_build_file "$dockerfile_source" "$dockerfile_path" \
-        || ! download_build_file "$JAVA_TRON_DOCKER_URL/docker-entrypoint.sh" \
-          "$temporary_context/docker-entrypoint.sh"; then
+    if ! download_build_file "$dockerfile_source" "$dockerfile_path"; then
       rm -rf "$temporary_context"
       return 1
     fi
-    chmod 755 "$temporary_context/docker-entrypoint.sh"
   fi
 
   echo "docker build --platform $platform --file $dockerfile_path"

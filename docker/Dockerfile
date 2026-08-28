@@ -51,11 +51,9 @@ ENV PATH=$PATH:$JAVA_HOME/bin
 ENV LD_PRELOAD="/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so.4"
 ENV TCMALLOC_RELEASE_RATE=10
 
-COPY docker-entrypoint.sh $BASE_DIR/bin
-
 WORKDIR $BASE_DIR
 
-ENTRYPOINT ["./bin/docker-entrypoint.sh"]
+ENTRYPOINT ["./bin/FullNode"]
 
 # Build-time metadata as defined at http://label-schema.org
 ARG BUILD_DATE
