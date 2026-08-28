@@ -139,7 +139,27 @@ download_private_config() {
   echo "private network configuration saved to $config_file"
 }
 
+require_run_option_value() {
+  local option=$1
+
+  if [[ $# -lt 2 || -z "$2" ]]; then
+    echo "run: $option requires a value" >&2
+    return 1
+  fi
+}
+
 run() {
+  local -a volume_args=()
+  local -a port_args=()
+  local -a tron_args=()
+  local network="main"
+  local network_config=""
+  local custom_config=false
+  local update_config=false
+  local has_output_volume=false
+  local mount
+  local index
+
   if ! docker_image_exists; then
     echo 'warning: no java-tron mirror image, do you need to get the mirror image?[y/n]'
     read need
@@ -152,107 +172,105 @@ run() {
     fi
   fi
 
-  volume=""
-  parameter=""
-  tron_parameter=""
-  network="main"
-  network_config=""
-  custom_config=false
-  update_config=false
-  if [ $# -gt 0 ]; then
-    while [ -n "$1" ]; do
-      case "$1" in
-        -v)
-          volume="$volume -v $2"
-          shift 2
-          ;;
-        -p)
-          parameter="$parameter -p $2"
-          shift 2
-          ;;
-        -c)
-          tron_parameter="$tron_parameter -c $2"
-          custom_config=true
-          shift 2
-          ;;
-        --net)
-          network=$2
-          shift 2
-          ;;
-        --update-config)
-          if [[ "$2" != "true" && "$2" != "false" ]]; then
-            echo "run: --update-config expects true or false"
-            exit 1
-          fi
-          update_config=$2
-          shift 2
-          ;;
-        *)
-          echo "run: arg $1 is not a valid parameter"
-          exit 1
-          ;;
-      esac
-    done
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -v)
+        require_run_option_value "$@" || return 1
+        volume_args+=(-v "$2")
+        shift 2
+        ;;
+      -p)
+        require_run_option_value "$@" || return 1
+        port_args+=(-p "$2")
+        shift 2
+        ;;
+      -c)
+        require_run_option_value "$@" || return 1
+        tron_args+=(-c "$2")
+        custom_config=true
+        shift 2
+        ;;
+      --net)
+        require_run_option_value "$@" || return 1
+        network=$2
+        shift 2
+        ;;
+      --update-config)
+        require_run_option_value "$@" || return 1
+        if [[ "$2" != "true" && "$2" != "false" ]]; then
+          echo "run: --update-config expects true or false" >&2
+          return 1
+        fi
+        update_config=$2
+        shift 2
+        ;;
+      *)
+        echo "run: arg $1 is not a valid parameter" >&2
+        return 1
+        ;;
+    esac
+  done
 
-    if [[ "$network" = "private" ]]; then
-      network_config="$CONFIG_DIR/$PRIVATE_NET_CONFIG_FILE"
-    elif [[ "$network" != "main" ]]; then
-      echo "run: unsupported network '$network'; expected main or private"
-      exit 1
-    fi
-
-    if [[ "$custom_config" = true && -n "$network_config" ]]; then
-      echo "run: -c cannot be combined with --net private"
-      exit 1
-    fi
-
-    if [[ "$update_config" = true && "$network" != "private" ]]; then
-      echo "run: --update-config true is only supported with --net private"
-      exit 1
-    fi
-
-    if [[ -n "$network_config" ]]; then
-      if [[ "$update_config" = true ]]; then
-        echo "updating private network configuration from tron-deployment"
-        download_private_config "$network_config" || exit 1
-      elif [[ ! -f "$network_config" ]]; then
-        echo "private network configuration not found; downloading it from tron-deployment"
-        download_private_config "$network_config" || exit 1
-      fi
-      volume="$volume -v $network_config:$BUNDLED_CONFIG_FILE:ro"
-    fi
-
-    if [[ "$volume" != *":/java-tron/output-directory"* ]]; then
-      volume=" -v $OUTPUT_DIRECTORY:/java-tron/output-directory$volume"
-    fi
-
-    if [ -z "$parameter" ]; then
-      parameter=" -p $HOST_HTTP_PORT:$DOCKER_HTTP_PORT -p $HOST_RPC_PORT:$DOCKER_RPC_PORT -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT/udp"
-    fi
-
-    if [ -z "$tron_parameter" ]; then
-      tron_parameter=" -c $BUNDLED_CONFIG_FILE"
-    fi
-
-    # Using custom parameters
-    docker run -d -it --name "$CONTAINER_NAME" \
-        $volume \
-        $parameter \
-        --restart always \
-        "$IMAGE_REFERENCE" \
-        $tron_parameter
-  else
-    # Default parameters
-    docker run -d -it --name "$CONTAINER_NAME" \
-      -v $OUTPUT_DIRECTORY:/java-tron/output-directory \
-      -p $HOST_HTTP_PORT:$DOCKER_HTTP_PORT \
-      -p $HOST_RPC_PORT:$DOCKER_RPC_PORT \
-      -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT \
-      -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT/udp \
-      --restart always \
-      "$IMAGE_REFERENCE" \
-      -c "$BUNDLED_CONFIG_FILE"
+  if [[ "$network" = "private" ]]; then
+    network_config="$CONFIG_DIR/$PRIVATE_NET_CONFIG_FILE"
+  elif [[ "$network" != "main" ]]; then
+    echo "run: unsupported network '$network'; expected main or private" >&2
+    return 1
   fi
+
+  if [[ "$custom_config" = true && -n "$network_config" ]]; then
+    echo "run: -c cannot be combined with --net private" >&2
+    return 1
+  fi
+
+  if [[ "$update_config" = true && "$network" != "private" ]]; then
+    echo "run: --update-config true is only supported with --net private" >&2
+    return 1
+  fi
+
+  if [[ -n "$network_config" ]]; then
+    if [[ "$update_config" = true ]]; then
+      echo "updating private network configuration from tron-deployment"
+      download_private_config "$network_config" || return 1
+    elif [[ ! -f "$network_config" ]]; then
+      echo "private network configuration not found; downloading it from tron-deployment"
+      download_private_config "$network_config" || return 1
+    fi
+    volume_args+=(-v "$network_config:$BUNDLED_CONFIG_FILE:ro")
+  fi
+
+  for ((index = 1; index < ${#volume_args[@]}; index += 2)); do
+    mount=${volume_args[$index]}
+    if [[ "$mount" == *":/java-tron/output-directory" \
+        || "$mount" == *":/java-tron/output-directory:"* ]]; then
+      has_output_volume=true
+      break
+    fi
+  done
+
+  if [[ "$has_output_volume" = false ]]; then
+    volume_args=(-v "$OUTPUT_DIRECTORY:/java-tron/output-directory" "${volume_args[@]}")
+  fi
+
+  if [[ ${#port_args[@]} -eq 0 ]]; then
+    port_args=(
+      -p "$HOST_HTTP_PORT:$DOCKER_HTTP_PORT"
+      -p "$HOST_RPC_PORT:$DOCKER_RPC_PORT"
+      -p "$HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT"
+      -p "$HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT/udp"
+    )
+  fi
+
+  if [[ ${#tron_args[@]} -eq 0 ]]; then
+    tron_args=(-c "$BUNDLED_CONFIG_FILE")
+  fi
+
+  docker run -d -it --name "$CONTAINER_NAME" \
+    "${volume_args[@]}" \
+    "${port_args[@]}" \
+    --restart always \
+    "$IMAGE_REFERENCE" \
+    "${tron_args[@]}"
 }
 
 build() {
