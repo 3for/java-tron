@@ -16,7 +16,10 @@ Please download and install the latest Docker from Docker official website:
 
 ## Quickstart based on official tools
 
-### Build the docker image from source
+The official `docker.sh` helper manages image builds, pulls, container startup, ports,
+configuration, logs, and lifecycle operations.
+
+### Build the Docker image from source
 
 #### Clone the java-tron repo
 
@@ -26,7 +29,7 @@ git clone https://github.com/tronprotocol/java-tron.git
 cd java-tron
 ```
 
-#### Build the docker image
+#### Build the Docker image
 
 From the repository root, use the helper script to detect the Docker daemon architecture and select
 the matching Dockerfile:
@@ -34,41 +37,33 @@ the matching Dockerfile:
 bash docker/docker.sh --build
 ```
 
-#### Using the official Docker images
+#### Use the official Docker image
 
-Download the official docker image from the Dockerhub with below command if you'd like to use the official images:
+Alternatively, pull the official image from Docker Hub:
 ```
-docker pull tronprotocol/java-tron
-```
-
-### Run the container
-
-You can run the command below to start the java-tron:
-```
-docker run -it -d \
-  -p 8090:8090 \
-  -p 18888:18888 \
-  -p 18888:18888/udp \
-  -p 50051:50051 \
-  --restart always \
-  tronprotocol/java-tron
+bash docker/docker.sh --pull
 ```
 
-The `-p` flag defines the ports that the container needs to be mapped on the host machine. By default the container will start and join in the mainnet
-using the built-in configuration file, you can specify other configuration file by mounting a directory and using the flag `-c`.
-This image also supports customizing some startup parameters，here is an example for running a FullNode as an SR in production env:
+### Run a FullNode
+
+Start a mainnet FullNode with the bundled configuration and default HTTP, gRPC, and P2P port
+mappings:
 ```
-docker run -it -d -p 8080:8080 -p 8090:8090 \
-           -p 18888:18888 -p 18888:18888/udp -p 50051:50051 \
-           -v /Users/quan/tron/docker/conf:/java-tron/conf \
-           -v /Users/quan/tron/docker/datadir:/java-tron/data \
-           tronprotocol/java-tron \
-           -jvm "{-Xmx10g -Xms10g}" \
-           -c /java-tron/conf/config-localtest.conf \
-           -d /java-tron/data \
-           -w 
+bash docker/docker.sh --run
 ```
-Note: The directory `/Users/quan/tron/docker/conf` must contain the file `config-localtest.conf`. The jvm parameters must be enclosed in double quotes and braces.
+
+View its logs with the same helper:
+```
+bash docker/docker.sh --log
+```
+
+Stop the container when needed:
+```
+bash docker/docker.sh --stop
+```
+
+For private networks, custom configuration files, custom port mappings, architecture selection,
+and other lifecycle commands, see the [Docker Shell Guide](docker/docker.md).
 
 ## Quickstart for using docker-tron-quickstart
 
