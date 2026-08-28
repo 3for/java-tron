@@ -5,10 +5,8 @@
 This guide covers three common ways to get started with TRON:
 
 - Run a mainnet FullNode with the official java-tron Docker image.
-- Start an isolated local development chain with
-  [TRON Runtime Environment (TRE)](https://hub.docker.com/r/tronbox/tre).
-- Deploy a multi-node private network with the official
-  [tron-docker](https://github.com/tronprotocol/tron-docker/tree/main/private_net) configuration.
+- Start an isolated local development chain with [TRON Runtime Environment (TRE)](https://hub.docker.com/r/tronbox/tre).
+- Deploy a multi-node private network with the official [tron-docker](https://github.com/tronprotocol/tron-docker/tree/main/private_net) configuration.
 
 ## Dependencies
 
@@ -32,8 +30,7 @@ Create host directories for the blockchain database and application logs:
 mkdir -p output-directory logs
 ```
 
-Set JVM memory options for the architecture used by the Docker image. Run one of the following
-commands:
+Set JVM memory options for the architecture used by the Docker image. Run one of the following commands:
 
 ```shell
 # amd64 / JDK 8
@@ -45,9 +42,7 @@ JAVA_TRON_JVM_OPTIONS="-Xms9G -Xmx12G -XX:MaxDirectMemorySize=1G"
 JAVA_TRON_JVM_OPTIONS="-Xmx9G -XX:MaxDirectMemorySize=1G"
 ```
 
-These baseline values follow the official guidance for a host with 16 GB of memory. For hosts with
-32 GB or more, size the heap using the official [JVM tuning guide][jvm-guide] and leave sufficient
-memory for direct buffers, native allocations, the operating system, and the database page cache.
+These baseline values follow the official guidance for a host with 16 GB of memory. For hosts with 32 GB or more, size the heap using the official [JVM tuning guide][jvm-guide] and leave sufficient memory for direct buffers, native allocations, the operating system, and the database page cache.
 
 Start the FullNode with the mainnet configuration bundled in the image:
 
@@ -66,11 +61,7 @@ docker run -d \
   -c /java-tron/config.conf
 ```
 
-The HTTP and gRPC APIs are bound to localhost by default, while the TCP and UDP P2P ports are
-available to the network. Change the API bindings only when remote access is required, and protect
-them with appropriate network controls. Pin a versioned image tag or digest for long-running or
-reproducible deployments. The image also loads architecture-specific GC options from
-`bin/java-tron.vmoptions`; do not copy JDK 8 GC options to an ARM64/JDK 17 deployment.
+The HTTP and gRPC APIs are bound to localhost by default, while the TCP and UDP P2P ports are available to the network. Change the API bindings only when remote access is required, and protect them with appropriate network controls. Pin a versioned image tag or digest for long-running or reproducible deployments. The image also loads architecture-specific GC options from `bin/java-tron.vmoptions`; do not copy JDK 8 GC options to an ARM64/JDK 17 deployment.
 
 View the FullNode log:
 
@@ -84,14 +75,11 @@ Stop the container:
 docker stop java-tron
 ```
 
-The optional `docker.sh` helper provides shorter commands for image builds, private network
-configuration, common port mappings, and lifecycle operations. See the
-[Docker Shell Guide](docker/docker.md) for details.
+The optional `docker.sh` helper provides shorter commands for image builds, private network configuration, common port mappings, and lifecycle operations. See the [Docker Shell Guide](docker/docker.md) for details.
 
 ### Mainnet and SR requirements
 
-A Mainnet FullNode requires production-grade CPU, memory, SSD capacity, and network bandwidth. The
-current official deployment requirements are:
+A Mainnet FullNode requires production-grade CPU, memory, SSD capacity, and network bandwidth. The current official deployment requirements are:
 
 | Deployment | CPU | Memory | High-performance SSD | Network bandwidth |
 | --- | ---: | ---: | ---: | ---: |
@@ -99,22 +87,13 @@ current official deployment requirements are:
 | Recommended FullNode | 16 cores | 32 GB | 3.5 TB or more | 100 Mbps |
 | Block-producing SR | 32 cores | 64 GB | 3.5 TB or more | 100 Mbps |
 
-The example above stores the database under `$(pwd)/output-directory`. Before starting it, ensure
-that the current filesystem has sufficient high-performance SSD capacity, or replace the host side
-of the volume mapping with a dedicated data disk. A new node otherwise synchronizes the full chain;
-use a compatible [data snapshot][snapshot-guide] to reduce the initial synchronization time.
-[Lite FullNode][lite-guide] deployments have different storage requirements and require the
-corresponding Lite data and configuration.
+The example above stores the database under `$(pwd)/output-directory`. Before starting it, ensure that the current filesystem has sufficient high-performance SSD capacity, or replace the host side of the volume mapping with a dedicated data disk.
 
-Review the official [java-tron deployment guide][deployment-guide] and
-[JVM tuning guide][jvm-guide] before choosing JVM values, storage layout, snapshots, monitoring,
-and upgrade procedures.
+A new node otherwise synchronizes the full chain; use a compatible [data snapshot][snapshot-guide] to reduce the initial synchronization time. [Lite FullNode][lite-guide] deployments have different storage requirements and require the corresponding Lite data and configuration.
 
-Do not convert the quick-start container into a production Super Representative merely by adding
-`--witness`. An SR requires stronger hardware, protected block-signing keys, an SR-specific
-configuration, monitoring, backup, and operational failover. Follow the official
-[block-production deployment guide][block-production-guide] and review the
-[Super Representative requirements][sr-guide] before enabling block production.
+Review the official [java-tron deployment guide][deployment-guide] and [JVM tuning guide][jvm-guide] before choosing JVM values, storage layout, snapshots, monitoring, and upgrade procedures.
+
+Do not convert the quick-start container into a production Super Representative merely by adding `--witness`. An SR requires stronger hardware, protected block-signing keys, an SR-specific configuration, monitoring, backup, and operational failover. Follow the official [block-production deployment guide][block-production-guide] and review the [Super Representative requirements][sr-guide] before enabling block production.
 
 [deployment-guide]: https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/
 [jvm-guide]: https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#jvm-parameter-optimization-for-mainnet-fullnode-deployment
@@ -125,9 +104,7 @@ configuration, monitoring, backup, and operational failover. Follow the official
 
 ## Start a local development chain with TRE
 
-[TRE](https://hub.docker.com/r/tronbox/tre) is the maintained successor for local smart-contract
-and DApp development. It provides a single-container development chain with funded test accounts,
-automatic block production, and commonly used HTTP and event APIs on port `9090`.
+[TRE](https://hub.docker.com/r/tronbox/tre) is the maintained successor for local smart-contract and DApp development. It provides a single-container development chain with funded test accounts, automatic block production, and commonly used HTTP and event APIs on port `9090`.
 
 Pull and run the current stable image:
 
@@ -146,19 +123,13 @@ Check that the environment is ready:
 curl -fsS http://127.0.0.1:9090/healthcheck
 ```
 
-The default image tag follows the current stable release. Pin a versioned tag or image digest in
-CI when reproducible builds are required. See the
-[TronBox documentation](https://tronbox.io/docs/quickstart) for contract development and deployment
-workflows.
+The default image tag follows the current stable release. Pin a versioned tag or image digest in CI when reproducible builds are required. See the [TronBox documentation](https://tronbox.io/docs/quickstart) for contract development and deployment workflows.
 
-> **Warning:** TRE is intended only for isolated development and testing. The default private key,
-> funded accounts, and administrative APIs are not secure. Keep port `9090` bound to localhost and
-> never expose this environment to production or an untrusted network.
+> **Warning:** TRE is intended only for isolated development and testing. The default private key, funded accounts, and administrative APIs are not secure. Keep port `9090` bound to localhost and never expose this environment to production or an untrusted network.
 
 ## Deploy a multi-node private network
 
-Use the official `tron-docker/private_net` setup when testing P2P communication, consensus, node
-operations, or workflows that require more than one java-tron process:
+Use the official `tron-docker/private_net` setup when testing P2P communication, consensus, node operations, or workflows that require more than one java-tron process:
 
 ```shell
 git clone https://github.com/tronprotocol/tron-docker.git
@@ -166,8 +137,4 @@ cd tron-docker/private_net
 docker compose up -d
 ```
 
-This setup starts a block-producing SR node and a regular FullNode. Its bundled genesis accounts,
-keys, and configuration are suitable for local testing only. Review and replace them before using
-the setup in a shared or security-sensitive environment. See the
-[private network documentation](https://github.com/tronprotocol/tron-docker/tree/main/private_net)
-for configuration and additional nodes.
+This setup starts a block-producing SR node and a regular FullNode. Its bundled genesis accounts, keys, and configuration are suitable for local testing only. Review and replace them before using the setup in a shared or security-sensitive environment. See the [private network documentation](https://github.com/tronprotocol/tron-docker/tree/main/private_net) for configuration and additional nodes.
