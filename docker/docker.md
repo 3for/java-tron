@@ -23,7 +23,8 @@ $ bash docker.sh --pull
 ```
 
 ### Run the service
-Before running the java-tron service, make sure some ports on your local machine are open,the image has the following ports automatically exposed:
+Before running the java-tron service, make sure the required ports are available on the host.
+By default, `docker.sh --run` publishes the following container ports to the host:
 - `8090`: used by the HTTP based JSON API
 - `50051`: used by the GRPC based API
 - `18888`: TCP and UDP, used by the P2P protocol running the network

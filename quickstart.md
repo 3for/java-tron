@@ -28,10 +28,10 @@ cd java-tron
 
 #### Build the docker image
 
-Use the command below to navigate to the docker directory and start the build:
+From the repository root, use the helper script to detect the Docker daemon architecture and select
+the matching Dockerfile:
 ```
-cd docker
-docker build -t tronprotocol/java-tron .
+bash docker/docker.sh --build
 ```
 
 #### Using the official Docker images
@@ -45,14 +45,21 @@ docker pull tronprotocol/java-tron
 
 You can run the command below to start the java-tron:
 ```
-docker run -it -d -p 8090:8090 -p 18888:18888 -p 50051:50051 --restart always tronprotocol/java-tron 
+docker run -it -d \
+  -p 8090:8090 \
+  -p 18888:18888 \
+  -p 18888:18888/udp \
+  -p 50051:50051 \
+  --restart always \
+  tronprotocol/java-tron
 ```
 
 The `-p` flag defines the ports that the container needs to be mapped on the host machine. By default the container will start and join in the mainnet
 using the built-in configuration file, you can specify other configuration file by mounting a directory and using the flag `-c`.
 This image also supports customizing some startup parameters，here is an example for running a FullNode as an SR in production env:
 ```
-docker run -it -d -p 8080:8080 -p 8090:8090 -p 18888:18888 -p 50051:50051 \
+docker run -it -d -p 8080:8080 -p 8090:8090 \
+           -p 18888:18888 -p 18888:18888/udp -p 50051:50051 \
            -v /Users/quan/tron/docker/conf:/java-tron/conf \
            -v /Users/quan/tron/docker/datadir:/java-tron/data \
            tronprotocol/java-tron \
@@ -61,7 +68,7 @@ docker run -it -d -p 8080:8080 -p 8090:8090 -p 18888:18888 -p 50051:50051 \
            -d /java-tron/data \
            -w 
 ```
-Note: The directory `/Users/tron/docker/conf` must contain the file `config-localtest.conf`. The jvm parameters must be enclosed in double quotes and braces.
+Note: The directory `/Users/quan/tron/docker/conf` must contain the file `config-localtest.conf`. The jvm parameters must be enclosed in double quotes and braces.
 
 ## Quickstart for using docker-tron-quickstart
 
