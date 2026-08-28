@@ -4,7 +4,7 @@
 
 This guide covers three common ways to get started with TRON:
 
-- Run a mainnet FullNode with the official java-tron Docker helper.
+- Run a mainnet FullNode with the official java-tron Docker image.
 - Start an isolated local development chain with
   [TRON Runtime Environment (TRE)](https://hub.docker.com/r/tronbox/tre).
 - Deploy a multi-node private network with the official
@@ -20,56 +20,108 @@ Install the latest Docker release for your platform:
 
 ## Run a mainnet FullNode
 
-The official `docker.sh` helper manages image builds, pulls, container startup, ports,
-configuration, logs, and lifecycle operations.
-
-### Build the Docker image from source
-
-Clone the java-tron repository and enter its directory:
+Pull the official image from Docker Hub:
 
 ```shell
-git clone https://github.com/tronprotocol/java-tron.git
-cd java-tron
+docker pull tronprotocol/java-tron:latest
 ```
 
-From the repository root, build the image. The helper detects the Docker daemon architecture and
-selects the matching Dockerfile:
+Create host directories for the blockchain database and application logs:
 
 ```shell
-bash docker/docker.sh --build
+mkdir -p output-directory logs
 ```
 
-### Use the official Docker image
-
-Alternatively, pull the official image from Docker Hub:
+Set JVM memory options for the architecture used by the Docker image. Run one of the following
+commands:
 
 ```shell
-bash docker/docker.sh --pull
+# amd64 / JDK 8
+JAVA_TRON_JVM_OPTIONS="-Xms9G -Xmx12G -XX:MaxDirectMemorySize=1G"
 ```
 
-### Start and manage the FullNode
-
-Start a mainnet FullNode with the bundled configuration and default HTTP, gRPC, and P2P port
-mappings:
-
 ```shell
-bash docker/docker.sh --run
+# ARM64 / JDK 17
+JAVA_TRON_JVM_OPTIONS="-Xmx9G -XX:MaxDirectMemorySize=1G"
 ```
 
-View its logs:
+These baseline values follow the official guidance for a host with 16 GB of memory. For hosts with
+32 GB or more, size the heap using the official [JVM tuning guide][jvm-guide] and leave sufficient
+memory for direct buffers, native allocations, the operating system, and the database page cache.
+
+Start the FullNode with the mainnet configuration bundled in the image:
 
 ```shell
-bash docker/docker.sh --log
+docker run -d \
+  --name java-tron \
+  --restart unless-stopped \
+  -v "$(pwd)/output-directory:/java-tron/output-directory" \
+  -v "$(pwd)/logs:/java-tron/logs" \
+  -p 127.0.0.1:8090:8090 \
+  -p 127.0.0.1:50051:50051 \
+  -p 18888:18888 \
+  -p 18888:18888/udp \
+  tronprotocol/java-tron:latest \
+  -jvm "{$JAVA_TRON_JVM_OPTIONS}" \
+  -c /java-tron/config.conf
+```
+
+The HTTP and gRPC APIs are bound to localhost by default, while the TCP and UDP P2P ports are
+available to the network. Change the API bindings only when remote access is required, and protect
+them with appropriate network controls. Pin a versioned image tag or digest for long-running or
+reproducible deployments. The image also loads architecture-specific GC options from
+`bin/java-tron.vmoptions`; do not copy JDK 8 GC options to an ARM64/JDK 17 deployment.
+
+View the FullNode log:
+
+```shell
+docker exec -it java-tron tail -100f /java-tron/logs/tron.log
 ```
 
 Stop the container:
 
 ```shell
-bash docker/docker.sh --stop
+docker stop java-tron
 ```
 
-For private networks, custom configuration files, custom port mappings, architecture selection,
-and other lifecycle commands, see the [Docker Shell Guide](docker/docker.md).
+The optional `docker.sh` helper provides shorter commands for image builds, private network
+configuration, common port mappings, and lifecycle operations. See the
+[Docker Shell Guide](docker/docker.md) for details.
+
+### Mainnet and SR requirements
+
+A Mainnet FullNode requires production-grade CPU, memory, SSD capacity, and network bandwidth. The
+current official deployment requirements are:
+
+| Deployment | CPU | Memory | High-performance SSD | Network bandwidth |
+| --- | ---: | ---: | ---: | ---: |
+| Minimum FullNode | 8 cores | 16 GB | 3 TB | 100 Mbps |
+| Recommended FullNode | 16 cores | 32 GB | 3.5 TB or more | 100 Mbps |
+| Block-producing SR | 32 cores | 64 GB | 3.5 TB or more | 100 Mbps |
+
+The example above stores the database under `$(pwd)/output-directory`. Before starting it, ensure
+that the current filesystem has sufficient high-performance SSD capacity, or replace the host side
+of the volume mapping with a dedicated data disk. A new node otherwise synchronizes the full chain;
+use a compatible [data snapshot][snapshot-guide] to reduce the initial synchronization time.
+[Lite FullNode][lite-guide] deployments have different storage requirements and require the
+corresponding Lite data and configuration.
+
+Review the official [java-tron deployment guide][deployment-guide] and
+[JVM tuning guide][jvm-guide] before choosing JVM values, storage layout, snapshots, monitoring,
+and upgrade procedures.
+
+Do not convert the quick-start container into a production Super Representative merely by adding
+`--witness`. An SR requires stronger hardware, protected block-signing keys, an SR-specific
+configuration, monitoring, backup, and operational failover. Follow the official
+[block-production deployment guide][block-production-guide] and review the
+[Super Representative requirements][sr-guide] before enabling block production.
+
+[deployment-guide]: https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/
+[jvm-guide]: https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#jvm-parameter-optimization-for-mainnet-fullnode-deployment
+[snapshot-guide]: https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#speeding-up-node-data-synchronization
+[lite-guide]: https://tronprotocol.github.io/documentation-en/using_javatron/litefullnode/
+[block-production-guide]: https://tronprotocol.github.io/documentation-en/using_javatron/installing_javatron/#starting-a-block-production-node
+[sr-guide]: https://tronprotocol.github.io/documentation-en/mechanism-algorithm/sr/
 
 ## Start a local development chain with TRE
 
