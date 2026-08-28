@@ -7,7 +7,7 @@ ENV BASE_DIR="/java-tron"
 
 # Update and install dependencies without using any cache
 RUN apt-get update $NO_PROXY_CACHE \
-  && apt-get --quiet --yes install git wget 7zip curl jq libtcmalloc-minimal4 openjdk-17-jre-headless=17* \
+  && apt-get --quiet --yes install git 7zip curl jq libtcmalloc-minimal4 openjdk-17-jre-headless=17* \
   && echo "git clone" \
   && mkdir -p $TMP_DIR \
   && cd $TMP_DIR \
@@ -17,10 +17,10 @@ RUN apt-get update $NO_PROXY_CACHE \
   && ./gradlew clean build -x test -x check --no-daemon \
   && cd build/distributions \
   && 7z x -y java-tron-1.0.0.zip  \
+  && cp $TMP_DIR/java-tron/framework/src/main/resources/config.conf java-tron-1.0.0/config.conf \
   && mv java-tron-1.0.0 $BASE_DIR \
   && rm -rf $TMP_DIR \
   && rm -rf ~/.gradle \
-  && wget -4 -O $BASE_DIR/config.conf https://raw.githubusercontent.com/tronprotocol/java-tron/master/framework/src/main/resources/config.conf \
   # Clean apt cache
   && apt-get clean \
   && rm -rf /var/cache/apt/archives/* /var/cache/apt/archives/partial/* \
