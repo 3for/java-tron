@@ -23,6 +23,8 @@ DOCKER_REPOSITORY="tronprotocol"
 DOCKER_IMAGES="java-tron"
 # latest or version
 DOCKER_TARGET="latest"
+CONTAINER_NAME="$DOCKER_REPOSITORY-$DOCKER_IMAGES"
+IMAGE_REFERENCE="$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET"
 
 HOST_HTTP_PORT=8090
 HOST_RPC_PORT=50051
@@ -44,21 +46,22 @@ LOG_FILE="/logs/tron.log"
 
 JAVA_TRON_DOCKER_URL="https://raw.githubusercontent.com/tronprotocol/java-tron/develop/docker"
 
-if test docker; then
-  docker -v
-else
-  echo "warning: docker must be installed, please install docker first."
-  exit
+if ! command -v docker >/dev/null 2>&1; then
+  echo "docker is required but was not found" >&2
+  exit 1
 fi
 
-docker_ps() {
-  containerID=`docker ps -a | grep "$DOCKER_REPOSITORY-$DOCKER_IMAGES" | awk '{print $1}'`
-  cid=$containerID
+if ! docker info >/dev/null 2>&1; then
+  echo "unable to connect to the Docker daemon" >&2
+  exit 1
+fi
+
+docker_container_exists() {
+  docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1
 }
 
-docker_image() {
-  image_name=`docker images |grep "$DOCKER_REPOSITORY/$DOCKER_IMAGES" |awk {'print $1'}| awk 'NR==1'`
-  image=$image_name
+docker_image_exists() {
+  docker image inspect "$IMAGE_REFERENCE" >/dev/null 2>&1
 }
 
 download_build_file() {
@@ -137,17 +140,15 @@ download_private_config() {
 }
 
 run() {
-  docker_image
-
-  if [ ! $image ] ; then
+  if ! docker_image_exists; then
     echo 'warning: no java-tron mirror image, do you need to get the mirror image?[y/n]'
     read need
 
     if [[ $need == 'y' || $need == 'yes' ]]; then
-      pull
+      pull || return $?
     else
       echo "warning: no mirror image found, go ahead and download a mirror."
-      exit
+      exit 1
     fi
   fi
 
@@ -188,7 +189,7 @@ run() {
           ;;
         *)
           echo "run: arg $1 is not a valid parameter"
-          exit
+          exit 1
           ;;
       esac
     done
@@ -234,21 +235,21 @@ run() {
     fi
 
     # Using custom parameters
-    docker run -d -it --name "$DOCKER_REPOSITORY-$DOCKER_IMAGES" \
+    docker run -d -it --name "$CONTAINER_NAME" \
         $volume \
         $parameter \
         --restart always \
-        "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
+        "$IMAGE_REFERENCE" \
         $tron_parameter
   else
     # Default parameters
-    docker run -d -it --name "$DOCKER_REPOSITORY-$DOCKER_IMAGES" \
+    docker run -d -it --name "$CONTAINER_NAME" \
       -v $OUTPUT_DIRECTORY:/java-tron/output-directory \
       -p $HOST_HTTP_PORT:$DOCKER_HTTP_PORT \
       -p $HOST_RPC_PORT:$DOCKER_RPC_PORT \
       -p $HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT \
       --restart always \
-      "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
+      "$IMAGE_REFERENCE" \
       -c "$BUNDLED_CONFIG_FILE"
   fi
 }
@@ -314,7 +315,7 @@ build() {
   docker build \
     --platform "$platform" \
     --file "$dockerfile_path" \
-    --tag "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
+    --tag "$IMAGE_REFERENCE" \
     "$build_context"
   build_status=$?
 
@@ -326,89 +327,88 @@ build() {
 }
 
 pull() {
-  echo "docker pull $DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET"
-  docker pull "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET"
+  echo "docker pull $IMAGE_REFERENCE"
+  docker pull "$IMAGE_REFERENCE"
 }
 
 start() {
-  docker_ps
-  if [ $cid ]; then
-    echo "containerID: $cid"
-    echo "docker stop $cid"
-    docker start $cid
+  if docker_container_exists; then
+    echo "container: $CONTAINER_NAME"
+    echo "docker start $CONTAINER_NAME"
+    docker start "$CONTAINER_NAME" || return $?
     docker ps
   else
-    echo "container not running!"
+    echo "container not found: $CONTAINER_NAME" >&2
+    return 1
   fi
 }
 
 stop() {
-  docker_ps
-  if [ $cid ]; then
-    echo "containerID: $cid"
-    echo "docker stop $cid"
-    docker stop $cid
+  if docker_container_exists; then
+    echo "container: $CONTAINER_NAME"
+    echo "docker stop $CONTAINER_NAME"
+    docker stop "$CONTAINER_NAME" || return $?
     docker ps
   else
-    echo "container not running!"
+    echo "container not found: $CONTAINER_NAME" >&2
+    return 1
   fi
 }
 
 rm_container() {
-  stop
-  if [ $cid ]; then
-    echo "containerID: $cid"
-    echo "docker rm $cid"
-    docker rm $cid
-    docker_ps
-  else
-    echo "image not exists!"
+  if ! docker_container_exists; then
+    echo "container not found: $CONTAINER_NAME" >&2
+    return 1
   fi
+
+  echo "container: $CONTAINER_NAME"
+  echo "docker stop $CONTAINER_NAME"
+  docker stop "$CONTAINER_NAME" || return $?
+  echo "docker rm $CONTAINER_NAME"
+  docker rm "$CONTAINER_NAME"
 }
 
 log() {
-  docker_ps
-
-  if [ $cid ]; then
-    echo "containerID: $cid"
-    docker exec -it $cid tail -100f $BASE_DIR/$LOG_FILE
+  if docker_container_exists; then
+    echo "container: $CONTAINER_NAME"
+    docker exec -it "$CONTAINER_NAME" tail -100f "$BASE_DIR/$LOG_FILE"
   else
-    echo "container not exists!"
+    echo "container not found: $CONTAINER_NAME" >&2
+    return 1
   fi
-
 }
 
 case "$1" in
   --pull)
-    pull ${@: 2}
-    exit
+    pull "${@:2}"
+    exit $?
     ;;
   --start)
-    start ${@: 2}
-    exit
+    start "${@:2}"
+    exit $?
     ;;
   --stop)
-    stop ${@: 2}
-    exit
+    stop "${@:2}"
+    exit $?
     ;;
   --build)
     build "${@:2}"
-    exit
+    exit $?
     ;;
   --run)
-    run ${@: 2}
-    exit
+    run "${@:2}"
+    exit $?
     ;;
   --rm)
-    rm_container ${@: 2}
-    exit
+    rm_container "${@:2}"
+    exit $?
     ;;
   --log)
-    log ${@: 2}
-    exit
+    log "${@:2}"
+    exit $?
     ;;
   *)
-    echo "arg: $1 is not a valid parameter"
-    exit
+    echo "arg: $1 is not a valid parameter" >&2
+    exit 1
     ;;
 esac
