@@ -108,11 +108,24 @@ then execute the build:
 $ bash docker.sh --build
 ```
 
+The script detects the Docker daemon architecture by default. You can also select the target
+architecture explicitly:
+
+```shell
+$ bash docker.sh --build amd64
+$ bash docker.sh --build arm64
+```
+
+When the script is used from a java-tron checkout, the Dockerfile and build context are resolved
+relative to `docker.sh`, regardless of the current working directory. If only `docker.sh` was
+downloaded, the required architecture-specific Dockerfile and entrypoint are downloaded into a
+temporary build context and removed after the build.
+
 ## Options
 
 Parameters for all functions：
 
-* **`--build`** building a local mirror image
+* **`--build [amd64|arm64]`** building a local mirror image, optionally for the specified architecture
 * **`--pull`** download a docker mirror from **DockerHub**
 * **`--run`** run the docker mirror
 * **`--log`** exporting the java-tron run log on the container

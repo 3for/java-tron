@@ -17,6 +17,7 @@
 #
 ##############################################################################
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="/java-tron"
 DOCKER_REPOSITORY="tronprotocol"
 DOCKER_IMAGES="java-tron"
@@ -41,9 +42,7 @@ PRIVATE_NET_CONFIG_URL="https://raw.githubusercontent.com/tronprotocol/tron-depl
 
 LOG_FILE="/logs/tron.log"
 
-JAVA_TRON_REPOSITORY="https://raw.githubusercontent.com/tronprotocol/java-tron/develop/"
-DOCKER_FILE="Dockerfile"
-ENDPOINT_SHELL="docker-entrypoint.sh"
+JAVA_TRON_DOCKER_URL="https://raw.githubusercontent.com/tronprotocol/java-tron/develop/docker"
 
 if test docker; then
   docker -v
@@ -60,6 +59,32 @@ docker_ps() {
 docker_image() {
   image_name=`docker images |grep "$DOCKER_REPOSITORY/$DOCKER_IMAGES" |awk {'print $1'}| awk 'NR==1'`
   image=$image_name
+}
+
+download_build_file() {
+  local source_url=$1
+  local destination=$2
+
+  if command -v curl >/dev/null 2>&1; then
+    if ! curl --fail --silent --show-error --location \
+        --output "$destination" "$source_url"; then
+      echo "build: failed to download: $source_url" >&2
+      return 1
+    fi
+  elif command -v wget >/dev/null 2>&1; then
+    if ! wget --quiet --output-document="$destination" "$source_url"; then
+      echo "build: failed to download: $source_url" >&2
+      return 1
+    fi
+  else
+    echo "build: curl or wget is required to download build files" >&2
+    return 1
+  fi
+
+  if [[ ! -s "$destination" ]]; then
+    echo "build: downloaded file is empty: $source_url" >&2
+    return 1
+  fi
 }
 
 download_private_config() {
@@ -229,23 +254,75 @@ run() {
 }
 
 build() {
-  echo 'docker build'
-  if [ ! -f "Dockerfile" ]; then
-    echo 'warning: Dockerfile not exists.'
-    if test curl; then
-      DOWNLOAD_CMD="curl -LJO "
-    elif test wget; then
-      DOWNLOAD_CMD="wget "
-    else
-      echo "Dockerfile cannot be downloaded, you need to install 'curl' or 'wget'!"
-      exit
-    fi
-    # download Dockerfile
-   `$DOWNLOAD_CMD "$JAVA_TRON_REPOSITORY$DOCKER_FILE"`
-   `$DOWNLOAD_CMD "$JAVA_TRON_REPOSITORY$ENDPOINT_SHELL"`
-   chmod u+rwx $ENDPOINT_SHELL
+  local arch="${1:-}"
+  local platform
+  local dockerfile_path
+  local dockerfile_source
+  local build_context="$SCRIPT_DIR"
+  local temporary_context=""
+  local build_status
+
+  if [[ $# -gt 1 ]]; then
+    echo "build: expected at most one architecture argument" >&2
+    return 1
   fi
-  docker build -t "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" .
+
+  if [[ -z "$arch" ]]; then
+    if ! arch=$(docker info --format '{{.Architecture}}'); then
+      echo "build: failed to determine the Docker daemon architecture" >&2
+      return 1
+    fi
+  fi
+
+  case "$arch" in
+    amd64 | x86_64)
+      platform="linux/amd64"
+      dockerfile_path="$SCRIPT_DIR/Dockerfile"
+      dockerfile_source="$JAVA_TRON_DOCKER_URL/Dockerfile"
+      ;;
+    arm64 | aarch64)
+      platform="linux/arm64"
+      dockerfile_path="$SCRIPT_DIR/arm64/Dockerfile"
+      dockerfile_source="$JAVA_TRON_DOCKER_URL/arm64/Dockerfile"
+      ;;
+    *)
+      echo "build: unsupported architecture: $arch" >&2
+      return 1
+      ;;
+  esac
+
+  if [[ ! -f "$dockerfile_path" || ! -f "$SCRIPT_DIR/docker-entrypoint.sh" ]]; then
+    if ! temporary_context=$(mktemp -d "${TMPDIR:-/tmp}/java-tron-docker.XXXXXX"); then
+      echo "build: failed to create a temporary build context" >&2
+      return 1
+    fi
+
+    build_context="$temporary_context"
+    dockerfile_path="$temporary_context/Dockerfile"
+
+    echo "build files not found next to docker.sh; downloading a temporary build context"
+    if ! download_build_file "$dockerfile_source" "$dockerfile_path" \
+        || ! download_build_file "$JAVA_TRON_DOCKER_URL/docker-entrypoint.sh" \
+          "$temporary_context/docker-entrypoint.sh"; then
+      rm -rf "$temporary_context"
+      return 1
+    fi
+    chmod 755 "$temporary_context/docker-entrypoint.sh"
+  fi
+
+  echo "docker build --platform $platform --file $dockerfile_path"
+  docker build \
+    --platform "$platform" \
+    --file "$dockerfile_path" \
+    --tag "$DOCKER_REPOSITORY/$DOCKER_IMAGES:$DOCKER_TARGET" \
+    "$build_context"
+  build_status=$?
+
+  if [[ -n "$temporary_context" ]]; then
+    rm -rf "$temporary_context"
+  fi
+
+  return "$build_status"
 }
 
 pull() {
@@ -315,7 +392,7 @@ case "$1" in
     exit
     ;;
   --build)
-    build ${@: 2}
+    build "${@:2}"
     exit
     ;;
   --run)
