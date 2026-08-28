@@ -42,7 +42,7 @@ BUNDLED_CONFIG_FILE="$BASE_DIR/config.conf"
 PRIVATE_NET_CONFIG_FILE="private_net_config.conf"
 PRIVATE_NET_CONFIG_URL="https://raw.githubusercontent.com/tronprotocol/tron-deployment/master/$PRIVATE_NET_CONFIG_FILE"
 
-LOG_FILE="/logs/tron.log"
+LOG_FILE="$BASE_DIR/logs/tron.log"
 
 JAVA_TRON_DOCKER_URL="https://raw.githubusercontent.com/tronprotocol/java-tron/develop/docker"
 
@@ -387,7 +387,7 @@ rm_container() {
 log() {
   if docker_container_exists; then
     echo "container: $CONTAINER_NAME"
-    docker exec -it "$CONTAINER_NAME" tail -100f "$BASE_DIR/$LOG_FILE"
+    docker exec -it "$CONTAINER_NAME" tail -100f "$LOG_FILE"
   else
     echo "container not found: $CONTAINER_NAME" >&2
     return 1

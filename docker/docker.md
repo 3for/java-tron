@@ -16,7 +16,8 @@ $ wget https://raw.githubusercontent.com/tronprotocol/java-tron/develop/docker/d
 ```
 
 ### Pull the mirror image
-Get the `tronprotocol/java-tron` image from the DockerHub, this image contains the full JDK environment and the host network configuration file, using the script for simple docker operations.
+Get the `tronprotocol/java-tron` image from Docker Hub. The image contains a Java runtime
+environment and the mainnet configuration file, and the script provides common Docker operations.
 ```shell
 $ bash docker.sh --pull
 ```
@@ -123,8 +124,8 @@ $ bash docker.sh --build arm64
 
 When the script is used from a java-tron checkout, the Dockerfile and build context are resolved
 relative to `docker.sh`, regardless of the current working directory. If only `docker.sh` was
-downloaded, the required architecture-specific Dockerfile and entrypoint are downloaded into a
-temporary build context and removed after the build.
+downloaded, the required architecture-specific Dockerfile is downloaded into a temporary build
+context and removed after the build.
 
 ## Options
 
@@ -133,6 +134,7 @@ Parameters for all functions：
 * **`--build [amd64|arm64]`** building a local mirror image, optionally for the specified architecture
 * **`--pull`** download a docker mirror from **DockerHub**
 * **`--run`** run the docker mirror
+* **`--start`** start the existing java-tron container
 * **`--log`** exporting the java-tron run log on the container
 * **`--stop`** stopping a running container
 * **`--rm`** remove container,only deletes the container, not the image
