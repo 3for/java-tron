@@ -84,6 +84,28 @@ $ bash docker.sh --run \
     -c /java-tron/custom.conf
 ```
 
+### Data and log persistence
+
+By default, the helper bind-mounts `output-directory` from the directory where `docker.sh` is executed to `/java-tron/output-directory` in the container. The blockchain database therefore remains on the host after the container is removed. Make sure that the current filesystem has sufficient space, or mount a dedicated data directory:
+
+```shell
+$ mkdir -p "$PWD/mainnet-data"
+$ bash docker.sh --run --net main \
+    -v "$PWD/mainnet-data:/java-tron/output-directory"
+```
+
+Do not reuse one database directory across different networks. Use separate directories for mainnet and private-network data.
+
+Application logs are not persisted by default; they remain in the container writable layer and are deleted with the container. To retain logs after `--rm`, mount a host directory explicitly:
+
+```shell
+$ mkdir -p "$PWD/logs"
+$ bash docker.sh --run --net main \
+    -v "$PWD/logs:/java-tron/logs"
+```
+
+Adding a log or configuration volume does not disable the default database mount. The default is replaced only when a custom volume targets `/java-tron/output-directory`.
+
 ### View logs
 
 Use `--log` to follow the java-tron service log:
