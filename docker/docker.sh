@@ -282,7 +282,7 @@ run() {
     tron_args+=(--witness)
   fi
 
-  docker run -d -it --name "$CONTAINER_NAME" \
+  docker run -d --name "$CONTAINER_NAME" \
     "${volume_args[@]}" \
     "${port_args[@]}" \
     --restart always \
