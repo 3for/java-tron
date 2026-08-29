@@ -18,7 +18,7 @@ $ wget https://raw.githubusercontent.com/tronprotocol/java-tron/develop/docker/d
 
 ### Pull the official image
 
-Get the `tronprotocol/java-tron` image from Docker Hub. The image contains a Java runtime environment and the mainnet configuration file. The helper pulls `latest` by default. For long-running or reproducible deployments, set `DOCKER_TARGET` to a versioned tag; use Docker directly with an `image@sha256:...` reference when pinning a digest. See the available [Docker Hub tags](https://hub.docker.com/r/tronprotocol/java-tron/tags).
+Get the `tronprotocol/java-tron` image from Docker Hub. The image contains a Java runtime environment and the mainnet configuration file. The helper pulls `tronprotocol/java-tron:latest`. For long-running or reproducible deployments, use Docker directly to select a versioned tag or an `image@sha256:...` reference. See the available [Docker Hub tags](https://hub.docker.com/r/tronprotocol/java-tron/tags).
 
 ```shell
 $ bash docker.sh --pull
@@ -130,19 +130,7 @@ $ bash docker.sh --stop
 
 The Dockerfiles clone the remote java-tron repository and check out `master` at build time. They do not build the Java sources in the current checkout. Each local build therefore follows the state of `master` at that moment and can differ from the published Docker Hub `latest` image.
 
-By default, `--build` tags the result as the same `tronprotocol/java-tron:latest` reference used by `--pull` and `--run`. This moves the local tag to the newly built `master` image, so a subsequent `--run` uses that local build. Change the output image reference before building if the pulled release image must remain distinguishable.
-
-The following variables control only the output image reference; they do not select the java-tron source revision. In particular, assigning a release-like value to `DOCKER_TARGET` does not make the Dockerfile check out that release.
-
-- `DOCKER_REPOSITORY`: repository name
-- `DOCKER_IMAGES`: image name
-- `DOCKER_TARGET`: image tag
-
-```shell
-DOCKER_REPOSITORY="local"
-DOCKER_IMAGES="java-tron"
-DOCKER_TARGET="master"
-```
+The helper uses `tronprotocol/java-tron:latest` for `--pull`, `--build`, and `--run` and does not support selecting another image reference through command-line options or environment variables. After `--build`, the local `tronprotocol/java-tron:latest` tag points to the newly built `master` image, so subsequent `--run` commands use that build. Use Docker directly when a separate tag, digest, or image name is required.
 
 Then build the image:
 
@@ -163,9 +151,9 @@ When the script is used from a java-tron checkout, only the Dockerfile and build
 
 Parameters for all functions:
 
-- **`--build [amd64|arm64]`**: build a local image from the remote `master` branch, optionally for the specified architecture
-- **`--pull`**: download the configured image reference from Docker Hub; the default tag is `latest`
-- **`--run`**: run the image
+- **`--build [amd64|arm64]`**: build `tronprotocol/java-tron:latest` from the remote `master` branch, optionally for the specified architecture
+- **`--pull`**: download `tronprotocol/java-tron:latest` from Docker Hub
+- **`--run`**: run `tronprotocol/java-tron:latest`
 - **`--start`**: start the existing java-tron container
 - **`--log`**: follow the java-tron log in the container
 - **`--stop`**: stop the running container
