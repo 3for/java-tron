@@ -24,11 +24,11 @@ $ bash docker.sh --pull
 
 ### Run the service
 
-Before running java-tron, make sure the required ports are available on the host. By default, `docker.sh --run` publishes the following mainnet container ports:
+Before running java-tron, make sure the required ports are available on the host. By default, HTTP and gRPC APIs are bound to the host loopback interface, while the P2P port is available on all host interfaces. Mainnet uses:
 
-- `8090`: used by the HTTP-based JSON API
-- `50051`: used by the gRPC-based API
-- `18888`: TCP and UDP, used by the P2P protocol running the network
+- `127.0.0.1:8090`: used by the HTTP-based JSON API
+- `127.0.0.1:50051`: used by the gRPC-based API
+- `18888`: TCP and UDP on all host interfaces, used by the P2P protocol
 
 #### Full node on the main network
 
@@ -42,8 +42,8 @@ Use `-p` to customize the port mapping. Supplying any custom `-p` replaces the c
 
 ```shell
 $ bash docker.sh --run --net main \
-    -p 8080:8090 \
-    -p 40051:50051 \
+    -p 127.0.0.1:8080:8090 \
+    -p 127.0.0.1:40051:50051 \
     -p 18888:18888 \
     -p 18888:18888/udp
 ```
@@ -58,9 +58,9 @@ $ bash docker.sh --run --net private
 
 Private mode starts FullNode with `--witness` so that the genesis witness produces blocks. Its default ports match `private_net_config.conf`:
 
-- `16667`: used by the HTTP-based JSON API
-- `50051`: used by the gRPC-based API
-- `16666`: TCP and UDP, used by the private P2P network
+- `127.0.0.1:16667`: used by the HTTP-based JSON API
+- `127.0.0.1:50051`: used by the gRPC-based API
+- `16666`: TCP and UDP on all host interfaces, used by the private P2P network
 
 The downloaded configuration contains a publicly known development witness key and genesis accounts. Use it only for isolated local development. For a multi-node, shared, or security-sensitive private network, use the maintained [`tron-docker/private_net`](https://github.com/tronprotocol/tron-docker/tree/main/private_net) setup and replace its keys and configuration as appropriate.
 
