@@ -404,7 +404,7 @@ rm_container() {
 log() {
   if docker_container_exists; then
     echo "container: $CONTAINER_NAME"
-    docker exec -it "$CONTAINER_NAME" tail -100f "$LOG_FILE"
+    docker exec "$CONTAINER_NAME" tail -100f "$LOG_FILE"
   else
     echo "container not found: $CONTAINER_NAME" >&2
     return 1

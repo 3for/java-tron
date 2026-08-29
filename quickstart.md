@@ -68,7 +68,7 @@ The HTTP and gRPC APIs are bound to localhost by default, while the TCP and UDP 
 View the FullNode log:
 
 ```shell
-docker exec -it java-tron tail -100f /java-tron/logs/tron.log
+docker exec java-tron tail -100f /java-tron/logs/tron.log
 ```
 
 Stop the container:
