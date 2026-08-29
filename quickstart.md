@@ -16,6 +16,8 @@ Install the latest Docker release for your platform:
 - [Windows](https://docs.docker.com/desktop/setup/install/windows-install/)
 - [Linux](https://docs.docker.com/engine/install/)
 
+All commands in this guide use POSIX shell syntax. On Windows, use Docker Desktop with Linux containers and run the commands from [WSL 2](https://docs.docker.com/desktop/features/wsl/) with Docker integration enabled. The examples are not intended for native PowerShell or Command Prompt.
+
 ## Run a mainnet FullNode
 
 Pull the official image from Docker Hub:

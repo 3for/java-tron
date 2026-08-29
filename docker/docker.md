@@ -6,6 +6,8 @@ java-tron supports containerized processes. Official versioned release images ar
 
 Install Docker 20.10.12 or later before using the helper.
 
+`docker.sh` requires Bash. On Windows, use Docker Desktop with Linux containers and run the helper from [WSL 2](https://docs.docker.com/desktop/features/wsl/) with Docker integration enabled. It cannot be executed directly from PowerShell or Command Prompt.
+
 ## Quick Start
 
 Obtain the helper from the java-tron repository, or download it independently:
