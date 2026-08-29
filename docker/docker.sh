@@ -38,7 +38,7 @@ DOCKER_LISTEN_PORT=18888
 PRIVATE_HTTP_PORT=16667
 PRIVATE_LISTEN_PORT=16666
 
-VOLUME=`pwd`
+VOLUME=$(pwd)
 CONFIG_DIR="$VOLUME/config"
 OUTPUT_DIRECTORY="$VOLUME/output-directory"
 
@@ -166,7 +166,7 @@ run() {
 
   if ! docker_image_exists; then
     echo 'warning: no java-tron mirror image, do you need to get the mirror image?[y/n]'
-    read need
+    IFS= read -r need
 
     if [[ $need == 'y' || $need == 'yes' ]]; then
       pull || return $?
