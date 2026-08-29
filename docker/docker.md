@@ -1,6 +1,6 @@
 # Docker Shell Guide
 
-java-tron supports containerized processes. We maintain a Docker image built from the latest version of the `master` branch on Docker Hub. The `docker.sh` helper simplifies common image and container lifecycle operations.
+java-tron supports containerized processes. Official versioned release images are published on Docker Hub. The mutable `latest` tag points to the latest published release; it does not represent the current head of `master`. The `docker.sh` helper simplifies common image and container lifecycle operations.
 
 ## Prerequisites
 
@@ -14,9 +14,9 @@ Obtain the helper from the java-tron repository, or download it independently:
 $ wget https://raw.githubusercontent.com/tronprotocol/java-tron/develop/docker/docker.sh
 ```
 
-### Pull the mirror image
+### Pull the official image
 
-Get the `tronprotocol/java-tron` image from Docker Hub. The image contains a Java runtime environment and the mainnet configuration file.
+Get the `tronprotocol/java-tron` image from Docker Hub. The image contains a Java runtime environment and the mainnet configuration file. The helper pulls `latest` by default. For long-running or reproducible deployments, set `DOCKER_TARGET` to a versioned tag; use Docker directly with an `image@sha256:...` reference when pinning a digest. See the available [Docker Hub tags](https://hub.docker.com/r/tronprotocol/java-tron/tags).
 
 ```shell
 $ bash docker.sh --pull
@@ -124,16 +124,20 @@ $ bash docker.sh --stop
 
 ## Build Image
 
-To build an image with a custom name, change these variables in `docker.sh`:
+The Dockerfiles clone the remote java-tron repository and check out `master` at build time. They do not build the Java sources in the current checkout. Each local build therefore follows the state of `master` at that moment and can differ from the published Docker Hub `latest` image.
+
+By default, `--build` tags the result as the same `tronprotocol/java-tron:latest` reference used by `--pull` and `--run`. This moves the local tag to the newly built `master` image, so a subsequent `--run` uses that local build. Change the output image reference before building if the pulled release image must remain distinguishable.
+
+The following variables control only the output image reference; they do not select the java-tron source revision. In particular, assigning a release-like value to `DOCKER_TARGET` does not make the Dockerfile check out that release.
 
 - `DOCKER_REPOSITORY`: repository name
 - `DOCKER_IMAGES`: image name
 - `DOCKER_TARGET`: image tag
 
 ```shell
-DOCKER_REPOSITORY="your_repository"
+DOCKER_REPOSITORY="local"
 DOCKER_IMAGES="java-tron"
-DOCKER_TARGET="1.0"
+DOCKER_TARGET="master"
 ```
 
 Then build the image:
@@ -149,14 +153,14 @@ $ bash docker.sh --build amd64
 $ bash docker.sh --build arm64
 ```
 
-When the script is used from a java-tron checkout, the Dockerfile and build context are resolved relative to `docker.sh`, regardless of the current working directory. If only `docker.sh` was downloaded, the required architecture-specific Dockerfile is downloaded into a temporary build context and removed after the build.
+When the script is used from a java-tron checkout, only the Dockerfile and build context are resolved relative to `docker.sh`, regardless of the current working directory. The current checkout's Java sources are not added to that context. If only `docker.sh` was downloaded, the required architecture-specific Dockerfile is downloaded into a temporary build context and removed after the build. Both paths build the remote `master` branch.
 
 ## Options
 
 Parameters for all functions:
 
-- **`--build [amd64|arm64]`**: build a local image, optionally for the specified architecture
-- **`--pull`**: download an image from Docker Hub
+- **`--build [amd64|arm64]`**: build a local image from the remote `master` branch, optionally for the specified architecture
+- **`--pull`**: download the configured image reference from Docker Hub; the default tag is `latest`
 - **`--run`**: run the image
 - **`--start`**: start the existing java-tron container
 - **`--log`**: follow the java-tron log in the container
