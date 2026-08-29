@@ -77,6 +77,20 @@ Stop the container:
 docker stop java-tron
 ```
 
+Restart the stopped container:
+
+```shell
+docker start java-tron
+```
+
+To recreate the container with a different image or configuration, remove the stopped container first:
+
+```shell
+docker rm java-tron
+```
+
+The bind-mounted database and logs remain on the host after the container is removed.
+
 The optional `docker.sh` helper provides shorter commands for image builds, private network configuration, common port mappings, and lifecycle operations. See the [Docker Shell Guide](docker/docker.md) for details.
 
 ### Mainnet and SR requirements
