@@ -34,6 +34,9 @@ DOCKER_HTTP_PORT=8090
 DOCKER_RPC_PORT=50051
 DOCKER_LISTEN_PORT=18888
 
+PRIVATE_HTTP_PORT=16667
+PRIVATE_LISTEN_PORT=16666
+
 VOLUME=`pwd`
 CONFIG_DIR="$VOLUME/config"
 OUTPUT_DIRECTORY="$VOLUME/output-directory"
@@ -253,16 +256,29 @@ run() {
   fi
 
   if [[ ${#port_args[@]} -eq 0 ]]; then
-    port_args=(
-      -p "$HOST_HTTP_PORT:$DOCKER_HTTP_PORT"
-      -p "$HOST_RPC_PORT:$DOCKER_RPC_PORT"
-      -p "$HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT"
-      -p "$HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT/udp"
-    )
+    if [[ "$network" = "private" ]]; then
+      port_args=(
+        -p "$PRIVATE_HTTP_PORT:$PRIVATE_HTTP_PORT"
+        -p "$HOST_RPC_PORT:$DOCKER_RPC_PORT"
+        -p "$PRIVATE_LISTEN_PORT:$PRIVATE_LISTEN_PORT"
+        -p "$PRIVATE_LISTEN_PORT:$PRIVATE_LISTEN_PORT/udp"
+      )
+    else
+      port_args=(
+        -p "$HOST_HTTP_PORT:$DOCKER_HTTP_PORT"
+        -p "$HOST_RPC_PORT:$DOCKER_RPC_PORT"
+        -p "$HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT"
+        -p "$HOST_LISTEN_PORT:$DOCKER_LISTEN_PORT/udp"
+      )
+    fi
   fi
 
   if [[ ${#tron_args[@]} -eq 0 ]]; then
     tron_args=(-c "$BUNDLED_CONFIG_FILE")
+  fi
+
+  if [[ "$network" = "private" ]]; then
+    tron_args+=(--witness)
   fi
 
   docker run -d -it --name "$CONTAINER_NAME" \

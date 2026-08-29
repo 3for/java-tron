@@ -24,7 +24,7 @@ $ bash docker.sh --pull
 
 ### Run the service
 
-Before running java-tron, make sure the required ports are available on the host. By default, `docker.sh --run` publishes the following container ports:
+Before running java-tron, make sure the required ports are available on the host. By default, `docker.sh --run` publishes the following mainnet container ports:
 
 - `8090`: used by the HTTP-based JSON API
 - `50051`: used by the gRPC-based API
@@ -48,13 +48,21 @@ $ bash docker.sh --run --net main \
     -p 18888:18888/udp
 ```
 
-#### Full node on the private network
+#### Single-node private network
 
-You can also run a private network with the configuration maintained by `tron-deployment`. If `config/private_net_config.conf` does not exist in the current directory, the script downloads it automatically. An existing local configuration is reused so that local changes are preserved.
+You can also run a single-node private network with the configuration maintained by `tron-deployment`. If `config/private_net_config.conf` does not exist in the current directory, the script downloads it automatically. An existing local configuration is reused so that local changes are preserved.
 
 ```shell
 $ bash docker.sh --run --net private
 ```
+
+Private mode starts FullNode with `--witness` so that the genesis witness produces blocks. Its default ports match `private_net_config.conf`:
+
+- `16667`: used by the HTTP-based JSON API
+- `50051`: used by the gRPC-based API
+- `16666`: TCP and UDP, used by the private P2P network
+
+The downloaded configuration contains a publicly known development witness key and genesis accounts. Use it only for isolated local development. For a multi-node, shared, or security-sensitive private network, use the maintained [`tron-docker/private_net`](https://github.com/tronprotocol/tron-docker/tree/main/private_net) setup and replace its keys and configuration as appropriate.
 
 To replace an existing local copy with the latest maintained configuration, explicitly request an update. This overwrites `config/private_net_config.conf`.
 
@@ -64,7 +72,7 @@ $ bash docker.sh --run --net private --update-config true
 
 #### Configuration
 
-Mainnet uses the configuration bundled in the image and never downloads another configuration. The `private` network option uses `config/private_net_config.conf` from the current directory, downloading it from `tron-deployment` only when it is missing or an update is explicitly requested.
+Mainnet uses the configuration bundled in the image and never downloads another configuration. The `private` network option uses `config/private_net_config.conf` from the current directory, downloading it from `tron-deployment` only when it is missing or an update is explicitly requested. It also enables witness mode so that the single-node network can produce blocks.
 
 Nile is intentionally not supported by this script because it may require features that are not yet available on the mainnet source revision. Follow the Nile-specific build instructions in the project README instead.
 
