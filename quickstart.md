@@ -131,12 +131,4 @@ The default image tag follows the current stable release. Pin a versioned tag or
 
 ## Deploy a multi-node private network
 
-Use the official `tron-docker/private_net` setup when testing P2P communication, consensus, node operations, or workflows that require more than one java-tron process:
-
-```shell
-git clone https://github.com/tronprotocol/tron-docker.git
-cd tron-docker/private_net
-docker compose up -d
-```
-
-This setup starts a block-producing SR node and a regular FullNode. Its bundled genesis accounts, keys, and configuration are suitable for local testing only. Review and replace them before using the setup in a shared or security-sensitive environment. See the [private network documentation](https://github.com/tronprotocol/tron-docker/tree/main/private_net) for configuration and additional nodes.
+For multi-node private network deployment, follow the official [tron-docker private network guide](https://github.com/tronprotocol/tron-docker/tree/main/private_net).
