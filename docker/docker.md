@@ -40,6 +40,8 @@ The helper manages one container named `tronprotocol-java-tron` and creates it w
 $ bash docker.sh --run
 ```
 
+The helper does not provide an option for setting JVM heap parameters. Nodes started this way use the JVM options bundled in the image and the JVM's automatically selected heap size. For production mainnet deployments that require explicit heap sizing or other JVM tuning, use the direct `docker run` example in the [quick-start guide](../quickstart.md#run-a-mainnet-fullnode).
+
 The mainnet configuration is bundled in the image at `/java-tron/config.conf` and comes from the same java-tron revision used to build the image. `--net main` remains available as an explicit form.
 
 Use `-p` to customize the port mapping. Supplying any custom `-p` replaces the complete default port set, so include both TCP and UDP mappings for P2P. For more parameters, see [Options](#options).
