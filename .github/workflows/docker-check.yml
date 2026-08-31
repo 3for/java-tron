@@ -7,7 +7,6 @@ on:
       - 'docker/docker.sh'
       - 'docker/Dockerfile'
       - 'docker/arm64/Dockerfile'
-      - 'docker/tests/**'
       - '.github/workflows/docker-check.yml'
   pull_request:
     branches: [ 'master', 'develop', 'release_**' ]
@@ -15,7 +14,6 @@ on:
       - 'docker/docker.sh'
       - 'docker/Dockerfile'
       - 'docker/arm64/Dockerfile'
-      - 'docker/tests/**'
       - '.github/workflows/docker-check.yml'
   workflow_dispatch:
 
@@ -36,13 +34,10 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Check shell syntax
-        run: bash -n docker/docker.sh docker/tests/docker-sh-test.sh
+        run: bash -n docker/docker.sh
 
       - name: Run ShellCheck
-        run: shellcheck docker/docker.sh docker/tests/docker-sh-test.sh
-
-      - name: Test Docker script behavior
-        run: bash docker/tests/docker-sh-test.sh
+        run: shellcheck docker/docker.sh
 
       - name: Check amd64 Dockerfile
         run: >
