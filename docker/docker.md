@@ -62,11 +62,22 @@ You can also run a single-node private network with the configuration maintained
 $ bash docker.sh --run --net private
 ```
 
-Private mode starts FullNode with `--witness` so that the genesis witness produces blocks. Its default ports match `private_net_config.conf`:
+Private mode starts FullNode with `--witness` so that the genesis witness produces blocks. By default, the helper publishes the following ports used by `private_net_config.conf`:
 
 - `127.0.0.1:16667`: used by the HTTP-based JSON API
 - `127.0.0.1:50051`: used by the gRPC-based API
 - `16666`: TCP and UDP on all host interfaces, used by the private P2P network
+
+The private configuration also enables JSON-RPC on container port `8545`, but the helper does not publish that port by default. To make JSON-RPC available on the host loopback interface, provide the complete custom port set because specifying any `-p` replaces all default mappings:
+
+```shell
+$ bash docker.sh --run --net private \
+    -p 127.0.0.1:16667:16667 \
+    -p 127.0.0.1:50051:50051 \
+    -p 127.0.0.1:8545:8545 \
+    -p 16666:16666 \
+    -p 16666:16666/udp
+```
 
 The downloaded configuration contains a publicly known development witness key and genesis accounts. Use it only for isolated local development. For a multi-node, shared, or security-sensitive private network, use the maintained [`tron-docker/private_net`](https://github.com/tronprotocol/tron-docker/tree/main/private_net) setup and replace its keys and configuration as appropriate.
 
