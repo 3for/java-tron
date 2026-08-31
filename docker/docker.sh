@@ -152,6 +152,16 @@ require_run_option_value() {
   fi
 }
 
+require_no_args() {
+  local command=$1
+  shift
+
+  if [[ $# -gt 0 ]]; then
+    echo "$command: does not accept arguments: $*" >&2
+    return 1
+  fi
+}
+
 run() {
   local -a volume_args=()
   local -a port_args=()
@@ -360,11 +370,15 @@ build() {
 }
 
 pull() {
+  require_no_args pull "$@" || return 1
+
   echo "docker pull $IMAGE_REFERENCE"
   docker pull "$IMAGE_REFERENCE"
 }
 
 start() {
+  require_no_args start "$@" || return 1
+
   if docker_container_exists; then
     echo "container: $CONTAINER_NAME"
     echo "docker start $CONTAINER_NAME"
@@ -377,6 +391,8 @@ start() {
 }
 
 stop() {
+  require_no_args stop "$@" || return 1
+
   if docker_container_exists; then
     echo "container: $CONTAINER_NAME"
     echo "docker stop $CONTAINER_NAME"
@@ -389,6 +405,8 @@ stop() {
 }
 
 rm_container() {
+  require_no_args rm "$@" || return 1
+
   if ! docker_container_exists; then
     echo "container not found: $CONTAINER_NAME" >&2
     return 1
@@ -402,6 +420,8 @@ rm_container() {
 }
 
 log() {
+  require_no_args log "$@" || return 1
+
   if docker_container_exists; then
     echo "container: $CONTAINER_NAME"
     docker exec "$CONTAINER_NAME" tail -100f "$LOG_FILE"
