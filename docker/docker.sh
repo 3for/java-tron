@@ -103,26 +103,26 @@ download_private_config() {
   local temp_file
 
   if ! mkdir -p "$CONFIG_DIR"; then
-    echo "run: failed to create configuration directory: $CONFIG_DIR"
+    echo "run: failed to create configuration directory: $CONFIG_DIR" >&2
     return 1
   fi
 
   if ! temp_file=$(mktemp "$CONFIG_DIR/.private_net_config.conf.XXXXXX"); then
-    echo "run: failed to create a temporary configuration file"
+    echo "run: failed to create a temporary configuration file" >&2
     return 1
   fi
 
   if ! download_file "$PRIVATE_NET_CONFIG_URL" "$temp_file" \
       "run: failed to download private network configuration" \
       "run: curl or wget is required to download the private network configuration" \
-      "run: downloaded private network configuration is empty" 1; then
+      "run: downloaded private network configuration is empty" 2; then
     rm -f "$temp_file"
     return 1
   fi
 
   if ! chmod 644 "$temp_file" || ! mv -f "$temp_file" "$config_file"; then
     rm -f "$temp_file"
-    echo "run: failed to save private network configuration: $config_file"
+    echo "run: failed to save private network configuration: $config_file" >&2
     return 1
   fi
 
