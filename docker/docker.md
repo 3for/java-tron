@@ -145,11 +145,13 @@ $ bash docker.sh --build amd64
 $ bash docker.sh --build arm64
 ```
 
+Building for an architecture different from the Docker daemon requires a builder with the corresponding emulation support. Docker Desktop provides this by default; standalone Docker Engine installations may require QEMU/binfmt configuration.
+
 When the script is used from a java-tron checkout, only the Dockerfile and build context are resolved relative to `docker.sh`, regardless of the current working directory. The current checkout's Java sources are not added to that context. If only `docker.sh` was downloaded, the required architecture-specific Dockerfile is downloaded into a temporary build context and removed after the build. Both paths build the remote `master` branch.
 
 ## Options
 
-Parameters for all functions:
+### Commands
 
 - **`--build [amd64|arm64]`**: build `tronprotocol/java-tron:latest` from the remote `master` branch, optionally for the specified architecture
 - **`--pull`**: download `tronprotocol/java-tron:latest` from Docker Hub
@@ -158,6 +160,11 @@ Parameters for all functions:
 - **`--log`**: follow the java-tron log in the container
 - **`--stop`**: stop the running container
 - **`--rm`**: remove the container without removing the image
+
+### Run options
+
+The following options apply only to `--run`:
+
 - **`-p`**: publish a container port using `-p hostPort:containerPort[/protocol]`; custom mappings replace all defaults
 - **`-c`**: specify another java-tron configuration file in the container
 - **`-v`**: bind mount a volume using `-v host-src:container-dest`; `host-src` must be an absolute path
