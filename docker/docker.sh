@@ -68,28 +68,32 @@ docker_image_exists() {
   docker image inspect "$IMAGE_REFERENCE" >/dev/null 2>&1
 }
 
-download_build_file() {
+download_file() {
   local source_url=$1
   local destination=$2
+  local failure_message=$3
+  local missing_tool_message=$4
+  local empty_file_message=$5
+  local error_fd=$6
+  local -a download_command
 
   if command -v curl >/dev/null 2>&1; then
-    if ! curl --fail --silent --show-error --location \
-        --output "$destination" "$source_url"; then
-      echo "build: failed to download: $source_url" >&2
-      return 1
-    fi
+    download_command=(curl --fail --silent --show-error --location
+      --output "$destination" "$source_url")
   elif command -v wget >/dev/null 2>&1; then
-    if ! wget --quiet --output-document="$destination" "$source_url"; then
-      echo "build: failed to download: $source_url" >&2
-      return 1
-    fi
+    download_command=(wget --quiet --output-document="$destination" "$source_url")
   else
-    echo "build: curl or wget is required to download build files" >&2
+    echo "$missing_tool_message" >&"$error_fd"
+    return 1
+  fi
+
+  if ! "${download_command[@]}"; then
+    echo "$failure_message" >&"$error_fd"
     return 1
   fi
 
   if [[ ! -s "$destination" ]]; then
-    echo "build: downloaded file is empty: $source_url" >&2
+    echo "$empty_file_message" >&"$error_fd"
     return 1
   fi
 }
@@ -108,33 +112,15 @@ download_private_config() {
     return 1
   fi
 
-  if command -v curl >/dev/null 2>&1; then
-    if ! curl --fail --silent --show-error --location \
-        --output "$temp_file" "$PRIVATE_NET_CONFIG_URL"; then
-      rm -f "$temp_file"
-      echo "run: failed to download private network configuration"
-      return 1
-    fi
-  elif command -v wget >/dev/null 2>&1; then
-    if ! wget --quiet --output-document="$temp_file" "$PRIVATE_NET_CONFIG_URL"; then
-      rm -f "$temp_file"
-      echo "run: failed to download private network configuration"
-      return 1
-    fi
-  else
+  if ! download_file "$PRIVATE_NET_CONFIG_URL" "$temp_file" \
+      "run: failed to download private network configuration" \
+      "run: curl or wget is required to download the private network configuration" \
+      "run: downloaded private network configuration is empty" 1; then
     rm -f "$temp_file"
-    echo "run: curl or wget is required to download the private network configuration"
     return 1
   fi
 
-  if [[ ! -s "$temp_file" ]]; then
-    rm -f "$temp_file"
-    echo "run: downloaded private network configuration is empty"
-    return 1
-  fi
-
-  chmod 644 "$temp_file"
-  if ! mv -f "$temp_file" "$config_file"; then
+  if ! chmod 644 "$temp_file" || ! mv -f "$temp_file" "$config_file"; then
     rm -f "$temp_file"
     echo "run: failed to save private network configuration: $config_file"
     return 1
@@ -168,29 +154,18 @@ run() {
   local -a tron_args=()
   local network="main"
   local network_config=""
-  local custom_config=false
   local update_config=false
   local has_output_volume=false
-  local mount
-  local index
-
-  if ! docker_image_exists; then
-    echo 'warning: no java-tron mirror image, do you need to get the mirror image?[y/n]'
-    IFS= read -r need
-
-    if [[ $need == 'y' || $need == 'yes' ]]; then
-      pull || return $?
-    else
-      echo "warning: no mirror image found, go ahead and download a mirror."
-      exit 1
-    fi
-  fi
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -v)
         require_run_option_value "$@" || return 1
         volume_args+=(-v "$2")
+        if [[ "$2" == *":/java-tron/output-directory" \
+            || "$2" == *":/java-tron/output-directory:"* ]]; then
+          has_output_volume=true
+        fi
         shift 2
         ;;
       -p)
@@ -201,7 +176,6 @@ run() {
       -c)
         require_run_option_value "$@" || return 1
         tron_args+=(-c "$2")
-        custom_config=true
         shift 2
         ;;
       --net)
@@ -232,7 +206,7 @@ run() {
     return 1
   fi
 
-  if [[ "$custom_config" = true && -n "$network_config" ]]; then
+  if [[ ${#tron_args[@]} -gt 0 && -n "$network_config" ]]; then
     echo "run: -c cannot be combined with --net private" >&2
     return 1
   fi
@@ -240,6 +214,18 @@ run() {
   if [[ "$update_config" = true && "$network" != "private" ]]; then
     echo "run: --update-config true is only supported with --net private" >&2
     return 1
+  fi
+
+  if ! docker_image_exists; then
+    echo 'warning: no java-tron mirror image, do you need to get the mirror image?[y/n]'
+    IFS= read -r need
+
+    if [[ $need == 'y' || $need == 'yes' ]]; then
+      pull || return $?
+    else
+      echo "warning: no mirror image found, go ahead and download a mirror."
+      return 1
+    fi
   fi
 
   if [[ -n "$network_config" ]]; then
@@ -252,15 +238,6 @@ run() {
     fi
     volume_args+=(-v "$network_config:$BUNDLED_CONFIG_FILE:ro")
   fi
-
-  for ((index = 1; index < ${#volume_args[@]}; index += 2)); do
-    mount=${volume_args[$index]}
-    if [[ "$mount" == *":/java-tron/output-directory" \
-        || "$mount" == *":/java-tron/output-directory:"* ]]; then
-      has_output_volume=true
-      break
-    fi
-  done
 
   if [[ "$has_output_volume" = false ]]; then
     volume_args=(-v "$OUTPUT_DIRECTORY:/java-tron/output-directory" "${volume_args[@]}")
@@ -348,7 +325,10 @@ build() {
     dockerfile_path="$temporary_context/Dockerfile"
 
     echo "build files not found next to docker.sh; downloading a temporary build context"
-    if ! download_build_file "$dockerfile_source" "$dockerfile_path"; then
+    if ! download_file "$dockerfile_source" "$dockerfile_path" \
+        "build: failed to download: $dockerfile_source" \
+        "build: curl or wget is required to download build files" \
+        "build: downloaded file is empty: $dockerfile_source" 2; then
       rm -rf "$temporary_context"
       return 1
     fi
@@ -376,32 +356,28 @@ pull() {
   docker pull "$IMAGE_REFERENCE"
 }
 
-start() {
-  require_no_args start "$@" || return 1
+change_container_state() {
+  local command_name=$1
+  shift
 
-  if docker_container_exists; then
-    echo "container: $CONTAINER_NAME"
-    echo "docker start $CONTAINER_NAME"
-    docker start "$CONTAINER_NAME" || return $?
-    docker ps
-  else
+  require_no_args "$command_name" "$@" || return 1
+  if ! docker_container_exists; then
     echo "container not found: $CONTAINER_NAME" >&2
     return 1
   fi
+
+  echo "container: $CONTAINER_NAME"
+  echo "docker $command_name $CONTAINER_NAME"
+  docker "$command_name" "$CONTAINER_NAME" || return $?
+  docker ps
+}
+
+start() {
+  change_container_state start "$@"
 }
 
 stop() {
-  require_no_args stop "$@" || return 1
-
-  if docker_container_exists; then
-    echo "container: $CONTAINER_NAME"
-    echo "docker stop $CONTAINER_NAME"
-    docker stop "$CONTAINER_NAME" || return $?
-    docker ps
-  else
-    echo "container not found: $CONTAINER_NAME" >&2
-    return 1
-  fi
+  change_container_state stop "$@"
 }
 
 rm_container() {
@@ -431,37 +407,21 @@ log() {
   fi
 }
 
-case "$1" in
-  --pull)
-    pull "${@:2}"
-    exit $?
-    ;;
-  --start)
-    start "${@:2}"
-    exit $?
-    ;;
-  --stop)
-    stop "${@:2}"
-    exit $?
-    ;;
-  --build)
-    build "${@:2}"
-    exit $?
-    ;;
-  --run)
-    run "${@:2}"
-    exit $?
-    ;;
-  --rm)
-    rm_container "${@:2}"
-    exit $?
-    ;;
-  --log)
-    log "${@:2}"
-    exit $?
-    ;;
+command_name=${1:-}
+[[ $# -eq 0 ]] || shift
+
+case "$command_name" in
+  --pull) pull "$@" ;;
+  --start) start "$@" ;;
+  --stop) stop "$@" ;;
+  --build) build "$@" ;;
+  --run) run "$@" ;;
+  --rm) rm_container "$@" ;;
+  --log) log "$@" ;;
   *)
-    echo "arg: $1 is not a valid parameter" >&2
+    echo "arg: $command_name is not a valid parameter" >&2
     exit 1
     ;;
 esac
+
+exit $?
