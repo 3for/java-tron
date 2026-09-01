@@ -26,7 +26,7 @@ $ bash docker.sh --pull
 
 ### Run the service
 
-Before running java-tron, make sure the required ports are available on the host. By default, HTTP and gRPC APIs are bound to the host loopback interface, while the P2P port is available on all host interfaces. Mainnet uses:
+Before running java-tron, make sure the required ports are available on the host. By default, HTTP and gRPC APIs are bound to the host loopback interface. Mainnet P2P remains available on all host interfaces:
 
 - `127.0.0.1:8090`: used by the HTTP-based JSON API
 - `127.0.0.1:50051`: used by the gRPC-based API
@@ -66,20 +66,21 @@ Private mode starts FullNode with `--witness` so that the genesis witness produc
 
 - `127.0.0.1:16667`: used by the HTTP-based JSON API
 - `127.0.0.1:50051`: used by the gRPC-based API
-- `16666`: TCP and UDP on all host interfaces, used by the private P2P network
 
-The private configuration also enables JSON-RPC on container port `8545`, but the helper does not publish that port by default. To make JSON-RPC available on the host loopback interface, provide the complete custom port set because specifying any `-p` replaces all default mappings:
+The private configuration also enables JSON-RPC on container port `8545` and listens for P2P on container port `16666`, but the helper publishes neither port by default. To make JSON-RPC available on the host loopback interface, provide the complete custom port set because specifying any `-p` replaces all default mappings:
 
 ```shell
 $ bash docker.sh --run --net private \
     -p 127.0.0.1:16667:16667 \
     -p 127.0.0.1:50051:50051 \
-    -p 127.0.0.1:8545:8545 \
-    -p 16666:16666 \
-    -p 16666:16666/udp
+    -p 127.0.0.1:8545:8545
 ```
 
 The downloaded configuration contains a publicly known development witness key and genesis accounts. Use it only for isolated local development. For a multi-node, shared, or security-sensitive private network, use the maintained [`tron-docker/private_net`](https://github.com/tronprotocol/tron-docker/tree/main/private_net) setup and replace its keys and configuration as appropriate.
+
+To connect an intentionally configured helper-based node from another machine, provide the complete custom port set and include explicit P2P mappings such as `-p <host-interface-address>:16666:16666` and `-p <host-interface-address>:16666:16666/udp`. Before exposing P2P, replace the public development credentials and configure the peers and witness roles; publishing the ports alone does not create a multi-node private network.
+
+Existing containers keep their original port mappings when restarted. After upgrading from a helper version that published private P2P by default, run `bash docker.sh --rm` and then create the private node again with `bash docker.sh --run --net private`.
 
 To replace an existing local copy with the latest maintained configuration, explicitly request an update. This overwrites `config/private_net_config.conf`.
 
