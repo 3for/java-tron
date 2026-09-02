@@ -32,7 +32,7 @@ Before running java-tron, make sure the required ports are available on the host
 - `127.0.0.1:50051`: used by the gRPC-based API
 - `18888`: TCP and UDP on all host interfaces, used by the P2P protocol
 
-The helper manages one container named `tronprotocol-java-tron` and creates it with Docker's `always` restart policy. It cannot run mainnet and private-network instances simultaneously; use `--rm` to remove the existing container before switching networks. A manually stopped container remains stopped until it is manually restarted or the Docker daemon restarts. Use Docker directly when multiple instances, a custom container name, or a different restart policy is required.
+The helper manages one container named `tronprotocol-java-tron` and creates it with Docker's `always` restart policy. If this container already exists, `--run` exits without changing it. Use `--start` to start a stopped container, or use `--rm` before `--run` to recreate it with new settings. The helper cannot run mainnet and private-network instances simultaneously; remove the existing container before switching networks. A manually stopped container remains stopped until it is manually restarted or the Docker daemon restarts. Use Docker directly when multiple instances, a custom container name, or a different restart policy is required.
 
 #### Full node on the main network
 

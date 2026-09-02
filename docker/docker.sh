@@ -215,6 +215,12 @@ run() {
     return 1
   fi
 
+  if docker_container_exists; then
+    echo "container already exists: $CONTAINER_NAME" >&2
+    echo "use --start if it is stopped, or --rm before rerunning --run" >&2
+    return 1
+  fi
+
   if ! docker_image_exists; then
     echo 'warning: no java-tron mirror image, do you need to get the mirror image?[y/n]'
     IFS= read -r need
