@@ -1,9 +1,7 @@
 package org.tron.common.utils;
 
-import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -11,6 +9,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -73,14 +72,16 @@ public class ByteArraySetTest {
     byteArraySet.add(bytes2);
 
     Iterator<byte[]> iterator = byteArraySet.iterator();
+    Set<String> actual = new HashSet<>();
 
     assertTrue(iterator.hasNext());
-    assertArrayEquals(bytes1, iterator.next());
+    actual.add(ByteArray.toHexString(iterator.next()));
 
     assertTrue(iterator.hasNext());
-    assertArrayEquals(bytes2, iterator.next());
+    actual.add(ByteArray.toHexString(iterator.next()));
 
     assertFalse(iterator.hasNext());
+    assertEquals(new HashSet<>(Arrays.asList("010203", "040506")), actual);
   }
 
   @Test
@@ -94,8 +95,11 @@ public class ByteArraySetTest {
     byte[][] array = byteArraySet.toArray(new byte[0][]);
 
     assertEquals(2, array.length);
-    assertArrayEquals(bytes1, array[0]);
-    assertArrayEquals(bytes2, array[1]);
+    Set<String> actual = new HashSet<>();
+    for (byte[] bytes : array) {
+      actual.add(ByteArray.toHexString(bytes));
+    }
+    assertEquals(new HashSet<>(Arrays.asList("010203", "040506")), actual);
   }
 
   @Test

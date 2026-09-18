@@ -1,7 +1,6 @@
 package org.tron.core.services.http;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -10,6 +9,7 @@ import com.google.protobuf.ByteString;
 import org.junit.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.tron.api.GrpcAPI.AssetIssueList;
 import org.tron.common.utils.ByteArray;
 
 public class GetAssetIssueListByNameServletTest extends BaseHttpTest {
@@ -21,11 +21,13 @@ public class GetAssetIssueListByNameServletTest extends BaseHttpTest {
   protected void setUpMocks() throws Exception {
     servlet = new GetAssetIssueListByNameServlet();
     injectWallet(servlet);
-    when(wallet.getAssetIssueListByName(any())).thenReturn(null);
+    // A nonempty name with no matches returns an empty list, not null.
+    when(wallet.getAssetIssueListByName(eq(data)))
+        .thenReturn(AssetIssueList.getDefaultInstance());
   }
 
   @Test
-  public void testPost() throws Exception {
+  public void testPostNoMatchingAssets() throws Exception {
     String jsonParam = "{\"value\": \"74657374\"}";
     MockHttpServletRequest request = postRequest(jsonParam);
 
@@ -36,7 +38,7 @@ public class GetAssetIssueListByNameServletTest extends BaseHttpTest {
   }
 
   @Test
-  public void testGet() throws Exception {
+  public void testGetNoMatchingAssets() throws Exception {
     MockHttpServletRequest request = getRequest("value", "74657374");
 
     MockHttpServletResponse response = newResponse();

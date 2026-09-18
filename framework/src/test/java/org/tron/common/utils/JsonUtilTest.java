@@ -2,8 +2,8 @@ package org.tron.common.utils;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 import static org.tron.common.utils.JsonUtil.json2Obj;
 import static org.tron.common.utils.JsonUtil.obj2Json;
 
@@ -46,17 +46,13 @@ public class JsonUtilTest {
 
   @Test
   public void testObj2JsonWithCircularReference() {
-    Node node1 = new Node("Node1");
-    Node node2 = new Node("Node2");
-    node1.setNext(node2);
-    node2.setNext(node1);
+    Node node = new Node("Node1");
+    assertTrue(obj2Json(node).contains("\"name\":\"Node1\""));
+    node.setNext(node);
 
-    try {
-      obj2Json(node1);
-      fail("Expected a RuntimeException to be thrown");
-    } catch (RuntimeException e) {
-      assertTrue(e.getCause() instanceof com.fasterxml.jackson.databind.JsonMappingException);
-    }
+    RuntimeException exception = assertThrows(RuntimeException.class, () -> obj2Json(node));
+    assertTrue(exception.getCause() instanceof com.fasterxml.jackson.databind.JsonMappingException);
+    assertTrue(exception.getCause().getMessage().contains("Direct self-reference"));
   }
 
   @Test(expected = RuntimeException.class)
@@ -65,12 +61,20 @@ public class JsonUtilTest {
     json2Obj(invalidJson, String.class);
   }
 
-  class Node {
+  public static class Node {
     private String name;
     private org.tron.common.utils.JsonUtilTest.Node next;
 
     public Node(String name) {
       this.name = name;
+    }
+
+    public String getName() {
+      return name;
+    }
+
+    public Node getNext() {
+      return next;
     }
 
     public void setNext(org.tron.common.utils.JsonUtilTest.Node next) {

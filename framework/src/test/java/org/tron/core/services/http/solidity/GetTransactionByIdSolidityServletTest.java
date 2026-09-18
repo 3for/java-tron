@@ -1,202 +1,81 @@
 package org.tron.core.services.http.solidity;
 
-import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.mock;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.PrintStream;
-import java.io.PrintWriter;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.net.URLStreamHandlerFactory;
-import java.nio.charset.StandardCharsets;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import lombok.extern.slf4j.Slf4j;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.BeforeClass;
+import com.google.protobuf.Any;
+import com.google.protobuf.ByteString;
 import org.junit.Test;
-import org.tron.common.utils.FileUtil;
-import org.tron.common.utils.PublicMethod;
-import org.tron.core.services.http.solidity.mockito.HttpUrlStreamHandler;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.tron.common.utils.ByteArray;
+import org.tron.core.actuator.TransactionFactory;
+import org.tron.core.capsule.TransactionCapsule;
+import org.tron.core.services.http.BaseHttpTest;
+import org.tron.json.JSONObject;
+import org.tron.protos.Protocol.Transaction;
+import org.tron.protos.Protocol.Transaction.Contract;
+import org.tron.protos.Protocol.Transaction.Contract.ContractType;
+import org.tron.protos.contract.BalanceContract.TransferContract;
 
+public class GetTransactionByIdSolidityServletTest extends BaseHttpTest {
 
-@Slf4j
-public class GetTransactionByIdSolidityServletTest {
+  private final Transaction transaction = Transaction.newBuilder()
+      .setRawData(Transaction.raw.newBuilder().addContract(Contract.newBuilder()
+          .setType(ContractType.TransferContract)
+          .setParameter(Any.pack(TransferContract.newBuilder()
+              .setOwnerAddress(ByteString.copyFrom(ByteArray.fromHexString(
+                  "410000000000000000000000000000000000000001")))
+              .setToAddress(ByteString.copyFrom(ByteArray.fromHexString(
+                  "410000000000000000000000000000000000000002")))
+              .setAmount(1000L)
+              .build()))))
+      .build();
+  private final ByteString transactionId = new TransactionCapsule(transaction)
+      .getTransactionId().getByteString();
+  private final String transactionIdHex = ByteArray.toHexString(transactionId.toByteArray());
 
-  private static HttpUrlStreamHandler httpUrlStreamHandler;
-  private GetTransactionByIdSolidityServlet getTransactionByIdSolidityServlet;
-  private HttpServletRequest request;
-  private HttpServletResponse response;
-  private HttpURLConnection httpUrlConnection;
-  private OutputStreamWriter outputStreamWriter;
-  private URL url;
+  private GetTransactionByIdSolidityServlet servlet;
 
-  /**
-   * .
-   */
-  @BeforeClass
-  public static void init() {
-    // Allows for mocking URL connections
-    URLStreamHandlerFactory urlStreamHandlerFactory = mock(URLStreamHandlerFactory.class);
-    try {
-      URL.setURLStreamHandlerFactory(urlStreamHandlerFactory);
-    } catch (Error e) {
-      logger.info("Ignore error: {}", e.getMessage());
-    }
-
-    httpUrlStreamHandler = new HttpUrlStreamHandler();
-    given(urlStreamHandlerFactory.createURLStreamHandler("http")).willReturn(httpUrlStreamHandler);
-  }
-
-  /**
-   * Init.
-   */
-
-  @Before
-  public void setUp() {
-    getTransactionByIdSolidityServlet = new GetTransactionByIdSolidityServlet();
-    this.request = mock(HttpServletRequest.class);
-    this.response = mock(HttpServletResponse.class);
-    this.httpUrlConnection = mock(HttpURLConnection.class);
-    this.outputStreamWriter = mock(OutputStreamWriter.class);
-    httpUrlStreamHandler.resetConnections();
-  }
-
-  /**
-   * Release Resource.
-   */
-  @After
-  public void tearDown() {
-    if (FileUtil.deleteDir(new File("temp.txt"))) {
-      logger.info("Release resources successful.");
-    } else {
-      logger.info("Release resources failure.");
-    }
+  @Override
+  protected void setUpMocks() throws Exception {
+    TransactionFactory.register(ContractType.TransferContract, null, TransferContract.class);
+    servlet = new GetTransactionByIdSolidityServlet();
+    injectWallet(servlet);
   }
 
   @Test
-  public void doPostTest() throws IOException {
+  public void testPostReturnsTransactionWhenFound() throws Exception {
+    when(wallet.getTransactionById(eq(transactionId))).thenReturn(transaction);
+    MockHttpServletResponse response = newResponse();
 
-    //send Post request
+    servlet.doPost(postRequest("{\"value\":\"" + transactionIdHex + "\"}"), response);
 
-    final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
-    System.setOut(new PrintStream(outContent));
-    String href = "http://127.0.0.1:"
-        + PublicMethod.chooseRandomPort() + "/walletsolidity/gettransactioninfobyid";
-    httpUrlStreamHandler.addConnection(new URL(href), httpUrlConnection);
-    httpUrlConnection.setRequestMethod("POST");
-    httpUrlConnection.setRequestProperty("Content-Type", "application/json");
-    httpUrlConnection.setRequestProperty("Connection", "Keep-Alive");
-    httpUrlConnection.setUseCaches(false);
-    httpUrlConnection.setDoOutput(true);
-    String postData = "{\"value\": \"309b6fa3d01353e46f57dd8a8f27611f98e392b50d035cef21"
-        + "3f2c55225a8bd2\"}";
-    httpUrlConnection.setRequestProperty("Content-Length", String.valueOf(postData.length()));
-
-    when(httpUrlConnection.getOutputStream()).thenReturn(outContent);
-    OutputStreamWriter out = new OutputStreamWriter(httpUrlConnection.getOutputStream(),
-        StandardCharsets.UTF_8);
-    out.write(postData);
-    out.flush();
-    out.close();
-    PrintWriter writer = new PrintWriter("temp.txt");
-    when(response.getWriter()).thenReturn(writer);
-
-    getTransactionByIdSolidityServlet.doPost(request, response);
-    //    Get Response Body
-    String line;
-    StringBuilder result = new StringBuilder();
-
-    byte[] buffer = new byte[1024];
-    ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(buffer);
-    when(httpUrlConnection.getInputStream()).thenReturn(byteArrayInputStream);
-    BufferedReader in = new BufferedReader(new InputStreamReader(httpUrlConnection.getInputStream(),
-        StandardCharsets.UTF_8));
-
-    while ((line = in.readLine()) != null) {
-      result.append(line).append("\n");
-    }
-    Assert.assertNotNull(result);
-    in.close();
-    writer.flush();
-    FileInputStream fileInputStream = new FileInputStream("temp.txt");
-    InputStreamReader inputStreamReader = new InputStreamReader(fileInputStream);
-    BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
-
-    StringBuilder sb = new StringBuilder();
-    String text;
-    while ((text = bufferedReader.readLine()) != null) {
-      sb.append(text);
-    }
-    Assert.assertTrue(sb.toString().contains("null"));
-    httpUrlConnection.disconnect();
+    verify(wallet).getTransactionById(eq(transactionId));
+    assertTransaction(response);
   }
 
   @Test
-  public void doGetTest() throws IOException {
+  public void testGetReturnsTransactionWhenFound() throws Exception {
+    when(wallet.getTransactionById(eq(transactionId))).thenReturn(transaction);
+    MockHttpServletResponse response = newResponse();
 
-    final ByteArrayOutputStream outContent = new ByteArrayOutputStream();
-    System.setOut(new PrintStream(outContent));
-    String href = "http://127.0.0.1:"
-        + PublicMethod.chooseRandomPort() + "/walletsolidity/gettransactioninfobyid";
-    httpUrlStreamHandler.addConnection(new URL(href), httpUrlConnection);
-    httpUrlConnection.setRequestMethod("GET");
-    httpUrlConnection.setRequestProperty("Content-Type", "application/json");
-    httpUrlConnection.setRequestProperty("Connection", "Keep-Alive");
-    httpUrlConnection.setUseCaches(false);
-    httpUrlConnection.setDoOutput(true);
-    String postData = "{\"value\": \"309b6fa3d01353e46f57dd8a8f27611f98e392b50d035cef21"
-        + "3f2c55225a8bd2\"}";
-    httpUrlConnection.setRequestProperty("Content-Length", String.valueOf(postData.length()));
+    servlet.doGet(getRequest("value", transactionIdHex), response);
 
-    when(httpUrlConnection.getOutputStream()).thenReturn(outContent);
-    OutputStreamWriter out = new OutputStreamWriter(httpUrlConnection.getOutputStream(),
-        StandardCharsets.UTF_8);
-    out.write(postData);
-    out.flush();
-    out.close();
-    PrintWriter writer = new PrintWriter("temp.txt");
-    when(response.getWriter()).thenReturn(writer);
+    verify(wallet).getTransactionById(eq(transactionId));
+    assertTransaction(response);
+  }
 
-    getTransactionByIdSolidityServlet.doPost(request, response);
-    //    Get Response Body
-    String line;
-    StringBuilder result = new StringBuilder();
-
-    byte[] buffer = new byte[1024];
-    ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(buffer);
-    when(httpUrlConnection.getInputStream()).thenReturn(byteArrayInputStream);
-    BufferedReader in = new BufferedReader(new InputStreamReader(httpUrlConnection.getInputStream(),
-        StandardCharsets.UTF_8));
-
-    while ((line = in.readLine()) != null) {
-      result.append(line).append("\n");
-    }
-    Assert.assertNotNull(result);
-    in.close();
-    writer.flush();
-    FileInputStream fileInputStream = new FileInputStream("temp.txt");
-    InputStreamReader inputStreamReader = new InputStreamReader(fileInputStream);
-    BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
-
-    StringBuilder sb = new StringBuilder();
-    String text;
-    while ((text = bufferedReader.readLine()) != null) {
-      sb.append(text);
-    }
-    Assert.assertTrue(sb.toString().contains("null"));
-    httpUrlConnection.disconnect();
+  private void assertTransaction(MockHttpServletResponse response) throws Exception {
+    JSONObject result = JSONObject.parseObject(response.getContentAsString());
+    assertFalse(result.containsKey("Error"));
+    assertEquals(transactionIdHex, result.getString("txID"));
+    JSONObject contract = result.getJSONObject("raw_data").getJSONArray("contract")
+        .getJSONObject(0);
+    assertEquals("TransferContract", contract.getString("type"));
+    assertEquals(1000L, contract.getJSONObject("parameter").getJSONObject("value")
+        .getLongValue("amount"));
   }
 }
-
