@@ -97,8 +97,8 @@ public class CheckOrInitEngineTest {
       fileUtil.when(() -> FileUtil.createDirIfNotExists(dir)).thenReturn(true);
       fileUtil.when(() -> FileUtil.createFileIfNotExists(engineFile)).thenReturn(true);
 
-      propUtil.when(() -> PropUtil.readProperty(engineFile, ENGINE_KEY)).thenReturn(null);
-      strings.when(() -> Strings.isNullOrEmpty(null)).thenReturn(true);
+      propUtil.when(() -> PropUtil.readProperty(engineFile, ENGINE_KEY)).thenReturn("");
+      strings.when(() -> Strings.isNullOrEmpty("")).thenReturn(true);
 
       propUtil.when(() -> PropUtil.writeProperty(engineFile, ENGINE_KEY, ROCKSDB))
           .thenReturn(false);
@@ -142,27 +142,13 @@ public class CheckOrInitEngineTest {
 
   @Test
   public void testSuccessfulFirstTimeInit() throws IOException {
-    try (MockedStatic<FileUtil> fileUtil = mockStatic(FileUtil.class);
-         MockedStatic<PropUtil> propUtil = mockStatic(PropUtil.class);
-         MockedStatic<Strings> strings = mockStatic(Strings.class)) {
+    String dir = new File(temporaryFolder.getRoot(), ACCOUNT).toString();
+    File engineFile = Paths.get(dir, ENGINE_FILE).toFile();
 
-      String dir = temporaryFolder.newFolder(ACCOUNT).toString();
-      String engineFile = Paths.get(dir, ENGINE_FILE).toString();
+    checkOrInitEngine(LEVELDB, dir, TronError.ErrCode.LEVELDB_INIT);
 
-      fileUtil.when(() -> FileUtil.createDirIfNotExists(dir)).thenReturn(true);
-      fileUtil.when(() -> FileUtil.createFileIfNotExists(engineFile)).thenReturn(true);
-
-      propUtil.when(() -> PropUtil.readProperty(engineFile, ENGINE_KEY))
-          .thenReturn(null)
-          .thenReturn(LEVELDB);
-      strings.when(() -> Strings.isNullOrEmpty(null)).thenReturn(true);
-
-      propUtil.when(() -> PropUtil.writeProperty(engineFile, ENGINE_KEY, LEVELDB))
-          .thenReturn(true);
-
-      TronError.ErrCode errCode = TronError.ErrCode.LEVELDB_INIT;
-      checkOrInitEngine(LEVELDB, dir, errCode);
-    }
+    assertTrue(engineFile.isFile());
+    assertEquals(LEVELDB, PropUtil.readProperty(engineFile.toString(), ENGINE_KEY));
   }
 
   @Test

@@ -1,38 +1,51 @@
 package org.tron.core.metrics;
 
+import java.util.UUID;
+import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
+import org.tron.common.parameter.CommonParameter;
 
 public class MetricsUtilTest {
 
-  private String test1 = "test1";
-  private String test2 = "test2";
-  private String test3 = "test3";
-  private String test4 = "test4";
+  private boolean originalMetricsEnabled;
+  private String key;
+
+  @Before
+  public void setUp() {
+    originalMetricsEnabled = CommonParameter.getInstance().isNodeMetricsEnable();
+    CommonParameter.getInstance().setNodeMetricsEnable(true);
+    key = MetricsUtilTest.class.getName() + "." + UUID.randomUUID();
+  }
+
+  @After
+  public void tearDown() {
+    CommonParameter.getInstance().setNodeMetricsEnable(originalMetricsEnabled);
+  }
 
   @Test
   public void testCounterInc() {
-    MetricsUtil.counterInc(test1);
-    //Assert
-    //    .assertEquals(1, MetricsUtil.getCounter(test1).getCount());
+    MetricsUtil.counterInc(key);
+    Assert.assertEquals(1, MetricsUtil.getCounter(key).getCount());
   }
 
-  //@Test
+  @Test
   public void testMeterMark() {
-    MetricsUtil.meterMark(test2);
-    Assert.assertEquals(1, MetricsUtil.getMeter(test2).getCount());
+    MetricsUtil.meterMark(key);
+    Assert.assertEquals(1, MetricsUtil.getMeter(key).getCount());
   }
 
-  //@Test
+  @Test
   public void testMeterMark2() {
-    MetricsUtil.meterMark(test3, 1);
-    Assert.assertEquals(1, MetricsUtil.getMeter(test3).getCount());
+    MetricsUtil.meterMark(key, 3);
+    Assert.assertEquals(3, MetricsUtil.getMeter(key).getCount());
   }
 
-  //@Test
+  @Test
   public void testHistogramUpdate() {
-    MetricsUtil.histogramUpdate(test4, 1);
-    Assert.assertEquals(1,
-        MetricsUtil.getHistogram(test4).getCount());
+    MetricsUtil.histogramUpdate(key, 7);
+    Assert.assertEquals(1, MetricsUtil.getHistogram(key).getCount());
+    Assert.assertEquals(7, MetricsUtil.getHistogram(key).getSnapshot().getMax());
   }
 }

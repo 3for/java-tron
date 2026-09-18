@@ -9,6 +9,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
@@ -16,6 +17,7 @@ import java.util.Set;
 import lombok.Getter;
 import org.junit.Before;
 import org.junit.Test;
+import org.tron.core.db.ByteArrayWrapper;
 
 public class ByteArrayMapTest {
 
@@ -139,7 +141,10 @@ public class ByteArrayMapTest {
     Map<byte[], String> map = new ByteArrayMap<>();
     Map<byte[], String> testMap = createTestMap();
     assertNotEquals(map, testMap);
-    assertTrue(testMap.hashCode() <= 0);
+    Map<ByteArrayWrapper, String> expected = new HashMap<>();
+    expected.put(new ByteArrayWrapper("key1".getBytes()), "value1");
+    expected.put(new ByteArrayWrapper("key2".getBytes()), "value2");
+    assertEquals(expected.hashCode(), testMap.hashCode());
     assertNotNull(testMap.toString());
   }
 
