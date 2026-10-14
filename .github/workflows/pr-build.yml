@@ -36,6 +36,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
       - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v5
         with:
@@ -71,6 +74,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v6
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -125,6 +131,9 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v6
 
       - name: Check Java version
         run: java -version
@@ -183,6 +192,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
       - name: Check Java version
         run: java -version
 
@@ -197,7 +209,7 @@ jobs:
             debian11-x86_64-gradle-
 
       - name: Build
-        run: ./gradlew clean build --no-daemon --no-build-cache
+        run: ./gradlew clean build --no-daemon
 
       - name: Toolkit jar smoke test
         run: |
@@ -209,7 +221,7 @@ jobs:
           java -jar "$JAR" keystore --help
 
       - name: Test with RocksDB engine
-        run: ./gradlew :framework:testWithRocksDb --no-daemon --no-build-cache
+        run: ./gradlew :framework:testWithRocksDb --no-daemon
 
       - name: Generate module coverage reports
         run: ./gradlew jacocoTestReport --no-daemon
@@ -249,6 +261,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.base.sha }}
 
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
       - name: Cache Gradle packages
         uses: actions/cache@v5
         with:
@@ -265,11 +280,11 @@ jobs:
         # this PR.  The only output we need from this job is the jacoco XML for
         # coverage diffing, so we must not let a stale test failure block it.
         continue-on-error: true
-        run: ./gradlew clean build --no-daemon --no-build-cache
+        run: ./gradlew clean build --no-daemon
 
       - name: Test with RocksDB engine (base)
         continue-on-error: true
-        run: ./gradlew :framework:testWithRocksDb --no-daemon --no-build-cache
+        run: ./gradlew :framework:testWithRocksDb --no-daemon
 
       - name: Generate module coverage reports (base)
         run: ./gradlew jacocoTestReport --no-daemon
